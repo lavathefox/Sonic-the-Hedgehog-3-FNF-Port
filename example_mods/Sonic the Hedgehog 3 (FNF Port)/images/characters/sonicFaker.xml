@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="sonicFaker.png">
+	<!-- Created using the Spritesheet and XML generator -->
+	<!-- https://uncertainprod.github.io/FNF-Spritesheet-XML-generator-Web -->
+	<SubTexture name="idle0000" x="107" y="0" width="31" height="44" frameX="-31" frameY="-54" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0000" x="107" y="0" width="31" height="44" frameX="-31" frameY="-54" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0001" x="32" y="43" width="31" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0002" x="0" y="0" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0003" x="36" y="0" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0004" x="36" y="0" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0005" x="36" y="0" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0006" x="36" y="0" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0007" x="36" y="0" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0008" x="36" y="0" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0009" x="36" y="0" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0010" x="72" y="0" width="35" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0011" x="63" y="43" width="31" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0012" x="0" y="86" width="31" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0013" x="0" y="43" width="32" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="look0014" x="0" y="43" width="32" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+</TextureAtlas>

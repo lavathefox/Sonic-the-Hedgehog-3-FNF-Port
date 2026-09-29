@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="fire.png">
+	<!-- Created using the Spritesheet and XML generator -->
+	<!-- https://uncertainprod.github.io/FNF-Spritesheet-XML-generator-Web -->
+	<SubTexture name="fireloop0000" x="516" y="0" width="516" height="760" frameX="2" frameY="1" frameWidth="512" frameHeight="768"/>
+	<SubTexture name="fireloop0001" x="1032" y="0" width="516" height="760" frameX="2" frameY="1" frameWidth="512" frameHeight="768"/>
+	<SubTexture name="fireloop0002" x="1548" y="0" width="516" height="760" frameX="2" frameY="1" frameWidth="512" frameHeight="768"/>
+	<SubTexture name="fireloop0003" x="516" y="760" width="516" height="760" frameX="2" frameY="1" frameWidth="512" frameHeight="768"/>
+	<SubTexture name="fireloop0004" x="0" y="0" width="516" height="760" frameX="2" frameY="1" frameWidth="512" frameHeight="768"/>
+	<SubTexture name="fireloop0005" x="1032" y="760" width="516" height="760" frameX="2" frameY="1" frameWidth="512" frameHeight="768"/>
+	<SubTexture name="fireloop0006" x="0" y="760" width="516" height="760" frameX="2" frameY="1" frameWidth="512" frameHeight="768"/>
+</TextureAtlas>

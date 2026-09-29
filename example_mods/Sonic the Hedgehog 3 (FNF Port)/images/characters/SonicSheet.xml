@@ -1,0 +1,109 @@
+<?xml version='1.0' encoding='utf-8'?>
+<TextureAtlas imagePath="tailsbetamoveset.png">
+
+<SubTexture name="idle0000" x="3" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+<SubTexture name="idleloopA0000" x="61" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloopA0001" x="110" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0002" x="159" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0003" x="159" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0004" x="208" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0005" x="208" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0006" x="159" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0007" x="159" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0008" x="208" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0009" x="208" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0010" x="159" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0011" x="159" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0012" x="208" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0013" x="208" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0014" x="257" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0015" x="257" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0016" x="257" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0017" x="306" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0018" x="306" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0019" x="306" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0020" x="306" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0021" x="355" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0022" x="404" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0023" x="404" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0024" x="404" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="idleloop0025" x="355" y="11" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+<SubTexture name="up0000" x="110" y="69" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="up0001" x="159" y="69" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+<SubTexture name="down0000" x="3" y="69" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="down0001" x="52" y="69" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+<SubTexture name="walk0000" x="3" y="127" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="walk0001" x="52" y="127" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="walk0002" x="101" y="127" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="walk0003" x="150" y="127" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="walk0004" x="199" y="127" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="walk0005" x="248" y="127" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="walk0006" x="297" y="127" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="walk0007" x="346" y="127" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+<SubTexture name="run0000" x="3" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="run0001" x="52" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="run0002" x="101" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="run0003" x="150" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+<SubTexture name="jump0000" x="3" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="jump0001" x="52" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="jump0002" x="101" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="jump0003" x="150" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="jump0004" x="199" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+<SubTexture name="skid0000" x="208" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="skid0001" x="208" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="skid0002" x="257" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="skid0003" x="257" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="skid0004" x="306" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="skid0005" x="306" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="skid0006" x="306" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="skid0007" x="306" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="skid0008" x="306" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="skid0009" x="364" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="skid00010" x="364" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="skid00011" x="364" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="skid00012" x="364" y="185" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+
+<SubTexture name="push0000" x="3" y="243" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="push0001" x="52" y="243" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="push0002" x="101" y="243" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="push0003" x="150" y="243" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+<SubTexture name="spindash0000" x="257" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="spindash0001" x="502" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="spindash0002" x="306" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="spindash0003" x="502" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="spindash0004" x="355" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="spindash0005" x="502" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="spindash0006" x="404" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="spindash0007" x="502" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="spindash0008" x="453" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="spindash0009" x="502" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="spindash0010" x="502" y="301" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+<SubTexture name="balanceR0000" x="208" y="243" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="balanceR0001" x="257" y="243" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="balanceR0002" x="306" y="243" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+<SubTexture name="balanceL0000" x="364" y="243" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="balanceL0001" x="413" y="243" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="balanceL0002" x="462" y="243" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+<SubTexture name="hurt0000" x="217" y="69" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+<SubTexture name="slide0000" x="217" y="69" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="slide0001" x="275" y="69" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+<SubTexture name="fall0000" x="159" y="359" width="48" height="51" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+<SubTexture name="fall0001" x="208" y="359" width="48" height="51" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+<SubTexture name="dies0000" x="333" y="69" width="48" height="48" frameX="0" frameY="0" frameWidth="48" frameHeight="48" />
+
+</TextureAtlas>

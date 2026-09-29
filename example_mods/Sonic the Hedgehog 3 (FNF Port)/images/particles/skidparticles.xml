@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<TextureAtlas imagePath="skidparticles.png">
+<SubTexture name="skidparticles0000" x="18" y="0" width="15" height="16" frameX="-2" frameY="-2" frameWidth="16" frameHeight="16" />
+<SubTexture name="skidparticles0001" x="0" y="18" width="13" height="14" frameX="-2" frameY="-3" frameWidth="16" frameHeight="16" />
+<SubTexture name="skidparticles0002" x="13" y="18" width="13" height="12" frameX="-3" frameY="-4" frameWidth="16" frameHeight="16" />
+<SubTexture name="skidparticles0003" x="33" y="0" width="10" height="11" frameX="-4" frameY="-5" frameWidth="16" frameHeight="16" />
+<SubTexture name="skidparticles0004" x="0" y="0" width="18" height="18" frameX="0" frameY="0" frameWidth="16" frameHeight="16" />
+</TextureAtlas>

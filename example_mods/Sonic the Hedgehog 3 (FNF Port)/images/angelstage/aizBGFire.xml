@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="aizBGFire.png">
+	<!-- Created using the Spritesheet and XML generator -->
+	<!-- https://uncertainprod.github.io/FNF-Spritesheet-XML-generator-Web -->
+	<SubTexture name="idle0000" x="0" y="965" width="17904" height="965" frameX="2" frameY="2" frameWidth="17900" frameHeight="961"/>
+	<SubTexture name="idle0001" x="0" y="0" width="17904" height="965" frameX="2" frameY="2" frameWidth="17900" frameHeight="961"/>
+</TextureAtlas>

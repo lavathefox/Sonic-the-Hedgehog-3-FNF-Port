@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="megaDriversNotesSplashes.png">
+	<!-- Created using the Spritesheet and XML generator -->
+	<!-- https://uncertainprod.github.io/FNF-Spritesheet-XML-generator-Web -->
+	<SubTexture name="note splash purple 10000" x="279" y="280" width="65" height="45" frameX="-74" frameY="-91" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash purple 10001" x="0" y="390" width="101" height="93" frameX="-56" frameY="-74" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash purple 10002" x="400" y="179" width="107" height="100" frameX="-53" frameY="-70" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash purple 10003" x="400" y="79" width="107" height="100" frameX="-53" frameY="-70" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash blue 10000" x="277" y="162" width="62" height="56" frameX="-77" frameY="-80" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash blue 10001" x="400" y="279" width="104" height="97" frameX="-60" frameY="-67" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash blue 10002" x="0" y="280" width="114" height="110" frameX="-56" frameY="-60" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash blue 10003" x="0" y="162" width="118" height="118" frameX="-56" frameY="-56" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash green 10000" x="101" y="390" width="59" height="48" frameX="-80" frameY="-74" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash green 10001" x="400" y="0" width="141" height="79" frameX="-36" frameY="-36" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash green 10002" x="118" y="162" width="159" height="79" frameX="-29" frameY="-26" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash green 10003" x="114" y="280" width="165" height="76" frameX="-26" frameY="-19" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash red 10000" x="339" y="162" width="56" height="56" frameX="-94" frameY="-77" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash red 10001" x="283" y="0" width="117" height="121" frameX="-74" frameY="-46" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash red 10002" x="145" y="0" width="138" height="148" frameX="-63" frameY="-29" frameWidth="218" frameHeight="218"/>
+	<SubTexture name="note splash red 10003" x="0" y="0" width="145" height="162" frameX="-63" frameY="-19" frameWidth="218" frameHeight="218"/>
+</TextureAtlas>

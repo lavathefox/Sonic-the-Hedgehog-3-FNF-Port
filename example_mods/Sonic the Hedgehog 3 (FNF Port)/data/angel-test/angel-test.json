@@ -1,0 +1,28 @@
+{
+	"player1": "bf-genesis",
+	"gfVersion": "gfS3",
+	"notes": [
+		{
+			"sectionBeats": 4,
+			"sectionNotes": [],
+			"gfSection": false,
+			"altAnim": false,
+			"mustHitSection": false,
+			"changeBPM": false,
+			"bpm": 150
+		}
+	],
+	"events": [],
+	"player2": "sonicNormal",
+	"gameOverSound": "silver-death",
+	"offset": 0,
+	"disableNoteRGB": true,
+	"gameOverChar": "silverDead",
+	"song": "Angel Test",
+	"needsVoices": false,
+	"stage": "angelIslandtest",
+	"arrowSkin": "",
+	"bpm": 180,
+	"speed": 2.8,
+	"format": "psych_v1_convert"
+}

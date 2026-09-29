@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="exepauseBG.png">
+	<!-- Created using the Spritesheet and XML generator -->
+	<!-- https://uncertainprod.github.io/FNF-Spritesheet-XML-generator-Web -->
+	<SubTexture name="idle0000" x="0" y="0" width="324" height="184" frameX="2" frameY="2" frameWidth="320" frameHeight="180"/>
+	<SubTexture name="idle0001" x="324" y="0" width="324" height="184" frameX="2" frameY="2" frameWidth="320" frameHeight="180"/>
+	<SubTexture name="idle0002" x="0" y="0" width="324" height="184" frameX="2" frameY="2" frameWidth="320" frameHeight="180"/>
+	<SubTexture name="idle0003" x="0" y="184" width="324" height="184" frameX="2" frameY="2" frameWidth="320" frameHeight="180"/>
+</TextureAtlas>

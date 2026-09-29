@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="sonicNormal.png">
+	<!-- Created using the Spritesheet and XML generator -->
+	<!-- https://uncertainprod.github.io/FNF-Spritesheet-XML-generator-Web -->
+	<SubTexture name="idle0000" x="0" y="46" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="idle0001" x="0" y="89" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="left0000" x="182" y="86" width="30" height="43" frameX="-28" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="left0001" x="151" y="87" width="31" height="43" frameX="-30" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="down0000" x="0" y="132" width="34" height="40" frameX="-30" frameY="-58" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="down0001" x="107" y="89" width="34" height="41" frameX="-31" frameY="-57" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="up0000" x="0" y="0" width="39" height="46" frameX="-32" frameY="-52" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="up0001" x="39" y="0" width="39" height="44" frameX="-31" frameY="-54" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="right0000" x="78" y="0" width="37" height="43" frameX="-33" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="right0001" x="115" y="0" width="36" height="43" frameX="-32" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0000" x="0" y="46" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0001" x="0" y="46" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0002" x="36" y="89" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0003" x="36" y="89" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0004" x="182" y="43" width="31" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0005" x="182" y="43" width="31" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0006" x="151" y="0" width="31" height="44" frameX="-31" frameY="-54" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0007" x="151" y="0" width="31" height="44" frameX="-31" frameY="-54" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0008" x="151" y="0" width="31" height="44" frameX="-31" frameY="-54" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0009" x="151" y="0" width="31" height="44" frameX="-31" frameY="-54" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0010" x="151" y="0" width="31" height="44" frameX="-31" frameY="-54" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0011" x="151" y="0" width="31" height="44" frameX="-31" frameY="-54" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0012" x="151" y="0" width="31" height="44" frameX="-31" frameY="-54" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0013" x="151" y="0" width="31" height="44" frameX="-31" frameY="-54" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0014" x="151" y="0" width="31" height="44" frameX="-31" frameY="-54" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0015" x="151" y="44" width="31" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0016" x="115" y="43" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0017" x="72" y="46" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0018" x="36" y="46" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0019" x="36" y="46" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0020" x="36" y="46" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0021" x="36" y="46" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0022" x="36" y="46" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0023" x="36" y="46" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0024" x="36" y="46" width="36" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0025" x="72" y="89" width="35" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0026" x="182" y="0" width="31" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0027" x="182" y="0" width="31" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0028" x="182" y="0" width="31" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+	<SubTexture name="transform0029" x="182" y="0" width="31" height="43" frameX="-31" frameY="-55" frameWidth="100" frameHeight="100"/>
+</TextureAtlas>

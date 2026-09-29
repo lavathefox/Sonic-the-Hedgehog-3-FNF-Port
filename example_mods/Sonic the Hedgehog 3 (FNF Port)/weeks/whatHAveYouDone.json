@@ -1,0 +1,26 @@
+{
+	"storyName": "woa",
+	"difficulties": "Hard,",
+	"hideFreeplay": false,
+	"weekBackground": "bitch",
+	"weekBefore": "",
+	"startUnlocked": true,
+	"hideStoryMode": true,
+	"weekCharacters": [
+		"",
+		"bf",
+		""
+	],
+	"songs": [
+		[
+			"title-screen",
+			"icon-ring",
+			[
+				20,
+				20,
+				60
+			]
+		]
+	],
+	"weekName": "insanity16"
+}

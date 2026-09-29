@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="sonicTitleScreen.png">
+	<!-- Created using the Spritesheet and XML generator -->
+	<!-- https://uncertainprod.github.io/FNF-Spritesheet-XML-generator-Web -->
+	<SubTexture name="sonicFinger0000" x="0" y="0" width="244" height="175" frameX="-42" frameY="-3" frameWidth="320" frameHeight="224"/>
+	<SubTexture name="sonicFinger0001" x="244" y="0" width="244" height="175" frameX="-42" frameY="-3" frameWidth="320" frameHeight="224"/>
+	<SubTexture name="sonicFinger0002" x="0" y="175" width="244" height="175" frameX="-42" frameY="-3" frameWidth="320" frameHeight="224"/>
+	<SubTexture name="sonicFinger0003" x="244" y="0" width="244" height="175" frameX="-42" frameY="-3" frameWidth="320" frameHeight="224"/>
+	<SubTexture name="sonicWink0000" x="0" y="0" width="244" height="175" frameX="-42" frameY="-3" frameWidth="320" frameHeight="224"/>
+	<SubTexture name="sonicWink0001" x="0" y="0" width="244" height="175" frameX="-42" frameY="-3" frameWidth="320" frameHeight="224"/>
+	<SubTexture name="sonicWink0002" x="0" y="0" width="244" height="175" frameX="-42" frameY="-3" frameWidth="320" frameHeight="224"/>
+	<SubTexture name="sonicWink0003" x="0" y="0" width="244" height="175" frameX="-42" frameY="-3" frameWidth="320" frameHeight="224"/>
+	<SubTexture name="sonicWink0004" x="488" y="0" width="244" height="175" frameX="-42" frameY="-3" frameWidth="320" frameHeight="224"/>
+	<SubTexture name="sonicWink0005" x="244" y="175" width="244" height="175" frameX="-42" frameY="-3" frameWidth="320" frameHeight="224"/>
+	<SubTexture name="sonicWink0006" x="488" y="0" width="244" height="175" frameX="-42" frameY="-3" frameWidth="320" frameHeight="224"/>
+	<SubTexture name="sonicWink0007" x="0" y="0" width="244" height="175" frameX="-42" frameY="-3" frameWidth="320" frameHeight="224"/>
+	<SubTexture name="sonicWink0008" x="0" y="0" width="244" height="175" frameX="-42" frameY="-3" frameWidth="320" frameHeight="224"/>
+	<SubTexture name="sonicWink0009" x="0" y="0" width="244" height="175" frameX="-42" frameY="-3" frameWidth="320" frameHeight="224"/>
+</TextureAtlas>

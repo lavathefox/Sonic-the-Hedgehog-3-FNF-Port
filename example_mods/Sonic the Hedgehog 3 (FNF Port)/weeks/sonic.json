@@ -1,0 +1,90 @@
+{
+	"storyName": "\"Sonic dot Ee-Ex-Ee\"",
+	"difficulties": "Hard",
+	"hideFreeplay": false,
+	"weekBackground": "sonic",
+	"weekBefore": "tutorial",
+	"startUnlocked": true,
+	"hideStoryMode": false,
+	"songs": [
+		[
+			"test-level",
+			"sonic",
+			[
+				102,
+				100,
+				135
+			]
+		]
+		[
+			"credits",
+			"anp",
+			[
+				102,
+				100,
+				135
+			]
+		]
+		[
+			"hill",
+			"tails",
+			[
+				255,
+				143,
+				0
+			]
+		]
+		[
+			"youcantrun",
+			"kte",
+			[
+				248,
+				20,
+				43
+			]
+		]
+		[
+			"dotdotdot",
+			"eggman",
+			[
+				153,
+				0,
+				0
+			]
+		]
+		[
+			"notperfect",
+			"amy",
+			[
+				255,
+				101,
+				147
+			]
+		]
+		[
+			"kindandfair",
+			"cream",
+			[
+				255,
+				201,
+				147
+			]
+		]
+		[
+			"_____",
+			"sally",
+			[
+				183,
+				86,
+				51
+			]
+		]
+	],
+	"weekCharacters": [
+		"",
+		"game",
+		""
+	],
+	"hiddenUntilUnlocked": false,
+	"weekName": "SonicExecutable"
+}

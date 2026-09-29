@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="rgbHold.png">
+	<!-- Created using the Spritesheet and XML generator -->
+	<!-- https://uncertainprod.github.io/FNF-Spritesheet-XML-generator-Web -->
+	<SubTexture name="note hold rgb purple0000" x="140" y="42" width="20" height="11" frameX="-14" frameY="-20" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb purple0001" x="120" y="53" width="20" height="10" frameX="-14" frameY="-21" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb purple0002" x="120" y="42" width="20" height="11" frameX="-14" frameY="-20" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb purple0003" x="140" y="53" width="20" height="10" frameX="-14" frameY="-21" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb blue0000" x="140" y="42" width="20" height="11" frameX="-14" frameY="-20" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb blue0001" x="120" y="53" width="20" height="10" frameX="-14" frameY="-21" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb blue0002" x="120" y="42" width="20" height="11" frameX="-14" frameY="-20" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb blue0003" x="140" y="53" width="20" height="10" frameX="-14" frameY="-21" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb green0000" x="140" y="42" width="20" height="11" frameX="-14" frameY="-20" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb green0001" x="120" y="53" width="20" height="10" frameX="-14" frameY="-21" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb green0002" x="120" y="42" width="20" height="11" frameX="-14" frameY="-20" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb green0003" x="140" y="53" width="20" height="10" frameX="-14" frameY="-21" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb red0000" x="140" y="42" width="20" height="11" frameX="-14" frameY="-20" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb red0001" x="120" y="53" width="20" height="10" frameX="-14" frameY="-21" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb red0002" x="120" y="42" width="20" height="11" frameX="-14" frameY="-20" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note hold rgb red0003" x="140" y="53" width="20" height="10" frameX="-14" frameY="-21" frameWidth="48" frameHeight="48"/>
+	<SubTexture name="note splash rgb purple0000" x="120" y="0" width="40" height="42" frameX="-12" frameY="-10" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb purple0001" x="55" y="60" width="46" height="47" frameX="-8" frameY="-8" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb purple0002" x="0" y="60" width="55" height="53" frameX="-4" frameY="-4" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb purple0003" x="61" y="0" width="59" height="57" frameX="-1" frameY="-2" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb purple0004" x="0" y="0" width="61" height="60" frameX="0" frameY="-1" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb blue0000" x="120" y="0" width="40" height="42" frameX="-12" frameY="-10" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb blue0001" x="55" y="60" width="46" height="47" frameX="-8" frameY="-8" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb blue0002" x="0" y="60" width="55" height="53" frameX="-4" frameY="-4" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb blue0003" x="61" y="0" width="59" height="57" frameX="-1" frameY="-2" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb blue0004" x="0" y="0" width="61" height="60" frameX="0" frameY="-1" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb green0000" x="120" y="0" width="40" height="42" frameX="-12" frameY="-10" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb green0001" x="55" y="60" width="46" height="47" frameX="-8" frameY="-8" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb green0002" x="0" y="60" width="55" height="53" frameX="-4" frameY="-4" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb green0003" x="61" y="0" width="59" height="57" frameX="-1" frameY="-2" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb green0004" x="0" y="0" width="61" height="60" frameX="0" frameY="-1" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb red0000" x="120" y="0" width="40" height="42" frameX="-12" frameY="-10" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb red0001" x="55" y="60" width="46" height="47" frameX="-8" frameY="-8" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb red0002" x="0" y="60" width="55" height="53" frameX="-4" frameY="-4" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb red0003" x="61" y="0" width="59" height="57" frameX="-1" frameY="-2" frameWidth="64" frameHeight="64"/>
+	<SubTexture name="note splash rgb red0004" x="0" y="0" width="61" height="60" frameX="0" frameY="-1" frameWidth="64" frameHeight="64"/>
+</TextureAtlas>

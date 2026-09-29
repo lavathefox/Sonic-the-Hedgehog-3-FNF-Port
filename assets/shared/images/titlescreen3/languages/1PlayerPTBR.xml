@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="1PlayerPTBR.png">
+	<!-- Created using the Spritesheet and XML generator -->
+	<!-- https://uncertainprod.github.io/FNF-Spritesheet-XML-generator-Web -->
+	<SubTexture name="1PlayerNot0000" x="0" y="0" width="100" height="12" frameX="2" frameY="2" frameWidth="96" frameHeight="8"/>
+	<SubTexture name="1PlayerSelect0000" x="0" y="12" width="100" height="12" frameX="2" frameY="2" frameWidth="96" frameHeight="8"/>
+</TextureAtlas>

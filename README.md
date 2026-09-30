@@ -1,4 +1,4 @@
-![PsychionalEngineLogo](docs/img/PsychEngineLogoTweak.png)
+![SoniktheHedgefriendLogo](docs/img/Sonic3FNFPortLogoNew.png)
 
 Engine originally used on [Mind Games Mod](https://gamebanana.com/mods/301107), intended to be a fix for the vanilla version's many issues while keeping the casual play aspect of it. Also aiming to be an easier alternative to newbie coders.
 
@@ -22,36 +22,26 @@ For this you can head over to [the wiki](https://shadowmario.github.io/psychengi
 There you can learn how to use the 212 PlayState funcions in your mod!
 
 ## Credits:
-* Shadow Mario - Main Programmer and Head of Psych Engine.
-* Riveren - Main Artist/Animator of Psych Engine.
+* LavatheFox - Main Programmer and Head of Sonic the Hedgehog 3 FNF Port.
+* DanDaniel - Main Pixel Artist/Animator, Composer and Charter of Sonic the Hedgehog 3 FNF Port.
 
 ### Special Thanks
-* bbpanzu - Ex-Team Member (Programmer).
-* crowplexus - HScript Iris, Input System v3, and Other PRs.
-* Kamizeta - Creator of Pessy, Psych Engine's mascot.
-* MaxNeton - Loading Screen Easter Egg Artist/Animator.
-* Keoiki - Note Splash Animations and Latin Alphabet.
-* SqirraRNG - Crash Handler and Base code for Chart Editor's Waveform.
-* EliteMasterEric - Runtime Shaders support and Other PRs.
-* MAJigsaw77 - .MP4 Video Loader Library (hxvlc).
-* iFlicky - Composer of Psync, Tea Time and some sound effects.
-* KadeDev - Fixed some issues on Chart Editor and Other PRs.
-* superpowers04 - LUA JIT Fork.
-* CheemsAndFriends - Creator of FlxAnimate.
-* Ezhalt - Pessy's Easter Egg Jingle.
-* MaliciousBunny - Video for the Final Update.
+* DanDaniel - Pixel Artist/Animator, Composer and Charter.
+* SirMania - Composer.
+* Juanetes - Charter.
+* R?Bluezin - Playtester.
 
 ***
 
 # Features
 
-## Attractive animated dialogue boxes:
+## New Sonk Options:
 
-![Animated Dialogue Boxes](docs/img/dialogue.gif)
+![Animated Dialogue Boxes](docs/img/SonkOptions.png)
 
-## New Main Menu
-* A brand new menu that makes your experience even better!
-![Main Menu](docs/img/MainMenu.png)
+## New Data Select
+* A Data Select that's 95% faithful to Sonic the Hedgehog 3, which brings back even more nostalgia for those who played it on the Sega Genesis (or Mega Drive, as we call it in Brazil).
+![Data Select](docs/img/DataSelect.png)
 
 ## Mod Support
 * Probably one of the main points of this engine, you can code in .lua files outside of the source code, making your own weeks without even messing with the source!
@@ -59,27 +49,15 @@ There you can learn how to use the 212 PlayState funcions in your mod!
 ![Mod Support](docs/img/ModsMenu.png)
 
 
-## Atleast one change to every week:
-### Week 1:
-  * New Dad Left sing sprite
-  * Unused stage lights are now used
-  * Dad Battle has a spotlight effect for the breakdown
-### Week 2:
-  * Both BF and Skid & Pump does "Hey!" animations
-  * Thunders does a quick light flash and zooms the camera in slightly
-  * Added a quick transition/cutscene to Monster
-### Week 3:
-  * BF does "Hey!" during Philly Nice
-  * Blammed has a cool new colors flash during that sick part of the song
-### Week 4:
-  * Better hair physics for Mom/Boyfriend (Maybe even slightly better than Week 7's :eyes:)
-  * Henchmen die during all songs. Yeah :(
-### Week 5:
-  * Bottom Boppers and GF does "Hey!" animations during Cocoa and Eggnog
-  * On Winter Horrorland, GF bops her head slower in some parts of the song.
-### Week 6:
-  * On Thorns, the HUD is hidden during the cutscene
-  * Also there's the Background girls being spooky during the "Hey!" parts of the Instrumental
+## We made a change to the first song, and another secret song will be added/unlocked:
+### Too Slow:
+  * New BF and Sonic.exe sprites 
+  * New Stage Background and events
+  * Sonic 3 (before), Sonic CD (new), Sonic the Hedgehog 2 (new addition) and Sonic the Hedgehog 1 (new too) Title Cards
+### ???:
+  * M???n Sprites
+  * New chart and events
+  * I dunno 
 
 ## Cool new Chart Editor changes and countless bug fixes
 ![Chart Editor](docs/img/chart.png)
@@ -110,11 +88,6 @@ There you can learn how to use the 212 PlayState funcions in your mod!
 * The engine comes with 16 example achievements that you can mess with and learn how it works (Check Achievements.hx and search for "checkForAchievement" on PlayState.hx)
 ![Achievements](docs/img/Achievements.png)
 
-## Options menu:
-* You can change Note colors, Delay and Combo Offset, Controls and Preferences there.
- * On Preferences you can toggle Downscroll, Middlescroll, Anti-Aliasing, Framerate, Low Quality, Note Splashes, Flashing Lights, etc.
-![Options](docs/img/Options.png)
-
 ## Other gameplay features:
 * When the enemy hits a note, their strum note also glows.
 * Lag doesn't impact the camera movement and player icon scaling anymore.
@@ -124,4 +97,4 @@ There you can learn how to use the 212 PlayState funcions in your mod!
 * You can enable "Combo Stacking" in Gameplay Options. This causes the combo sprites to just be one sprite with an animation rather than sprites spawning each note hit.
 
 
-#### Psych Engine by ShadowMario, Friday Night Funkin' by ninjamuffin99
+#### Sonic the Hedgehog 3 FNF Port by LavatheFox, Psych Engine' by shadowmario, Friday Night Funkn' by ninjamuffin99

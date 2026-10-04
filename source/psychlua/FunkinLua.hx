@@ -37,6 +37,7 @@ import psychlua.HScript;
 #end
 import psychlua.DebugLuaText;
 import psychlua.ModchartSprite;
+import psychlua.CollisionFunctions;
 
 import flixel.input.keyboard.FlxKey;
 import flixel.input.gamepad.FlxGamepadInputID;
@@ -75,6 +76,8 @@ class FunkinLua {
 		if(myFolder[0] + '/' == Paths.mods() && (Mods.currentModDirectory == myFolder[1] || Mods.getGlobalMods().contains(myFolder[1]))) //is inside mods folder
 			this.modFolder = myFolder[1];
 		#end
+
+		CollisionFunctions.implement(this);
 
 		// Lua shit
 		set('Function_StopLua', LuaUtils.Function_StopLua);
@@ -128,13 +131,13 @@ class FunkinLua {
 			set('curStep', game.curStep);
 			set('curDecBeat', game.curDecBeat);
 			set('curDecStep', game.curDecStep);
-	
+
 			set('score', game.songScore);
 			set('misses', game.songMisses);
 			set('hits', game.songHits);
 			set('combo', game.combo);
 			set('deaths', PlayState.deathCounter);
-	
+
 			set('rating', game.ratingPercent);
 			set('ratingName', game.ratingName);
 			set('ratingFC', game.ratingFC);
@@ -148,25 +151,25 @@ class FunkinLua {
 
 			set('healthGainMult', game.healthGain);
 			set('healthLossMult', game.healthLoss);
-	
+
 			#if FLX_PITCH
 			set('playbackRate', game.playbackRate);
 			#else
 			set('playbackRate', 1);
 			#end
-	
+
 			set('guitarHeroSustains', game.guitarHeroSustains);
 			set('instakillOnMiss', game.instakillOnMiss);
 			set('botPlay', game.cpuControlled);
 			set('practice', game.practiceMode);
-	
+
 			for (i in 0...4) {
 				set('defaultPlayerStrumX' + i, 0);
 				set('defaultPlayerStrumY' + i, 0);
 				set('defaultOpponentStrumX' + i, 0);
 				set('defaultOpponentStrumY' + i, 0);
 			}
-	
+
 			// Default character data
 			set('defaultBoyfriendX', game.BF_X);
 			set('defaultBoyfriendY', game.BF_Y);
@@ -514,7 +517,7 @@ class FunkinLua {
 							ease: myOptions.ease,
 							startDelay: myOptions.startDelay,
 							loopDelay: myOptions.loopDelay,
-	
+
 							onUpdate: function(twn:FlxTween) {
 								if(myOptions.onUpdate != null) game.callOnLuas(myOptions.onUpdate, [originalTag, vars]);
 							},
@@ -579,7 +582,7 @@ class FunkinLua {
 			if(penisExam != null) {
 				var curColor:FlxColor = penisExam.color;
 				curColor.alphaFloat = penisExam.alpha;
-				
+
 				if(tag != null)
 				{
 					var originalTag:String = tag;
@@ -655,7 +658,7 @@ class FunkinLua {
 		Lua_helper.add_callback(lua, "runTimer", function(tag:String, time:Float = 1, loops:Int = 1) {
 			LuaUtils.cancelTimer(tag);
 			var variables = MusicBeatState.getVariables();
-			
+
 			var originalTag:String = tag;
 			tag = LuaUtils.formatVariable('timer_$tag');
 			variables.set(tag, new FlxTimer().start(time, function(tmr:FlxTimer)
@@ -1103,7 +1106,7 @@ class FunkinLua {
 			var obj:FlxSprite = LuaUtils.getObjectDirectly(tag);
 			if(obj == null || obj.destroy == null)
 				return;
-			
+
 			var groupObj:Dynamic = null;
 			if(group == null) groupObj = LuaUtils.getTargetInstance();
 			else groupObj = LuaUtils.getObjectDirectly(group);
@@ -1500,7 +1503,7 @@ class FunkinLua {
 				snd.pitch = value;
 				if (doPause && wasResumed) snd.play();
 			}
-			
+
 			if(tag == null || tag.length < 1)
 			{
 				if(FlxG.sound.music != null)

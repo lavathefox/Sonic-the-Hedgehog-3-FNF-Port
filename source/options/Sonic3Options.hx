@@ -9,6 +9,7 @@ import flixel.util.FlxTimer;
 import backend.ClientPrefs;
 import backend.MusicBeatState;
 import backend.Paths;
+import backend.MobileControls;
 
 import states.Sonic3TitleStateV2;
 
@@ -55,6 +56,11 @@ class Sonic3Options extends MusicBeatState
 		createCursor();
 		updateCategoryCursor();
 
+		MobileControls.create();
+		MobileControls.addToState(this);
+		MobileControls.setEnabled(true);
+		MobileControls.setVisible(true);
+
 		FlxG.sound.playMusic(Paths.music('DataSelect'), 1, true);
 	}
 
@@ -62,25 +68,32 @@ class Sonic3Options extends MusicBeatState
 	{
 		super.update(elapsed);
 
+		MobileControls.update();
+
 		if (!canSelect || subStateOpen)
 			return;
 
 		if (isMoving)
 			return;
 
-		if (FlxG.keys.justPressed.UP || FlxG.keys.justPressed.W)
+		if (FlxG.keys.justPressed.UP || FlxG.keys.justPressed.W || MobileControls.upJustPressed)
 		{
 			changeCategory(-1);
 		}
-		else if (FlxG.keys.justPressed.DOWN || FlxG.keys.justPressed.S)
+		else if (FlxG.keys.justPressed.DOWN || FlxG.keys.justPressed.S || MobileControls.downJustPressed)
 		{
 			changeCategory(1);
 		}
-		else if (FlxG.keys.justPressed.ENTER || FlxG.keys.justPressed.SPACE || FlxG.keys.justPressed.Z)
+		else if (FlxG.keys.justPressed.ENTER ||
+			FlxG.keys.justPressed.SPACE ||
+			FlxG.keys.justPressed.Z ||
+			MobileControls.aJustPressed)
 		{
 			selectCategory();
 		}
-		else if (FlxG.keys.justPressed.ESCAPE || FlxG.keys.justPressed.BACKSPACE)
+		else if (FlxG.keys.justPressed.ESCAPE ||
+			FlxG.keys.justPressed.BACKSPACE ||
+			MobileControls.bJustPressed)
 		{
 			exitToTitle();
 		}
@@ -477,6 +490,9 @@ class Sonic3Options extends MusicBeatState
 			optionsSelect.alpha = 1;
 		}
 
+		MobileControls.setEnabled(true);
+		MobileControls.setVisible(true);
+
 		updateCategoryCursor();
 	}
 
@@ -509,6 +525,8 @@ class Sonic3Options extends MusicBeatState
 
 		new FlxTimer().start(0.2, function(timer:FlxTimer)
 		{
+			MobileControls.setVisible(false);
+			MobileControls.setEnabled(false);
 			MusicBeatState.switchState(new Sonic3TitleStateV2());
 		});
 	}
@@ -516,6 +534,11 @@ class Sonic3Options extends MusicBeatState
 	override public function destroy():Void
 	{
 		FlxTween.cancelTweensOf(selectedArrow);
+
+		MobileControls.removeFromState(this);
+		MobileControls.setVisible(false);
+		MobileControls.setEnabled(false);
+
 		super.destroy();
 	}
 }

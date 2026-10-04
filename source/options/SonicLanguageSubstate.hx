@@ -4,6 +4,7 @@ import openfl.utils.Assets;
 
 import backend.ClientPrefs;
 import backend.Language;
+import backend.MobileControls;
 import backend.MusicBeatSubstate;
 import backend.Paths;
 
@@ -13,6 +14,10 @@ import flixel.FlxSprite;
 import flixel.math.FlxMath;
 import flixel.tweens.FlxEase;
 import flixel.tweens.FlxTween;
+
+#if MODS_ALLOWED
+import sys.FileSystem;
+#end
 
 class SonicLanguageSubstate extends MusicBeatSubstate
 {
@@ -53,6 +58,11 @@ class SonicLanguageSubstate extends MusicBeatSubstate
 		createLanguages();
 		createCursor();
 		updateSelection(false);
+
+		MobileControls.create();
+		MobileControls.addToState(this);
+		MobileControls.setVisible(true);
+		MobileControls.setEnabled(true);
 	}
 
 	function createOptionsCamera():Void
@@ -366,6 +376,8 @@ class SonicLanguageSubstate extends MusicBeatSubstate
 
 	override function update(elapsed:Float):Void
 	{
+		MobileControls.update();
+
 		super.update(elapsed);
 
 		if (languages.length <= 0)
@@ -373,23 +385,25 @@ class SonicLanguageSubstate extends MusicBeatSubstate
 
 		var mult:Int = FlxG.keys.pressed.SHIFT ? 4 : 1;
 
-		if (controls.UI_UP_P)
+		if (controls.UI_UP_P || MobileControls.upJustPressed)
 			changeSelected(-1 * mult);
 
-		if (controls.UI_DOWN_P)
+		if (controls.UI_DOWN_P || MobileControls.downJustPressed)
 			changeSelected(1 * mult);
 
 		if (FlxG.mouse.wheel != 0)
 			changeSelected(-FlxG.mouse.wheel * mult);
 
-		if (controls.ACCEPT)
+		if (controls.ACCEPT || MobileControls.aJustPressed)
 		{
 			confirmLanguage();
 			return;
 		}
 
-		if (controls.BACK)
+		if (controls.BACK || MobileControls.bJustPressed)
 		{
+			MobileControls.setVisible(false);
+
 			if (changedLanguage)
 			{
 				FlxTransitionableState.skipNextTransIn = true;
@@ -409,6 +423,8 @@ class SonicLanguageSubstate extends MusicBeatSubstate
 	override function destroy():Void
 	{
 		FlxTween.cancelTweensOf(selectedArrow);
+
+		MobileControls.setVisible(false);
 
 		for (sprites in languageSprites)
 		{

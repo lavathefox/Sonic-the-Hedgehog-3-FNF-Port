@@ -7,6 +7,8 @@ import flixel.tweens.FlxEase;
 import flixel.tweens.FlxTween;
 
 import backend.ClientPrefs;
+import backend.MobileControls;
+import backend.Mods;
 import backend.MusicBeatSubstate;
 import backend.Paths;
 
@@ -47,36 +49,41 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 		createOptions();
 		createCursor();
 		updateSelection(false);
+
+		MobileControls.setVisible(true);
+		MobileControls.setEnabled(true);
 	}
 
 	override public function update(elapsed:Float):Void
 	{
+		MobileControls.update();
+
 		super.update(elapsed);
 
 		if (options.length <= 0)
 			return;
 
-		if (controls.UI_UP_P)
+		if (controls.UI_UP_P || MobileControls.upJustPressed)
 		{
 			changeOption(-1);
 			return;
 		}
-		else if (controls.UI_DOWN_P)
+		else if (controls.UI_DOWN_P || MobileControls.downJustPressed)
 		{
 			changeOption(1);
 			return;
 		}
-		else if (controls.UI_LEFT_P)
+		else if (controls.UI_LEFT_P || MobileControls.leftJustPressed)
 		{
 			changeValue(-1);
 			return;
 		}
-		else if (controls.UI_RIGHT_P)
+		else if (controls.UI_RIGHT_P || MobileControls.rightJustPressed)
 		{
 			changeValue(1);
 			return;
 		}
-		else if (controls.ACCEPT)
+		else if (controls.ACCEPT || MobileControls.aJustPressed)
 		{
 			FlxG.sound.play(Paths.sound('confirmMenu'));
 
@@ -85,9 +92,10 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 
 			return;
 		}
-		else if (controls.BACK)
+		else if (controls.BACK || MobileControls.bJustPressed)
 		{
 			FlxG.sound.play(Paths.sound('cancelMenu'));
+			MobileControls.setVisible(false);
 			close();
 		}
 	}
@@ -531,6 +539,8 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 	override function destroy():Void
 	{
 		FlxTween.cancelTweensOf(selectedArrow);
+
+		MobileControls.setVisible(false);
 
 		for (sprites in optionSprites)
 			destroySprites(sprites);

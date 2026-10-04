@@ -10,6 +10,7 @@ import flixel.math.FlxMath;
 import backend.MusicBeatSubstate;
 import backend.Paths;
 import backend.ClientPrefs;
+import backend.MobileControls;
 
 import objects.Character;
 
@@ -65,6 +66,9 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 		updateFramerateValue();
 
 		updateSelection(false);
+
+		MobileControls.create();
+		MobileControls.addToState(this);
 	}
 
 	function getCurrentLanguage():String
@@ -142,10 +146,7 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 	{
 		boyfriend = new Character(540, 170, 'bf', true);
 
-		boyfriend.setGraphicSize(
-			Std.int(boyfriend.width * 0.75)
-		);
-
+		boyfriend.setGraphicSize(Std.int(boyfriend.width * 0.75));
 		boyfriend.updateHitbox();
 		boyfriend.dance();
 
@@ -155,12 +156,8 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 				boyfriend.dance();
 		};
 
-		boyfriend.visible =
-			curSelected == antialiasingOption;
-
-		boyfriend.antialiasing =
-			ClientPrefs.data.antialiasing;
-
+		boyfriend.visible = curSelected == antialiasingOption;
+		boyfriend.antialiasing = ClientPrefs.data.antialiasing;
 		boyfriend.scrollFactor.set();
 
 		add(boyfriend);
@@ -184,17 +181,9 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 	{
 		var temp:FlxSprite = new FlxSprite();
 
-		temp.loadGraphic(
-			Paths.image(getLetterPath(character))
-		);
-
+		temp.loadGraphic(Paths.image(getLetterPath(character)));
 		temp.antialiasing = false;
-
-		temp.scale.set(
-			letterScale,
-			letterScale
-		);
-
+		temp.scale.set(letterScale, letterScale);
 		temp.updateHitbox();
 
 		return temp.width;
@@ -223,18 +212,14 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 	{
 		text = text.toUpperCase();
 
-		var totalWidth:Float =
-			getOptionWidth(text);
-
-		var offsetX:Float =
-			-totalWidth / 2;
+		var totalWidth:Float = getOptionWidth(text);
+		var offsetX:Float = -totalWidth / 2;
 
 		optionSprites[index] = [];
 
 		for (i in 0...text.length)
 		{
-			var character:String =
-				text.charAt(i);
+			var character:String = text.charAt(i);
 
 			if (character == ' ')
 			{
@@ -242,25 +227,11 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 				continue;
 			}
 
-			var letter:FlxSprite =
-				new FlxSprite(
-					optionX + offsetX,
-					optionY + (index * optionSpacing)
-				);
+			var letter:FlxSprite = new FlxSprite(optionX + offsetX, optionY + (index * optionSpacing));
 
-			letter.loadGraphic(
-				Paths.image(
-					getLetterPath(character)
-				)
-			);
-
+			letter.loadGraphic(Paths.image(getLetterPath(character)));
 			letter.antialiasing = false;
-
-			letter.scale.set(
-				letterScale,
-				letterScale
-			);
-
+			letter.scale.set(letterScale, letterScale);
 			letter.updateHitbox();
 			letter.scrollFactor.set();
 
@@ -280,55 +251,23 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 			if (i < 4)
 				createCheckBox(i);
 
-			createOption(
-				options[i],
-				i
-			);
+			createOption(options[i], i);
 		}
 	}
 
 	function createCheckBox(index:Int):Void
 	{
-		var checkbox:FlxSprite =
-			new FlxSprite(
-				checkboxX,
-				checkBoxY +
-					((index - 1.3) *
-						optionSpacing)
-			);
+		var checkbox:FlxSprite = new FlxSprite(checkboxX, checkBoxY + ((index - 1.3) * optionSpacing));
 
-		checkbox.frames =
-			Paths.getSparrowAtlas(
-				'dataselect/options/sonicCheckBox'
-			);
+		checkbox.frames = Paths.getSparrowAtlas('dataselect/options/sonicCheckBox');
 
-		checkbox.animation.addByPrefix(
-			'clickOff',
-			'clickOff',
-			24,
-			false
-		);
+		checkbox.animation.addByPrefix('clickOff', 'clickOff', 24, false);
+		checkbox.animation.addByPrefix('clickOn', 'clickOn', 24, false);
 
-		checkbox.animation.addByPrefix(
-			'clickOn',
-			'clickOn',
-			24,
-			false
-		);
-
-		checkbox.animation.play(
-			getOptionValue(index)
-				? 'clickOn'
-				: 'clickOff'
-		);
+		checkbox.animation.play(getOptionValue(index) ? 'clickOn' : 'clickOff');
 
 		checkbox.antialiasing = false;
-
-		checkbox.scale.set(
-			3,
-			3
-		);
-
+		checkbox.scale.set(3, 3);
 		checkbox.updateHitbox();
 		checkbox.scrollFactor.set();
 
@@ -340,25 +279,12 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 
 	function createCursor():Void
 	{
-		selectedArrow =
-			new FlxSprite(
-				cursorX,
-				optionY
-			);
+		selectedArrow = new FlxSprite(cursorX, optionY);
 
-		selectedArrow.loadGraphic(
-			Paths.image(
-				'pauseMenuEXE/selectedArrow'
-			)
-		);
+		selectedArrow.loadGraphic(Paths.image('pauseMenuEXE/selectedArrow'));
 
 		selectedArrow.antialiasing = false;
-
-		selectedArrow.scale.set(
-			3,
-			3
-		);
-
+		selectedArrow.scale.set(3, 3);
 		selectedArrow.updateHitbox();
 		selectedArrow.scrollFactor.set();
 
@@ -388,81 +314,46 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 
 	function changeSelection(change:Int = 0):Void
 	{
-		if (
-			isMoving ||
-			!canSelect ||
-			closing
-		)
+		if (isMoving || !canSelect || closing)
 			return;
 
-		curSelected =
-			FlxMath.wrap(
-				curSelected + change,
-				0,
-				options.length - 1
-			);
+		curSelected = FlxMath.wrap(curSelected + change, 0, options.length - 1);
 
-		FlxG.sound.play(
-			Paths.sound(
-				'dataselectswitch'
-			)
-		);
+		FlxG.sound.play(Paths.sound('dataselectswitch'));
 
 		updateSelection(true);
 	}
 
 	function updateSelection(playTween:Bool = true):Void
 	{
-		if (
-			selectedArrow == null ||
-			closing
-		)
+		if (selectedArrow == null || closing)
 			return;
 
-		var targetY:Float =
-			optionY +
-			(curSelected * optionSpacing);
+		var targetY:Float = optionY + (curSelected * optionSpacing);
 
 		if (playTween)
 		{
 			isMoving = true;
 
-			FlxTween.cancelTweensOf(
-				selectedArrow
-			);
+			FlxTween.cancelTweensOf(selectedArrow);
 
-			FlxTween.tween(
-				selectedArrow,
+			FlxTween.tween(selectedArrow, {x: cursorX, y: targetY}, cursorTweenTime, {
+				ease: FlxEase.quadOut,
+				onComplete: function(tween:FlxTween)
 				{
-					x: cursorX,
-					y: targetY
-				},
-				cursorTweenTime,
-				{
-					ease: FlxEase.quadOut,
-					onComplete: function(tween:FlxTween)
-					{
-						if (!closing)
-							isMoving = false;
-					}
+					if (!closing)
+						isMoving = false;
 				}
-			);
+			});
 		}
 		else
 		{
-			selectedArrow.x =
-				cursorX;
-
-			selectedArrow.y =
-				targetY;
+			selectedArrow.x = cursorX;
+			selectedArrow.y = targetY;
 		}
 
 		if (boyfriend != null)
-		{
-			boyfriend.visible =
-				curSelected ==
-				antialiasingOption;
-		}
+			boyfriend.visible = curSelected == antialiasingOption;
 
 		updateCheckBoxes();
 	}
@@ -474,17 +365,12 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 
 		for (i in 0...checkboxes.length)
 		{
-			var checkbox:FlxSprite =
-				checkboxes[i];
+			var checkbox:FlxSprite = checkboxes[i];
 
 			if (checkbox == null)
 				continue;
 
-			checkbox.animation.play(
-				getOptionValue(i)
-					? 'clickOn'
-					: 'clickOff'
-			);
+			checkbox.animation.play(getOptionValue(i) ? 'clickOn' : 'clickOff');
 		}
 	}
 
@@ -497,19 +383,9 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 	{
 		var temp:FlxSprite = new FlxSprite();
 
-		temp.loadGraphic(
-			Paths.image(
-				getNumberPath(character)
-			)
-		);
-
+		temp.loadGraphic(Paths.image(getNumberPath(character)));
 		temp.antialiasing = false;
-
-		temp.scale.set(
-			letterScale,
-			letterScale
-		);
-
+		temp.scale.set(letterScale, letterScale);
 		temp.updateHitbox();
 
 		return temp.width;
@@ -520,98 +396,51 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 		if (closing)
 			return;
 
-		var text:String =
-			Std.string(
-				ClientPrefs.data.framerate
-			);
-
+		var text:String = Std.string(ClientPrefs.data.framerate);
 		var totalWidth:Float = 0;
 
 		for (i in 0...text.length)
-		{
-			totalWidth +=
-				getNumberWidth(
-					text.charAt(i)
-				);
-		}
+			totalWidth += getNumberWidth(text.charAt(i));
 
-		var offsetX:Float =
-			-totalWidth / 2;
+		var offsetX:Float = -totalWidth / 2;
 
-		while (
-			framerateValueSprites.length <
-			text.length
-		)
+		while (framerateValueSprites.length < text.length)
 		{
-			var newLetter:FlxSprite =
-				new FlxSprite();
+			var newLetter:FlxSprite = new FlxSprite();
 
 			newLetter.antialiasing = false;
-
-			newLetter.scale.set(
-				letterScale,
-				letterScale
-			);
-
+			newLetter.scale.set(letterScale, letterScale);
 			newLetter.scrollFactor.set();
 
 			add(newLetter);
 			setOptionsCamera(newLetter);
 
-			framerateValueSprites.push(
-				newLetter
-			);
+			framerateValueSprites.push(newLetter);
 		}
 
-		while (
-			framerateValueSprites.length >
-			text.length
-		)
+		while (framerateValueSprites.length > text.length)
 		{
-			var oldLetter:FlxSprite =
-				framerateValueSprites.pop();
+			var oldLetter:FlxSprite = framerateValueSprites.pop();
 
 			if (oldLetter != null)
 			{
-				remove(
-					oldLetter,
-					true
-				);
-
+				remove(oldLetter, true);
 				oldLetter.destroy();
 			}
 		}
 
 		for (i in 0...text.length)
 		{
-			var character:String =
-				text.charAt(i);
+			var character:String = text.charAt(i);
+			var letter:FlxSprite = framerateValueSprites[i];
 
-			var letter:FlxSprite =
-				framerateValueSprites[i];
-
-			letter.loadGraphic(
-				Paths.image(
-					getNumberPath(character)
-				)
-			);
-
+			letter.loadGraphic(Paths.image(getNumberPath(character)));
 			letter.antialiasing = false;
-
-			letter.scale.set(
-				letterScale,
-				letterScale
-			);
-
+			letter.scale.set(letterScale, letterScale);
 			letter.updateHitbox();
 
-			letter.x =
-				framerateValueX +
-				offsetX;
-
-			letter.y =
-				optionY +
-				(4 * optionSpacing);
+			letter.x = framerateValueX + offsetX;
+			letter.y = optionY + (4 * optionSpacing);
 
 			offsetX += letter.width;
 		}
@@ -622,167 +451,99 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 		if (closing)
 			return;
 
-		var newFramerate:Int =
-			ClientPrefs.data.framerate +
-			change;
+		var newFramerate:Int = ClientPrefs.data.framerate + change;
 
-		newFramerate =
-			Std.int(
-				FlxMath.bound(
-					newFramerate,
-					60,
-					240
-				)
-			);
+		newFramerate = Std.int(FlxMath.bound(newFramerate, 60, 240));
 
-		if (
-			newFramerate ==
-			ClientPrefs.data.framerate
-		)
-		{
+		if (newFramerate == ClientPrefs.data.framerate)
 			return;
-		}
 
-		ClientPrefs.data.framerate =
-			newFramerate;
+		ClientPrefs.data.framerate = newFramerate;
 
-		FlxG.updateFramerate =
-			newFramerate;
-
-		FlxG.drawFramerate =
-			newFramerate;
+		FlxG.updateFramerate = newFramerate;
+		FlxG.drawFramerate = newFramerate;
 
 		updateFramerateValue();
 
 		ClientPrefs.saveSettings();
 
-		FlxG.sound.play(
-			Paths.sound(
-				'confirmMenu'
-			)
-		);
+		FlxG.sound.play(Paths.sound('confirmMenu'));
 	}
 
 	function toggleCurrentOption():Void
 	{
-		if (
-			closing ||
-			curSelected == 4
-		)
-		{
+		if (closing || curSelected == 4)
 			return;
-		}
 
 		switch (curSelected)
 		{
 			case 0:
-				ClientPrefs.data.lowQuality =
-					!ClientPrefs.data.lowQuality;
+				ClientPrefs.data.lowQuality = !ClientPrefs.data.lowQuality;
 
 			case 1:
-				ClientPrefs.data.antialiasing =
-					!ClientPrefs.data.antialiasing;
-
+				ClientPrefs.data.antialiasing = !ClientPrefs.data.antialiasing;
 				onChangeAntiAliasing();
 
 			case 2:
-				ClientPrefs.data.shaders =
-					!ClientPrefs.data.shaders;
+				ClientPrefs.data.shaders = !ClientPrefs.data.shaders;
 
 			case 3:
-				ClientPrefs.data.cacheOnGPU =
-					!ClientPrefs.data.cacheOnGPU;
+				ClientPrefs.data.cacheOnGPU = !ClientPrefs.data.cacheOnGPU;
 		}
 
 		updateCheckBoxes();
 
 		ClientPrefs.saveSettings();
 
-		FlxG.sound.play(
-			Paths.sound(
-				'confirmMenu'
-			)
-		);
+		FlxG.sound.play(Paths.sound('confirmMenu'));
 	}
 
 	function onChangeAntiAliasing():Void
 	{
 		for (member in members)
 		{
-			var sprite:FlxSprite =
-				cast member;
+			var sprite:FlxSprite = cast member;
 
 			if (sprite != null)
-			{
-				sprite.antialiasing =
-					ClientPrefs.data.antialiasing;
-			}
+				sprite.antialiasing = ClientPrefs.data.antialiasing;
 		}
 
 		if (boyfriend != null)
-		{
-			boyfriend.antialiasing =
-				ClientPrefs.data.antialiasing;
-		}
+			boyfriend.antialiasing = ClientPrefs.data.antialiasing;
 	}
 
-	override function update(
-		elapsed:Float
-	):Void
+	override function update(elapsed:Float):Void
 	{
 		super.update(elapsed);
 
-		if (
-			!canSelect ||
-			isMoving ||
-			closing
-		)
-		{
-			return;
-		}
+		MobileControls.update();
 
-		if (
-			FlxG.keys.justPressed.UP ||
-			FlxG.keys.justPressed.W
-		)
+		if (!canSelect || isMoving || closing)
+			return;
+
+		if (FlxG.keys.justPressed.UP || FlxG.keys.justPressed.W || MobileControls.upJustPressed)
 		{
 			changeSelection(-1);
 		}
-		else if (
-			FlxG.keys.justPressed.DOWN ||
-			FlxG.keys.justPressed.S
-		)
+		else if (FlxG.keys.justPressed.DOWN || FlxG.keys.justPressed.S || MobileControls.downJustPressed)
 		{
 			changeSelection(1);
 		}
-		else if (
-			FlxG.keys.justPressed.LEFT ||
-			FlxG.keys.justPressed.A
-		)
+		else if (FlxG.keys.justPressed.LEFT || FlxG.keys.justPressed.A || MobileControls.leftJustPressed)
 		{
 			if (curSelected == 4)
 				changeFramerate(-10);
 		}
-		else if (
-			FlxG.keys.justPressed.RIGHT ||
-			FlxG.keys.justPressed.D
-		)
+		else if (FlxG.keys.justPressed.RIGHT || FlxG.keys.justPressed.D || MobileControls.rightJustPressed)
 		{
 			if (curSelected == 4)
 				changeFramerate(10);
 		}
-		else if (
-			FlxG.keys.justPressed.ENTER ||
-			FlxG.keys.justPressed.SPACE ||
-			FlxG.keys.justPressed.Z
-		)
+		else if (FlxG.keys.justPressed.ENTER || FlxG.keys.justPressed.SPACE || FlxG.keys.justPressed.Z || MobileControls.aJustPressed)
 		{
 			toggleCurrentOption();
 		}
-		else if (
-			FlxG.keys.justPressed.ESCAPE ||
-			FlxG.keys.justPressed.BACKSPACE
-		)
+		else if (FlxG.keys.justPressed.ESCAPE || FlxG.keys.justPressed.BACKSPACE || MobileControls.bJustPressed)
 		{
 			closeGraphics();
 		}
@@ -790,68 +551,36 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 
 	function restoreParentOptions():Void
 	{
-		var parent:Dynamic =
-			FlxG.state;
+		var parent:Dynamic = FlxG.state;
 
 		if (parent == null)
 			return;
 
-		if (
-			Reflect.hasField(
-				parent,
-				'canSelect'
-			)
-		)
-		{
-			Reflect.setField(
-				parent,
-				'canSelect',
-				true
-			);
-		}
+		if (Reflect.hasField(parent, 'canSelect'))
+			Reflect.setField(parent, 'canSelect', true);
 
-		if (
-			Reflect.hasField(
-				parent,
-				'isMoving'
-			)
-		)
-		{
-			Reflect.setField(
-				parent,
-				'isMoving',
-				false
-			);
-		}
+		if (Reflect.hasField(parent, 'isMoving'))
+			Reflect.setField(parent, 'isMoving', false);
 	}
 
 	function closeGraphics():Void
 	{
-		if (
-			!canSelect ||
-			closing
-		)
-		{
+		if (!canSelect || closing)
 			return;
-		}
 
 		closing = true;
 		canSelect = false;
 		isMoving = false;
 
-		FlxTween.cancelTweensOf(
-			selectedArrow
-		);
+		FlxTween.cancelTweensOf(selectedArrow);
 
 		ClientPrefs.saveSettings();
 
-		FlxG.sound.play(
-			Paths.sound(
-				'cancelMenu'
-			)
-		);
+		FlxG.sound.play(Paths.sound('cancelMenu'));
 
 		restoreParentOptions();
+
+		MobileControls.setVisible(false);
 
 		close();
 	}
@@ -863,36 +592,27 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 		isMoving = false;
 
 		if (selectedArrow != null)
-		{
-			FlxTween.cancelTweensOf(
-				selectedArrow
-			);
-		}
+			FlxTween.cancelTweensOf(selectedArrow);
 
 		for (letter in framerateValueSprites)
 		{
 			if (letter != null)
 			{
-				remove(
-					letter,
-					true
-				);
-
+				remove(letter, true);
 				letter.destroy();
 			}
 		}
 
 		framerateValueSprites = [];
 
+		MobileControls.removeFromState(this);
+		MobileControls.setVisible(false);
+
 		ClientPrefs.saveSettings();
 
 		if (optionsCamera != null)
 		{
-			FlxG.cameras.remove(
-				optionsCamera,
-				true
-			);
-
+			FlxG.cameras.remove(optionsCamera, true);
 			optionsCamera = null;
 		}
 

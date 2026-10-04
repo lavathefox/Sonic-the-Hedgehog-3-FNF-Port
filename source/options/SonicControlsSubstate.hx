@@ -4,6 +4,7 @@ import backend.ClientPrefs;
 import backend.InputFormatter;
 import backend.MusicBeatSubstate;
 import backend.Paths;
+import backend.MobileControls;
 
 import flixel.FlxCamera;
 import flixel.FlxG;
@@ -117,6 +118,9 @@ class SonicControlsSubstate extends MusicBeatSubstate
 		createTexts();
 		createCursor();
 		updateSelection(false);
+
+		MobileControls.setVisible(true);
+		MobileControls.setEnabled(true);
 	}
 
 	function createOptionsCamera():Void
@@ -149,6 +153,7 @@ class SonicControlsSubstate extends MusicBeatSubstate
 	function getLetterWidth(char:String):Float
 	{
 		var letter:FlxSprite = new FlxSprite();
+
 		letter.loadGraphic(Paths.image(getLetterPath(char)));
 		letter.antialiasing = false;
 		letter.scale.set(letterScale, letterScale);
@@ -160,6 +165,7 @@ class SonicControlsSubstate extends MusicBeatSubstate
 	function getTextWidth(text:String):Float
 	{
 		var total:Float = 0;
+
 		text = text.toUpperCase();
 
 		for (i in 0...text.length)
@@ -178,6 +184,7 @@ class SonicControlsSubstate extends MusicBeatSubstate
 	function createText(text:String, x:Float, y:Float, scale:Float):Array<FlxSprite>
 	{
 		var sprites:Array<FlxSprite> = [];
+
 		text = text.toUpperCase();
 
 		var oldScale:Float = letterScale;
@@ -197,6 +204,7 @@ class SonicControlsSubstate extends MusicBeatSubstate
 			}
 
 			var letter:FlxSprite = new FlxSprite(x + offsetX, y);
+
 			letter.loadGraphic(Paths.image(getLetterPath(char)));
 			letter.antialiasing = false;
 			letter.scale.set(scale, scale);
@@ -206,6 +214,7 @@ class SonicControlsSubstate extends MusicBeatSubstate
 			add(letter);
 
 			sprites.push(letter);
+
 			offsetX += letter.width;
 		}
 
@@ -225,10 +234,16 @@ class SonicControlsSubstate extends MusicBeatSubstate
 
 	function destroyText(sprites:Array<FlxSprite>):Void
 	{
+		if (sprites == null)
+			return;
+
 		for (sprite in sprites)
 		{
 			if (sprite != null)
+			{
+				remove(sprite, true);
 				sprite.destroy();
+			}
 		}
 	}
 
@@ -279,7 +294,12 @@ class SonicControlsSubstate extends MusicBeatSubstate
 			if (isDefaultKey)
 				text = 'RESET';
 
-			var optionText:Array<FlxSprite> = createText(text, optionX, optionY + myID * optionSpacing, letterScale);
+			var optionText:Array<FlxSprite> = createText(
+				text,
+				optionX,
+				optionY + myID * optionSpacing,
+				letterScale
+			);
 
 			optionSprites.push(optionText);
 			optionSpriteIDs.push(myID);
@@ -306,8 +326,19 @@ class SonicControlsSubstate extends MusicBeatSubstate
 		var firstKey:String = getBindName(saveKey, 0);
 		var secondKey:String = getBindName(saveKey, 1);
 
-		var first:Array<FlxSprite> = createText(firstKey, bindX1, optionY + id * optionSpacing, letterScale);
-		var second:Array<FlxSprite> = createText(secondKey, bindX2, optionY + id * optionSpacing, letterScale);
+		var first:Array<FlxSprite> = createText(
+			firstKey,
+			bindX1,
+			optionY + id * optionSpacing,
+			letterScale
+		);
+
+		var second:Array<FlxSprite> = createText(
+			secondKey,
+			bindX2,
+			optionY + id * optionSpacing,
+			letterScale
+		);
 
 		bindSprites.push(first);
 		bindSprites.push(second);
@@ -427,7 +458,9 @@ class SonicControlsSubstate extends MusicBeatSubstate
 			return;
 		}
 
-		var tweenData:Dynamic = {value: currentTextOffsetY};
+		var tweenData:Dynamic = {
+			value: currentTextOffsetY
+		};
 
 		textOffsetTween = tweenData;
 
@@ -475,6 +508,7 @@ class SonicControlsSubstate extends MusicBeatSubstate
 	function createCursor():Void
 	{
 		selectedArrow = new FlxSprite(cursorX, optionY);
+
 		selectedArrow.loadGraphic(Paths.image('pauseMenuEXE/selectedArrow'));
 		selectedArrow.antialiasing = false;
 		selectedArrow.scale.set(arrowScale, arrowScale);
@@ -532,9 +566,14 @@ class SonicControlsSubstate extends MusicBeatSubstate
 		if (isMoving || !canSelect || curOptions.length <= 0)
 			return;
 
-		curSelected = FlxMath.wrap(curSelected + change, 0, curOptions.length - 1);
+		curSelected = FlxMath.wrap(
+			curSelected + change,
+			0,
+			curOptions.length - 1
+		);
 
 		FlxG.sound.play(Paths.sound('dataselectswitch'));
+
 		updateSelection(true);
 	}
 
@@ -625,17 +664,45 @@ class SonicControlsSubstate extends MusicBeatSubstate
 			ease: FlxEase.linear
 		});
 
-		bindingTitle = createText('REBINDING', FlxG.width / 2, 170, 3);
+		bindingTitle = createText(
+			'REBINDING',
+			FlxG.width / 2,
+			170,
+			3
+		);
 
-		var nameSprites:Array<FlxSprite> = createText(name, FlxG.width / 2, 215, 2);
+		var nameSprites:Array<FlxSprite> = createText(
+			name,
+			FlxG.width / 2,
+			215,
+			2
+		);
+
 		bindingTitle = bindingTitle.concat(nameSprites);
 
-		bindingInfo = createText('PRESS A KEY', FlxG.width / 2, 270, 2);
+		bindingInfo = createText(
+			'PRESS A KEY',
+			FlxG.width / 2,
+			270,
+			2
+		);
 
-		var secondInfo:Array<FlxSprite> = createText('HOLD ESC CANCEL', FlxG.width / 2, 320, 2);
+		var secondInfo:Array<FlxSprite> = createText(
+			'HOLD ESC CANCEL',
+			FlxG.width / 2,
+			320,
+			2
+		);
+
 		bindingInfo = bindingInfo.concat(secondInfo);
 
-		var thirdInfo:Array<FlxSprite> = createText('HOLD BACKSPACE DELETE', FlxG.width / 2, 370, 2);
+		var thirdInfo:Array<FlxSprite> = createText(
+			'HOLD BACKSPACE DELETE',
+			FlxG.width / 2,
+			370,
+			2
+		);
+
 		bindingInfo = bindingInfo.concat(thirdInfo);
 	}
 
@@ -643,6 +710,7 @@ class SonicControlsSubstate extends MusicBeatSubstate
 	{
 		if (bindingBackground != null)
 		{
+			remove(bindingBackground, true);
 			bindingBackground.destroy();
 			bindingBackground = null;
 		}
@@ -811,7 +879,9 @@ class SonicControlsSubstate extends MusicBeatSubstate
 
 			var newKey:FlxKey = cast keyPressed;
 
-			if (newKey == FlxKey.NONE || newKey == FlxKey.ESCAPE || newKey == FlxKey.BACKSPACE)
+			if (newKey == FlxKey.NONE ||
+				newKey == FlxKey.ESCAPE ||
+				newKey == FlxKey.BACKSPACE)
 				return;
 
 			setKeyboardBind(newKey);
@@ -820,7 +890,9 @@ class SonicControlsSubstate extends MusicBeatSubstate
 		{
 			var keyPressed:FlxGamepadInputID = getPressedGamepadButton();
 
-			if (keyPressed == FlxGamepadInputID.NONE || keyPressed == FlxGamepadInputID.BACK || keyPressed == FlxGamepadInputID.B)
+			if (keyPressed == FlxGamepadInputID.NONE ||
+				keyPressed == FlxGamepadInputID.BACK ||
+				keyPressed == FlxGamepadInputID.B)
 				return;
 
 			setGamepadBind(keyPressed);
@@ -847,7 +919,9 @@ class SonicControlsSubstate extends MusicBeatSubstate
 
 	function updateBinding(elapsed:Float):Void
 	{
-		if (FlxG.keys.pressed.ESCAPE || FlxG.gamepads.anyPressed(FlxGamepadInputID.B))
+		if (FlxG.keys.pressed.ESCAPE ||
+			FlxG.gamepads.anyPressed(FlxGamepadInputID.B) ||
+			MobileControls.bPressed)
 		{
 			holdingEsc += elapsed;
 
@@ -862,7 +936,8 @@ class SonicControlsSubstate extends MusicBeatSubstate
 
 		holdingEsc = 0;
 
-		if (FlxG.keys.pressed.BACKSPACE || FlxG.gamepads.anyPressed(FlxGamepadInputID.BACK))
+		if (FlxG.keys.pressed.BACKSPACE ||
+			FlxG.gamepads.anyPressed(FlxGamepadInputID.BACK))
 		{
 			holdingBackspace += elapsed;
 
@@ -879,6 +954,8 @@ class SonicControlsSubstate extends MusicBeatSubstate
 
 	override function update(elapsed:Float):Void
 	{
+		MobileControls.update();
+
 		if (timeForMoving > 0)
 		{
 			timeForMoving = Math.max(0, timeForMoving - elapsed);
@@ -899,29 +976,49 @@ class SonicControlsSubstate extends MusicBeatSubstate
 			return;
 		}
 
-		if (FlxG.keys.justPressed.ESCAPE || FlxG.gamepads.anyJustPressed(FlxGamepadInputID.B))
+		if (FlxG.keys.justPressed.ESCAPE ||
+			FlxG.gamepads.anyJustPressed(FlxGamepadInputID.B) ||
+			MobileControls.bJustPressed)
 		{
 			closeControls();
 			return;
 		}
 
-		if (FlxG.keys.justPressed.CONTROL || FlxG.gamepads.anyJustPressed(FlxGamepadInputID.LEFT_SHOULDER) || FlxG.gamepads.anyJustPressed(FlxGamepadInputID.RIGHT_SHOULDER))
+		if (FlxG.keys.justPressed.CONTROL ||
+			FlxG.gamepads.anyJustPressed(FlxGamepadInputID.LEFT_SHOULDER) ||
+			FlxG.gamepads.anyJustPressed(FlxGamepadInputID.RIGHT_SHOULDER))
 		{
 			swapMode();
 		}
-		else if (FlxG.keys.justPressed.LEFT || FlxG.keys.justPressed.RIGHT || FlxG.gamepads.anyJustPressed(FlxGamepadInputID.DPAD_LEFT) || FlxG.gamepads.anyJustPressed(FlxGamepadInputID.DPAD_RIGHT))
+		else if (FlxG.keys.justPressed.LEFT ||
+			FlxG.keys.justPressed.RIGHT ||
+			FlxG.gamepads.anyJustPressed(FlxGamepadInputID.DPAD_LEFT) ||
+			FlxG.gamepads.anyJustPressed(FlxGamepadInputID.DPAD_RIGHT) ||
+			MobileControls.leftJustPressed ||
+			MobileControls.rightJustPressed)
 		{
 			updateAlt(true);
 		}
-		else if (FlxG.keys.justPressed.UP || FlxG.keys.justPressed.W || FlxG.gamepads.anyJustPressed(FlxGamepadInputID.DPAD_UP))
+		else if (FlxG.keys.justPressed.UP ||
+			FlxG.keys.justPressed.W ||
+			FlxG.gamepads.anyJustPressed(FlxGamepadInputID.DPAD_UP) ||
+			MobileControls.upJustPressed)
 		{
 			changeSelection(-1);
 		}
-		else if (FlxG.keys.justPressed.DOWN || FlxG.keys.justPressed.S || FlxG.gamepads.anyJustPressed(FlxGamepadInputID.DPAD_DOWN))
+		else if (FlxG.keys.justPressed.DOWN ||
+			FlxG.keys.justPressed.S ||
+			FlxG.gamepads.anyJustPressed(FlxGamepadInputID.DPAD_DOWN) ||
+			MobileControls.downJustPressed)
 		{
 			changeSelection(1);
 		}
-		else if (FlxG.keys.justPressed.ENTER || FlxG.keys.justPressed.SPACE || FlxG.keys.justPressed.Z || FlxG.gamepads.anyJustPressed(FlxGamepadInputID.A) || FlxG.gamepads.anyJustPressed(FlxGamepadInputID.START))
+		else if (FlxG.keys.justPressed.ENTER ||
+			FlxG.keys.justPressed.SPACE ||
+			FlxG.keys.justPressed.Z ||
+			FlxG.gamepads.anyJustPressed(FlxGamepadInputID.A) ||
+			FlxG.gamepads.anyJustPressed(FlxGamepadInputID.START) ||
+			MobileControls.aJustPressed)
 		{
 			beginBinding();
 		}
@@ -936,6 +1033,9 @@ class SonicControlsSubstate extends MusicBeatSubstate
 
 		canSelect = false;
 		isMoving = false;
+
+		MobileControls.setVisible(false);
+		MobileControls.setEnabled(false);
 
 		ClientPrefs.saveSettings();
 
@@ -953,6 +1053,9 @@ class SonicControlsSubstate extends MusicBeatSubstate
 			FlxTween.cancelTweensOf(textOffsetTween);
 			textOffsetTween = null;
 		}
+
+		MobileControls.setVisible(false);
+		MobileControls.setEnabled(false);
 
 		if (optionsCamera != null)
 		{

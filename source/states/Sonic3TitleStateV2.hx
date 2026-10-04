@@ -9,6 +9,7 @@ import flixel.util.FlxColor;
 
 import backend.MusicBeatState;
 import backend.Paths;
+import backend.MobileControls;
 
 import options.Sonic3Options;
 
@@ -82,6 +83,12 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		FlxG.camera.pixelPerfectRender = true;
 
 		FlxG.sound.play(Paths.sound('segaOpening'));
+
+		#if android
+		MobileControls.create();
+		MobileControls.setEnabled(false);
+		MobileControls.setVisible(false);
+		#end
 
 		FlxTween.tween(
 			blueFade,
@@ -752,6 +759,12 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 		selectedIcon.y = PLAYER_Y;
 
+		#if android
+		MobileControls.addToState(this);
+		MobileControls.setEnabled(true);
+		MobileControls.setVisible(true);
+		#end
+
 		new FlxTimer().start(0.05, function(timer:FlxTimer)
 		{
 			playFinger();
@@ -830,6 +843,10 @@ class Sonic3TitleStateV2 extends MusicBeatState
 			selectedStart = true;
 			canPressStart = false;
 
+			#if android
+			MobileControls.setEnabled(false);
+			#end
+
 			FlxG.sound.play(
 				Paths.sound('confirmMenu')
 			);
@@ -863,6 +880,10 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		{
 			canPressStart = false;
 
+			#if android
+			MobileControls.setEnabled(false);
+			#end
+
 			FlxG.sound.play(
 				Paths.sound('confirmMenu')
 			);
@@ -875,6 +896,10 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 	function goDataSelect():Void
 	{
+		#if android
+		MobileControls.removeFromState(this);
+		#end
+
 		MusicBeatState.switchState(
 			new DataSelectState()
 		);
@@ -884,27 +909,82 @@ class Sonic3TitleStateV2 extends MusicBeatState
 	{
 		super.update(elapsed);
 
+		#if android
+		MobileControls.update();
+		#end
+
 		if (!segaFinished)
 			return;
 
 		if (!canPressStart || selectedStart)
 			return;
 
+		var moveUp:Bool = false;
+		var moveDown:Bool = false;
+		var confirm:Bool = false;
+		var back:Bool = false;
+
 		if (FlxG.keys.justPressed.UP || FlxG.keys.justPressed.W)
-		{
-			changeMenuSelection(-1);
-		}
-		else if (FlxG.keys.justPressed.DOWN || FlxG.keys.justPressed.S)
-		{
-			changeMenuSelection(1);
-		}
-		else if (
+			moveUp = true;
+
+		if (FlxG.keys.justPressed.DOWN || FlxG.keys.justPressed.S)
+			moveDown = true;
+
+		if (
 			FlxG.keys.justPressed.ENTER
 			|| FlxG.keys.justPressed.SPACE
 			|| FlxG.keys.justPressed.Z
 		)
 		{
-			selectMenu();
+			confirm = true;
 		}
+
+		if (
+			FlxG.keys.justPressed.ESCAPE
+			|| FlxG.keys.justPressed.X
+		)
+		{
+			back = true;
+		}
+
+		#if android
+		if (MobileControls.upJustPressed)
+			moveUp = true;
+
+		if (MobileControls.downJustPressed)
+			moveDown = true;
+
+		if (MobileControls.aJustPressed)
+			confirm = true;
+
+		if (MobileControls.bJustPressed)
+			back = true;
+		#end
+
+		if (moveUp)
+			changeMenuSelection(-1);
+		else if (moveDown)
+			changeMenuSelection(1);
+
+		if (confirm)
+			selectMenu();
+
+		if (back)
+		{
+			#if android
+			MobileControls.setEnabled(false);
+			MobileControls.removeFromState(this);
+			#end
+		}
+	}
+
+	override public function destroy():Void
+	{
+		#if android
+		MobileControls.removeFromState(this);
+		MobileControls.setEnabled(false);
+		#end
+
+		super.destroy();
 	}
 }

@@ -88,6 +88,7 @@ jobs:
         shell: bash
         run: |
           sdkmanager "platforms;android-31" "build-tools;31.0.0" "ndk;21.4.7075529"
+          echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/21.4.7075529" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/21.4.7075529" >> "$GITHUB_ENV"
@@ -118,11 +119,17 @@ jobs:
 
       - name: Configure Lime for Android
         shell: bash
-        run: haxelib run lime setup android
+        run: |
+          export ANDROID_SDK="$ANDROID_SDK_ROOT"
+          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
+          haxelib run lime setup android
 
       - name: Build Android APK
         shell: bash
-        run: haxelib run lime build android -release
+        run: |
+          export ANDROID_SDK="$ANDROID_SDK_ROOT"
+          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
+          haxelib run lime build android -release
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4

@@ -631,9 +631,11 @@ class Sonic3TitleState extends MusicBeatState
 
 	function goDataSelect():Void
 	{
+		#if DISCORD_ALLOWED
 		DiscordClient.changePresence(
 			'Selecting a Save File',
 		);
+		#end
 
 		MusicBeatState.switchState(
 			new DataSelectState()

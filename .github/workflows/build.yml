@@ -142,14 +142,22 @@ jobs:
           echo "Android architectures configured:"
           grep '<architecture name=' Project.xml || true
 
-      - name: Configure Lime for Android
+      - name: Configure Android build
         shell: bash
         run: |
           export ANDROID_SDK="$ANDROID_SDK_ROOT"
           export ANDROID_HOME="$ANDROID_SDK_ROOT"
           export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
           export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
+
           haxelib run lime setup android
+
+          # Discord Rich Presence is desktop-only.
+          # On Android, hxdiscord_rpc can leave a reference to
+          # BaseConnection::Open() inside libApplicationMain.so,
+          # causing dlopen to fail when the APK starts.
+          cp Project.xml Project.xml.android-backup
+          sed -i '/<define name="DISCORD_ALLOWED" \/>/d' Project.xml
 
       - name: Build Android APK
         shell: bash
@@ -159,8 +167,40 @@ jobs:
           export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
           export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
 
+          if grep -q '<define name="DISCORD_ALLOWED" />' Project.xml; then
+            echo "ERROR: DISCORD_ALLOWED is still enabled for Android."
+            exit 1
+          fi
+
           haxelib run lime clean android
           haxelib run lime build android -release
+
+      - name: Verify Android native libraries
+        shell: bash
+        run: |
+          set -e
+
+          APK="$(find export -type f -name '*.apk' | head -n 1)"
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: No APK was generated."
+            exit 1
+          fi
+
+          echo "APK: $APK"
+          echo "Native libraries inside APK:"
+          unzip -l "$APK" | grep 'lib/.*/libApplicationMain.so' || true
+
+          APP_LIB="$(find export -type f -path '*/arm64-v8a/libApplicationMain.so' | head -n 1)"
+
+          if [ -n "$APP_LIB" ] && command -v llvm-nm >/dev/null 2>&1; then
+            echo "Checking ARM64 native library: $APP_LIB"
+            if llvm-nm -D "$APP_LIB" 2>/dev/null | grep -q 'BaseConnection.*Open'; then
+              echo "ERROR: Discord BaseConnection::Open is still referenced by libApplicationMain.so"
+              exit 1
+            fi
+            echo "OK: Discord BaseConnection::Open is not referenced."
+          fi
 
       - name: Verify Android APK architectures
         shell: bash

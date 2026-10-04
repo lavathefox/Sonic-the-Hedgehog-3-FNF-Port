@@ -117,19 +117,74 @@ jobs:
           haxelib git funkin.vis https://github.com/FunkinCrew/funkVis 22b1ce089dd924f15cdc4632397ef3504d464e90
           haxelib git grig.audio https://gitlab.com/haxe-grig/grig.audio.git cbf91e2180fd2e374924fe74844086aab7891666
 
+      - name: Configure Android ABIs
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("Project.xml")
+          text = path.read_text(encoding="utf-8")
+
+          architectures = [
+              '  <architecture name="armeabi-v7a" if="android" />',
+              '  <architecture name="arm64-v8a" if="android" />',
+              '  <architecture name="x86_64" if="android" />',
+          ]
+
+          missing = [line for line in architectures if line not in text]
+          if missing:
+              marker = "</project>"
+              text = text.replace(marker, "\n" + "\n".join(missing) + "\n" + marker, 1)
+              path.write_text(text, encoding="utf-8")
+          PY
+
+          echo "Android architectures configured:"
+          grep '<architecture name=' Project.xml || true
+
       - name: Configure Lime for Android
         shell: bash
         run: |
           export ANDROID_SDK="$ANDROID_SDK_ROOT"
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
           export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
           haxelib run lime setup android
 
       - name: Build Android APK
         shell: bash
         run: |
           export ANDROID_SDK="$ANDROID_SDK_ROOT"
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
           export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
+          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
+
+          haxelib run lime clean android
           haxelib run lime build android -release
+
+      - name: Verify Android APK architectures
+        shell: bash
+        run: |
+          set -e
+
+          APK="$(find export -type f -name '*.apk' | head -n 1)"
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: No APK was generated."
+            exit 1
+          fi
+
+          echo "APK: $APK"
+          echo "Native libraries inside APK:"
+          unzip -l "$APK" | grep 'lib/.*/libApplicationMain.so' || true
+
+          for ABI in armeabi-v7a arm64-v8a x86_64; do
+            if unzip -l "$APK" | grep -q "lib/$ABI/libApplicationMain.so"; then
+              echo "OK: $ABI"
+            else
+              echo "WARNING: $ABI was not included in the APK."
+            fi
+          done
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4

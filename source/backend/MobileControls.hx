@@ -269,16 +269,18 @@ class MobileControls
 		if (arrows == null || !arrows.visible || mobileCamera == null)
 			return;
 
-		if (!touch.overlaps(arrows, mobileCamera))
-			return;
+		var pointX:Float = touch.x;
+		var pointY:Float = touch.y;
 
-		var point = touch.getScreenPosition(mobileCamera);
+		if (pointX < arrows.x || pointX > arrows.x + arrows.width ||
+			pointY < arrows.y || pointY > arrows.y + arrows.height)
+			return;
 
 		var centerX:Float = arrows.x + arrows.width / 2;
 		var centerY:Float = arrows.y + arrows.height / 2;
 
-		var relativeX:Float = point.x - centerX;
-		var relativeY:Float = point.y - centerY;
+		var relativeX:Float = pointX - centerX;
+		var relativeY:Float = pointY - centerY;
 
 		if (Math.abs(relativeX) > Math.abs(relativeY))
 		{
@@ -294,25 +296,26 @@ class MobileControls
 			else
 				touchDown = true;
 		}
-
-		point.put();
 	}
 
 	static function checkButtonTouch(touch:Dynamic):Void
 	{
-		if (mobileCamera == null)
+		if (buttonA == null && buttonB == null)
 			return;
 
-		if (buttonA != null &&
-			buttonA.visible &&
-			touch.overlaps(buttonA, mobileCamera))
+		var pointX:Float = touch.x;
+		var pointY:Float = touch.y;
+
+		if (buttonA != null && buttonA.visible &&
+			pointX >= buttonA.x && pointX <= buttonA.x + buttonA.width &&
+			pointY >= buttonA.y && pointY <= buttonA.y + buttonA.height)
 		{
 			touchA = true;
 		}
 
-		if (buttonB != null &&
-			buttonB.visible &&
-			touch.overlaps(buttonB, mobileCamera))
+		if (buttonB != null && buttonB.visible &&
+			pointX >= buttonB.x && pointX <= buttonB.x + buttonB.width &&
+			pointY >= buttonB.y && pointY <= buttonB.y + buttonB.height)
 		{
 			touchB = true;
 		}

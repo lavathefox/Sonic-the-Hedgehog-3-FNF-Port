@@ -108,7 +108,6 @@ jobs:
           haxelib install flixel-tools 1.5.1 --always
           haxelib install hscript-iris 1.1.3 --always
           haxelib install tjson 1.4.0 --always
-          haxelib install hxdiscord_rpc 1.2.4 --always
           haxelib install hxvlc 2.0.1 --skip-dependencies --always
           haxelib set lime 8.1.2
           haxelib set openfl 9.3.3
@@ -152,11 +151,25 @@ jobs:
           haxelib run lime setup android
 
           # Discord Rich Presence is desktop-only.
-          # On Android, hxdiscord_rpc can leave a reference to
-          # BaseConnection::Open() inside libApplicationMain.so,
-          # causing dlopen to fail when the APK starts.
-          cp Project.xml Project.xml.android-backup
-          sed -i '/<define name="DISCORD_ALLOWED" \/>/d' Project.xml
+          # Keep hxdiscord_rpc completely out of the Android dependency graph.
+          if grep -Eq '<define name="DISCORD_ALLOWED"[^>]*if="desktop"' Project.xml; then
+            echo "OK: DISCORD_ALLOWED is desktop-only."
+          else
+            echo "ERROR: DISCORD_ALLOWED is not restricted to desktop."
+            exit 1
+          fi
+
+          if grep -q '<haxelib name="hxdiscord_rpc"' Project.xml && ! grep -q '<haxelib name="hxdiscord_rpc"[^>]*if="DISCORD_ALLOWED"' Project.xml; then
+            echo "ERROR: hxdiscord_rpc is not conditionally disabled for Android."
+            exit 1
+          fi
+
+          if haxelib list | grep -q '^hxdiscord_rpc'; then
+            echo "ERROR: hxdiscord_rpc is installed in the Android build environment."
+            exit 1
+          fi
+
+          echo "OK: hxdiscord_rpc is not installed for Android."
 
       - name: Build Android APK
         shell: bash
@@ -166,8 +179,15 @@ jobs:
           export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
           export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
 
-          if grep -q '<define name="DISCORD_ALLOWED" />' Project.xml; then
-            echo "ERROR: DISCORD_ALLOWED is still enabled for Android."
+          if grep -Eq '<define name="DISCORD_ALLOWED"[^>]*if="desktop"' Project.xml; then
+            echo "OK: Android build uses desktop-only Discord support."
+          else
+            echo "ERROR: Discord support is not restricted to desktop."
+            exit 1
+          fi
+
+          if haxelib list | grep -q '^hxdiscord_rpc'; then
+            echo "ERROR: hxdiscord_rpc is installed during Android build."
             exit 1
           fi
 

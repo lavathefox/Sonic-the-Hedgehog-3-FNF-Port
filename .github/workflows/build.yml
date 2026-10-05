@@ -32,6 +32,7 @@ jobs:
       - name: Install Haxe dependencies
         shell: pwsh
         run: |
+          haxelib install hxcpp 4.3.2 --always
           haxelib install lime 8.1.2 --always
           haxelib install openfl 9.3.3 --always
           haxelib install flixel 5.6.1 --always
@@ -40,6 +41,7 @@ jobs:
           haxelib install hscript-iris 1.1.3 --always
           haxelib install tjson 1.4.0 --always
           haxelib install hxvlc 2.0.1 --skip-dependencies --always
+          haxelib set hxcpp 4.3.2
           haxelib set lime 8.1.2
           haxelib set openfl 9.3.3
           haxelib git flxanimate https://github.com/Dot-Stuff/flxanimate 768740a56b26aa0c072720e0d1236b94afe68e3e
@@ -101,6 +103,7 @@ jobs:
       - name: Install Haxe dependencies
         shell: bash
         run: |
+          haxelib install hxcpp 4.3.2 --always
           haxelib install lime 8.1.2 --always
           haxelib install openfl 9.3.3 --always
           haxelib install flixel 5.6.1 --always
@@ -109,6 +112,7 @@ jobs:
           haxelib install hscript-iris 1.1.3 --always
           haxelib install tjson 1.4.0 --always
           haxelib install hxvlc 2.0.1 --skip-dependencies --always
+          haxelib set hxcpp 4.3.2
           haxelib set lime 8.1.2
           haxelib set openfl 9.3.3
           haxelib git flxanimate https://github.com/Dot-Stuff/flxanimate 768740a56b26aa0c072720e0d1236b94afe68e3e
@@ -171,6 +175,13 @@ jobs:
 
           echo "OK: hxdiscord_rpc is not installed for Android."
 
+          echo "Checking hxcpp:"
+          haxelib path hxcpp
+          if ! haxelib path hxcpp >/dev/null 2>&1; then
+            echo "ERROR: hxcpp is not installed correctly."
+            exit 1
+          fi
+
       - name: Build Android APK
         shell: bash
         run: |
@@ -190,6 +201,14 @@ jobs:
             echo "ERROR: hxdiscord_rpc is installed during Android build."
             exit 1
           fi
+
+          if ! haxelib path hxcpp >/dev/null 2>&1; then
+            echo "ERROR: hxcpp is not installed correctly."
+            exit 1
+          fi
+
+          echo "OK: hxcpp is installed:"
+          haxelib path hxcpp
 
           haxelib run lime clean android
           haxelib run lime build android -release

@@ -230,11 +230,8 @@ class MobileControls
 			if (touch == null || !touch.pressed)
 				continue;
 
-			var touchX:Float = touch.screenX;
-			var touchY:Float = touch.screenY;
-
-			checkArrowTouch(touchX, touchY);
-			checkButtonTouch(touchX, touchY);
+			checkArrowTouch(touch);
+			checkButtonTouch(touch);
 		}
 
 		upPressed = touchUp;
@@ -267,49 +264,21 @@ class MobileControls
 
 	#if android
 
-	static function getTouchX(screenX:Float):Float
+	static function checkArrowTouch(touch:Dynamic):Void
 	{
-		if (FlxG.stage == null)
-			return screenX;
-
-		var scaleX:Float = FlxG.stage.stageWidth / FlxG.width;
-
-		if (scaleX <= 0)
-			scaleX = 1;
-
-		return screenX / scaleX;
-	}
-
-	static function getTouchY(screenY:Float):Float
-	{
-		if (FlxG.stage == null)
-			return screenY;
-
-		var scaleY:Float = FlxG.stage.stageHeight / FlxG.height;
-
-		if (scaleY <= 0)
-			scaleY = 1;
-
-		return screenY / scaleY;
-	}
-
-	static function checkArrowTouch(x:Float, y:Float):Void
-	{
-		if (arrows == null || !arrows.visible)
+		if (arrows == null || !arrows.visible || mobileCamera == null)
 			return;
 
-		var touchX:Float = getTouchX(x);
-		var touchY:Float = getTouchY(y);
+		if (!touch.overlaps(arrows, mobileCamera))
+			return;
+
+		var point = touch.getScreenPosition(mobileCamera);
 
 		var centerX:Float = arrows.x + arrows.width / 2;
 		var centerY:Float = arrows.y + arrows.height / 2;
 
-		var relativeX:Float = touchX - centerX;
-		var relativeY:Float = touchY - centerY;
-
-		if (Math.abs(relativeX) > arrows.width / 2 ||
-			Math.abs(relativeY) > arrows.height / 2)
-			return;
+		var relativeX:Float = point.x - centerX;
+		var relativeY:Float = point.y - centerY;
 
 		if (Math.abs(relativeX) > Math.abs(relativeY))
 		{
@@ -325,32 +294,28 @@ class MobileControls
 			else
 				touchDown = true;
 		}
+
+		point.put();
 	}
 
-	static function checkButtonTouch(x:Float, y:Float):Void
+	static function checkButtonTouch(touch:Dynamic):Void
 	{
-		var touchX:Float = getTouchX(x);
-		var touchY:Float = getTouchY(y);
+		if (mobileCamera == null)
+			return;
 
-		if (buttonA != null && buttonA.visible)
+		if (buttonA != null &&
+			buttonA.visible &&
+			touch.overlaps(buttonA, mobileCamera))
 		{
-			if (isInsideButton(buttonA, touchX, touchY))
-				touchA = true;
+			touchA = true;
 		}
 
-		if (buttonB != null && buttonB.visible)
+		if (buttonB != null &&
+			buttonB.visible &&
+			touch.overlaps(buttonB, mobileCamera))
 		{
-			if (isInsideButton(buttonB, touchX, touchY))
-				touchB = true;
+			touchB = true;
 		}
-	}
-
-	static function isInsideButton(button:FlxSprite, x:Float, y:Float):Bool
-	{
-		return x >= button.x &&
-			x <= button.x + button.width &&
-			y >= button.y &&
-			y <= button.y + button.height;
 	}
 
 	static function updateAnimation():Void

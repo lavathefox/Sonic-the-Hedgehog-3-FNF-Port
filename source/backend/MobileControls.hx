@@ -3,7 +3,6 @@ package backend;
 import flixel.FlxG;
 import flixel.FlxCamera;
 import flixel.FlxSprite;
-import flixel.math.FlxPoint;
 
 class MobileControls
 {
@@ -41,10 +40,10 @@ class MobileControls
 	static var arrowX:Float = 80;
 	static var arrowY:Float = 500;
 
-	static var buttonAX:Float = 1030;
+	static var buttonAX:Float = 830;
 	static var buttonAY:Float = 500;
 
-	static var buttonBX:Float = 900;
+	static var buttonBX:Float = 700;
 	static var buttonBY:Float = 560;
 
 	static var arrowScale:Float = 3;
@@ -57,7 +56,6 @@ class MobileControls
 	static var touchDown:Bool = false;
 	static var touchLeft:Bool = false;
 	static var touchRight:Bool = false;
-
 	static var touchA:Bool = false;
 	static var touchB:Bool = false;
 
@@ -69,8 +67,6 @@ class MobileControls
 	static var previousA:Bool = false;
 	static var previousB:Bool = false;
 
-	static var touchPoint:FlxPoint;
-
 	public static function create():Void
 	{
 		#if android
@@ -81,17 +77,18 @@ class MobileControls
 
 		clearPressed();
 
-		touchPoint = FlxPoint.get();
-
 		createCamera();
 		createArrows();
 		createButtons();
 
 		setVisible(visible);
+		#else
+		initialized = false;
 		#end
 	}
 
 	#if android
+
 	static function createCamera():Void
 	{
 		mobileCamera = new FlxCamera();
@@ -107,50 +104,20 @@ class MobileControls
 	{
 		arrows = new FlxSprite(arrowX, arrowY);
 
-		arrows.frames = Paths.getSparrowAtlas(
-			'mobileControls/controlsArrows'
-		);
+		arrows.frames = Paths.getSparrowAtlas('mobileControls/controlsArrows');
 
-		arrows.animation.addByPrefix(
-			'idle',
-			'idle',
-			24,
-			false
-		);
-
-		arrows.animation.addByPrefix(
-			'leftClick',
-			'leftClick',
-			24,
-			false
-		);
-
-		arrows.animation.addByPrefix(
-			'downClick',
-			'downClick',
-			24,
-			false
-		);
-
-		arrows.animation.addByPrefix(
-			'rightClick',
-			'rightClick',
-			24,
-			false
-		);
-
-		arrows.animation.addByPrefix(
-			'upClick',
-			'upClick',
-			24,
-			false
-		);
+		arrows.animation.addByPrefix('idle', 'idle', 24, false);
+		arrows.animation.addByPrefix('leftClick', 'leftClick', 24, false);
+		arrows.animation.addByPrefix('downClick', 'downClick', 24, false);
+		arrows.animation.addByPrefix('rightClick', 'rightClick', 24, false);
+		arrows.animation.addByPrefix('upClick', 'upClick', 24, false);
 
 		arrows.animation.play('idle');
 
 		arrows.antialiasing = false;
 		arrows.scale.set(arrowScale, arrowScale);
 		arrows.updateHitbox();
+
 		arrows.scrollFactor.set();
 		arrows.cameras = [mobileCamera];
 	}
@@ -159,28 +126,27 @@ class MobileControls
 	{
 		buttonA = new FlxSprite(buttonAX, buttonAY);
 
-		buttonA.loadGraphic(
-			Paths.image('mobileControls/buttomA')
-		);
+		buttonA.loadGraphic(Paths.image('mobileControls/buttomA'));
 
 		buttonA.antialiasing = false;
 		buttonA.scale.set(buttonScale, buttonScale);
 		buttonA.updateHitbox();
+
 		buttonA.scrollFactor.set();
 		buttonA.cameras = [mobileCamera];
 
 		buttonB = new FlxSprite(buttonBX, buttonBY);
 
-		buttonB.loadGraphic(
-			Paths.image('mobileControls/buttomB')
-		);
+		buttonB.loadGraphic(Paths.image('mobileControls/buttomB'));
 
 		buttonB.antialiasing = false;
 		buttonB.scale.set(buttonScale, buttonScale);
 		buttonB.updateHitbox();
+
 		buttonB.scrollFactor.set();
 		buttonB.cameras = [mobileCamera];
 	}
+
 	#end
 
 	public static function addToState(state:Dynamic):Void
@@ -239,9 +205,6 @@ class MobileControls
 	public static function update():Void
 	{
 		#if android
-		if (!initialized)
-			return;
-
 		resetJustPressed();
 
 		if (!enabled)
@@ -251,6 +214,9 @@ class MobileControls
 			return;
 		}
 
+		if (!initialized)
+			return;
+
 		touchUp = false;
 		touchDown = false;
 		touchLeft = false;
@@ -259,52 +225,16 @@ class MobileControls
 		touchA = false;
 		touchB = false;
 
-		var anyAJustPressed:Bool = false;
-		var anyBJustPressed:Bool = false;
-
 		for (touch in FlxG.touches.list)
 		{
-			if (touch == null)
+			if (touch == null || !touch.pressed)
 				continue;
 
-			if (!touch.pressed)
-				continue;
+			var touchX:Float = touch.screenX;
+			var touchY:Float = touch.screenY;
 
-			var point:FlxPoint = touch.getViewPosition(
-				mobileCamera,
-				touchPoint
-			);
-
-			checkArrowTouch(
-				point.x,
-				point.y
-			);
-
-			checkButtonTouch(
-				point.x,
-				point.y
-			);
-
-			if (touch.justPressed)
-			{
-				if (isInsideButton(
-					buttonA,
-					point.x,
-					point.y
-				))
-				{
-					anyAJustPressed = true;
-				}
-
-				if (isInsideButton(
-					buttonB,
-					point.x,
-					point.y
-				))
-				{
-					anyBJustPressed = true;
-				}
-			}
+			checkArrowTouch(touchX, touchY);
+			checkButtonTouch(touchX, touchY);
 		}
 
 		upPressed = touchUp;
@@ -320,13 +250,8 @@ class MobileControls
 		leftJustPressed = leftPressed && !previousLeft;
 		rightJustPressed = rightPressed && !previousRight;
 
-		aJustPressed =
-			(aPressed && !previousA)
-			|| anyAJustPressed;
-
-		bJustPressed =
-			(bPressed && !previousB)
-			|| anyBJustPressed;
+		aJustPressed = aPressed && !previousA;
+		bJustPressed = bPressed && !previousB;
 
 		previousUp = upPressed;
 		previousDown = downPressed;
@@ -341,31 +266,50 @@ class MobileControls
 	}
 
 	#if android
+
+	static function getTouchX(screenX:Float):Float
+	{
+		if (FlxG.stage == null)
+			return screenX;
+
+		var scaleX:Float = FlxG.stage.stageWidth / FlxG.width;
+
+		if (scaleX <= 0)
+			scaleX = 1;
+
+		return screenX / scaleX;
+	}
+
+	static function getTouchY(screenY:Float):Float
+	{
+		if (FlxG.stage == null)
+			return screenY;
+
+		var scaleY:Float = FlxG.stage.stageHeight / FlxG.height;
+
+		if (scaleY <= 0)
+			scaleY = 1;
+
+		return screenY / scaleY;
+	}
+
 	static function checkArrowTouch(x:Float, y:Float):Void
 	{
 		if (arrows == null || !arrows.visible)
 			return;
 
-		if (!isInsideSprite(
-			arrows,
-			x,
-			y
-		))
-		{
+		var touchX:Float = getTouchX(x);
+		var touchY:Float = getTouchY(y);
+
+		var centerX:Float = arrows.x + arrows.width / 2;
+		var centerY:Float = arrows.y + arrows.height / 2;
+
+		var relativeX:Float = touchX - centerX;
+		var relativeY:Float = touchY - centerY;
+
+		if (Math.abs(relativeX) > arrows.width / 2 ||
+			Math.abs(relativeY) > arrows.height / 2)
 			return;
-		}
-
-		var centerX:Float =
-			arrows.x + arrows.width / 2;
-
-		var centerY:Float =
-			arrows.y + arrows.height / 2;
-
-		var relativeX:Float =
-			x - centerX;
-
-		var relativeY:Float =
-			y - centerY;
 
 		if (Math.abs(relativeX) > Math.abs(relativeY))
 		{
@@ -385,53 +329,28 @@ class MobileControls
 
 	static function checkButtonTouch(x:Float, y:Float):Void
 	{
-		if (buttonA != null &&
-			buttonA.visible &&
-			isInsideButton(buttonA, x, y))
+		var touchX:Float = getTouchX(x);
+		var touchY:Float = getTouchY(y);
+
+		if (buttonA != null && buttonA.visible)
 		{
-			touchA = true;
+			if (isInsideButton(buttonA, touchX, touchY))
+				touchA = true;
 		}
 
-		if (buttonB != null &&
-			buttonB.visible &&
-			isInsideButton(buttonB, x, y))
+		if (buttonB != null && buttonB.visible)
 		{
-			touchB = true;
+			if (isInsideButton(buttonB, touchX, touchY))
+				touchB = true;
 		}
 	}
 
-	static function isInsideButton(
-		button:FlxSprite,
-		x:Float,
-		y:Float
-	):Bool
+	static function isInsideButton(button:FlxSprite, x:Float, y:Float):Bool
 	{
-		if (button == null || !button.visible)
-			return false;
-
-		return (
-			x >= button.x &&
+		return x >= button.x &&
 			x <= button.x + button.width &&
 			y >= button.y &&
-			y <= button.y + button.height
-		);
-	}
-
-	static function isInsideSprite(
-		sprite:FlxSprite,
-		x:Float,
-		y:Float
-	):Bool
-	{
-		if (sprite == null || !sprite.visible)
-			return false;
-
-		return (
-			x >= sprite.x &&
-			x <= sprite.x + sprite.width &&
-			y >= sprite.y &&
-			y <= sprite.y + sprite.height
-		);
+			y <= button.y + button.height;
 	}
 
 	static function updateAnimation():Void
@@ -440,41 +359,17 @@ class MobileControls
 			return;
 
 		if (upPressed)
-		{
-			arrows.animation.play(
-				'upClick',
-				true
-			);
-		}
+			arrows.animation.play('upClick', true);
 		else if (downPressed)
-		{
-			arrows.animation.play(
-				'downClick',
-				true
-			);
-		}
+			arrows.animation.play('downClick', true);
 		else if (leftPressed)
-		{
-			arrows.animation.play(
-				'leftClick',
-				true
-			);
-		}
+			arrows.animation.play('leftClick', true);
 		else if (rightPressed)
-		{
-			arrows.animation.play(
-				'rightClick',
-				true
-			);
-		}
+			arrows.animation.play('rightClick', true);
 		else
-		{
-			arrows.animation.play(
-				'idle',
-				true
-			);
-		}
+			arrows.animation.play('idle', true);
 	}
+
 	#end
 
 	static function resetJustPressed():Void
@@ -498,6 +393,14 @@ class MobileControls
 		aPressed = false;
 		bPressed = false;
 
+		upJustPressed = false;
+		downJustPressed = false;
+		leftJustPressed = false;
+		rightJustPressed = false;
+
+		aJustPressed = false;
+		bJustPressed = false;
+
 		previousUp = false;
 		previousDown = false;
 		previousLeft = false;
@@ -513,14 +416,6 @@ class MobileControls
 
 		touchA = false;
 		touchB = false;
-
-		upJustPressed = false;
-		downJustPressed = false;
-		leftJustPressed = false;
-		rightJustPressed = false;
-
-		aJustPressed = false;
-		bJustPressed = false;
 	}
 
 	public static function setVisible(value:Bool):Void
@@ -586,10 +481,7 @@ class MobileControls
 		#end
 	}
 
-	public static function setScale(
-		newArrowScale:Float,
-		newButtonScale:Float
-	):Void
+	public static function setScale(newArrowScale:Float, newButtonScale:Float):Void
 	{
 		arrowScale = newArrowScale;
 		buttonScale = newButtonScale;
@@ -597,31 +489,19 @@ class MobileControls
 		#if android
 		if (arrows != null)
 		{
-			arrows.scale.set(
-				arrowScale,
-				arrowScale
-			);
-
+			arrows.scale.set(arrowScale, arrowScale);
 			arrows.updateHitbox();
 		}
 
 		if (buttonA != null)
 		{
-			buttonA.scale.set(
-				buttonScale,
-				buttonScale
-			);
-
+			buttonA.scale.set(buttonScale, buttonScale);
 			buttonA.updateHitbox();
 		}
 
 		if (buttonB != null)
 		{
-			buttonB.scale.set(
-				buttonScale,
-				buttonScale
-			);
-
+			buttonB.scale.set(buttonScale, buttonScale);
 			buttonB.updateHitbox();
 		}
 		#end
@@ -653,19 +533,9 @@ class MobileControls
 			buttonB = null;
 		}
 
-		if (touchPoint != null)
-		{
-			touchPoint.put();
-			touchPoint = null;
-		}
-
 		if (mobileCamera != null)
 		{
-			FlxG.cameras.remove(
-				mobileCamera,
-				true
-			);
-
+			FlxG.cameras.remove(mobileCamera, true);
 			mobileCamera = null;
 		}
 		#end

@@ -1034,9 +1034,6 @@ class SonicControlsSubstate extends MusicBeatSubstate
 		canSelect = false;
 		isMoving = false;
 
-		MobileControls.setVisible(false);
-		MobileControls.setEnabled(false);
-
 		ClientPrefs.saveSettings();
 
 		FlxG.sound.play(Paths.sound('cancelMenu'));
@@ -1053,9 +1050,6 @@ class SonicControlsSubstate extends MusicBeatSubstate
 			FlxTween.cancelTweensOf(textOffsetTween);
 			textOffsetTween = null;
 		}
-
-		MobileControls.setVisible(false);
-		MobileControls.setEnabled(false);
 
 		if (optionsCamera != null)
 		{

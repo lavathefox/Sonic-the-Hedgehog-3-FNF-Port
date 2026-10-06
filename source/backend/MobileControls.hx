@@ -269,8 +269,8 @@ class MobileControls
 		if (arrows == null || !arrows.visible || mobileCamera == null)
 			return;
 
-		var pointX:Float = touch.x;
-		var pointY:Float = touch.y;
+		var pointX:Float = touch.screenX;
+		var pointY:Float = touch.screenY;
 
 		if (pointX < arrows.x || pointX > arrows.x + arrows.width ||
 			pointY < arrows.y || pointY > arrows.y + arrows.height)
@@ -303,8 +303,8 @@ class MobileControls
 		if (buttonA == null && buttonB == null)
 			return;
 
-		var pointX:Float = touch.x;
-		var pointY:Float = touch.y;
+		var pointX:Float = touch.screenX;
+		var pointY:Float = touch.screenY;
 
 		if (buttonA != null && buttonA.visible &&
 			pointX >= buttonA.x && pointX <= buttonA.x + buttonA.width &&

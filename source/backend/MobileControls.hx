@@ -412,20 +412,6 @@ class MobileControls
 		touchB = false;
 	}
 
-	public static function setAlpha(value:Float):Void
-	{
-		#if android
-		if (arrows != null)
-			arrows.alpha = value;
-
-		if (buttonA != null)
-			buttonA.alpha = value;
-
-		if (buttonB != null)
-			buttonB.alpha = value;
-		#end
-	}
-
 	public static function setVisible(value:Bool):Void
 	{
 		visible = value;

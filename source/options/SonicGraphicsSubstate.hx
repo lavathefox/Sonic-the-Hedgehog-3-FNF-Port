@@ -580,7 +580,6 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 
 		restoreParentOptions();
 
-		MobileControls.setVisible(false);
 
 		close();
 	}
@@ -606,7 +605,6 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 		framerateValueSprites = [];
 
 		MobileControls.removeFromState(this);
-		MobileControls.setVisible(false);
 
 		ClientPrefs.saveSettings();
 

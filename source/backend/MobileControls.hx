@@ -264,18 +264,12 @@ class MobileControls
 
 	#if android
 
-	static function getTouchPoint(touch:Dynamic):Array<Float>
+	static function getTouchPosition(touch:Dynamic):Dynamic
 	{
-		var screenX:Float = touch.screenX;
-		var screenY:Float = touch.screenY;
+		if (touch == null || mobileCamera == null)
+			return null;
 
-		if (isPointInside(screenX, screenY, arrows))
-			return [screenX, screenY];
-
-		var worldX:Float = touch.x;
-		var worldY:Float = touch.y;
-
-		return [worldX, worldY];
+		return touch.getScreenPosition(mobileCamera);
 	}
 
 	static function isPointInside(pointX:Float, pointY:Float, sprite:FlxSprite):Bool
@@ -294,18 +288,16 @@ class MobileControls
 		if (arrows == null || !arrows.visible || mobileCamera == null)
 			return;
 
-		var point:Array<Float> = getTouchPoint(touch);
-		var pointX:Float = point[0];
-		var pointY:Float = point[1];
+		var point:Dynamic = getTouchPosition(touch);
+
+		if (point == null)
+			return;
+
+		var pointX:Float = point.x;
+		var pointY:Float = point.y;
 
 		if (!isPointInside(pointX, pointY, arrows))
-		{
-			pointX = touch.x;
-			pointY = touch.y;
-
-			if (!isPointInside(pointX, pointY, arrows))
-				return;
-		}
+			return;
 
 		var centerX:Float = arrows.x + arrows.width / 2;
 		var centerY:Float = arrows.y + arrows.height / 2;
@@ -334,21 +326,22 @@ class MobileControls
 		if (mobileCamera == null)
 			return;
 
-		var screenX:Float = touch.screenX;
-		var screenY:Float = touch.screenY;
-		var worldX:Float = touch.x;
-		var worldY:Float = touch.y;
+		var point:Dynamic = getTouchPosition(touch);
+
+		if (point == null)
+			return;
+
+		var pointX:Float = point.x;
+		var pointY:Float = point.y;
 
 		if (buttonA != null && buttonA.visible &&
-			(isPointInside(screenX, screenY, buttonA) ||
-			isPointInside(worldX, worldY, buttonA)))
+			isPointInside(pointX, pointY, buttonA))
 		{
 			touchA = true;
 		}
 
 		if (buttonB != null && buttonB.visible &&
-			(isPointInside(screenX, screenY, buttonB) ||
-			isPointInside(worldX, worldY, buttonB)))
+			isPointInside(pointX, pointY, buttonB))
 		{
 			touchB = true;
 		}

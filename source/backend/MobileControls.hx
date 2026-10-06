@@ -3,6 +3,8 @@ package backend;
 import flixel.FlxG;
 import flixel.FlxCamera;
 import flixel.FlxSprite;
+import flixel.tweens.FlxEase;
+import flixel.tweens.FlxTween;
 
 class MobileControls
 {
@@ -425,6 +427,49 @@ class MobileControls
 
 		if (buttonB != null)
 			buttonB.visible = value;
+
+		if (value)
+			fadeIn();
+		#end
+	}
+
+	public static function fadeIn(duration:Float = 0.45):Void
+	{
+		#if android
+		if (arrows != null)
+		{
+			FlxTween.cancelTweensOf(arrows);
+			arrows.alpha = 0;
+			FlxTween.tween(arrows, {alpha: 1}, duration, {ease: FlxEase.quadOut});
+		}
+
+		if (buttonA != null)
+		{
+			FlxTween.cancelTweensOf(buttonA);
+			buttonA.alpha = 0;
+			FlxTween.tween(buttonA, {alpha: 1}, duration, {ease: FlxEase.quadOut});
+		}
+
+		if (buttonB != null)
+		{
+			FlxTween.cancelTweensOf(buttonB);
+			buttonB.alpha = 0;
+			FlxTween.tween(buttonB, {alpha: 1}, duration, {ease: FlxEase.quadOut});
+		}
+		#end
+	}
+
+	public static function setAlpha(value:Float):Void
+	{
+		#if android
+		if (arrows != null)
+			arrows.alpha = value;
+
+		if (buttonA != null)
+			buttonA.alpha = value;
+
+		if (buttonB != null)
+			buttonB.alpha = value;
 		#end
 	}
 

@@ -69,6 +69,9 @@ class MobileControls
 	static var previousA:Bool = false;
 	static var previousB:Bool = false;
 
+	static var fadeTimer:Float = 0;
+	static var fadeDuration:Float = 0.45;
+
 	public static function create():Void
 	{
 		#if android
@@ -261,11 +264,27 @@ class MobileControls
 		previousB = bPressed;
 
 		updateAnimation();
+
+		if (fadeTimer > 0)
+		{
+			fadeTimer -= FlxG.elapsed;
+
+			var progress:Float = 1 - Math.max(0, fadeTimer) / fadeDuration;
+			var alpha:Float = FlxEase.quadOut(progress);
+
+			if (arrows != null)
+				arrows.alpha = alpha;
+
+			if (buttonA != null)
+				buttonA.alpha = alpha;
+
+			if (buttonB != null)
+				buttonB.alpha = alpha;
+		}
 		#end
 	}
 
 	#if android
-
 	static function getTouchPosition(touch:Dynamic):Dynamic
 	{
 		if (touch == null || mobileCamera == null)
@@ -436,29 +455,19 @@ class MobileControls
 	public static function fadeIn(duration:Float = 0.45):Void
 	{
 		#if android
+		fadeDuration = Math.max(0.01, duration);
+		fadeTimer = fadeDuration;
+
 		if (arrows != null)
-		{
-			FlxTween.cancelTweensOf(arrows);
 			arrows.alpha = 0;
-			FlxTween.tween(arrows, {alpha: 1}, duration, {ease: FlxEase.quadOut});
-		}
 
 		if (buttonA != null)
-		{
-			FlxTween.cancelTweensOf(buttonA);
 			buttonA.alpha = 0;
-			FlxTween.tween(buttonA, {alpha: 1}, duration, {ease: FlxEase.quadOut});
-		}
 
 		if (buttonB != null)
-		{
-			FlxTween.cancelTweensOf(buttonB);
 			buttonB.alpha = 0;
-			FlxTween.tween(buttonB, {alpha: 1}, duration, {ease: FlxEase.quadOut});
-		}
 		#end
 	}
-
 	public static function setAlpha(value:Float):Void
 	{
 		#if android

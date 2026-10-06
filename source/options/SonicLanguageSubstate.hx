@@ -60,7 +60,6 @@ class SonicLanguageSubstate extends MusicBeatSubstate
 		updateSelection(false);
 
 		MobileControls.create();
-		MobileControls.addToState(this);
 		MobileControls.setVisible(true);
 		MobileControls.setEnabled(true);
 	}
@@ -424,7 +423,6 @@ class SonicLanguageSubstate extends MusicBeatSubstate
 	{
 		FlxTween.cancelTweensOf(selectedArrow);
 
-		MobileControls.setVisible(false);
 
 		for (sprites in languageSprites)
 		{

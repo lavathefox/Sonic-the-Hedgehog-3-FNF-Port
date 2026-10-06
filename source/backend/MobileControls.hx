@@ -264,17 +264,48 @@ class MobileControls
 
 	#if android
 
+	static function getTouchPoint(touch:Dynamic):Array<Float>
+	{
+		var screenX:Float = touch.screenX;
+		var screenY:Float = touch.screenY;
+
+		if (isPointInside(screenX, screenY, arrows))
+			return [screenX, screenY];
+
+		var worldX:Float = touch.x;
+		var worldY:Float = touch.y;
+
+		return [worldX, worldY];
+	}
+
+	static function isPointInside(pointX:Float, pointY:Float, sprite:FlxSprite):Bool
+	{
+		if (sprite == null || !sprite.visible)
+			return false;
+
+		return pointX >= sprite.x &&
+			pointX <= sprite.x + sprite.width &&
+			pointY >= sprite.y &&
+			pointY <= sprite.y + sprite.height;
+	}
+
 	static function checkArrowTouch(touch:Dynamic):Void
 	{
 		if (arrows == null || !arrows.visible || mobileCamera == null)
 			return;
 
-		var pointX:Float = touch.screenX;
-		var pointY:Float = touch.screenY;
+		var point:Array<Float> = getTouchPoint(touch);
+		var pointX:Float = point[0];
+		var pointY:Float = point[1];
 
-		if (pointX < arrows.x || pointX > arrows.x + arrows.width ||
-			pointY < arrows.y || pointY > arrows.y + arrows.height)
-			return;
+		if (!isPointInside(pointX, pointY, arrows))
+		{
+			pointX = touch.x;
+			pointY = touch.y;
+
+			if (!isPointInside(pointX, pointY, arrows))
+				return;
+		}
 
 		var centerX:Float = arrows.x + arrows.width / 2;
 		var centerY:Float = arrows.y + arrows.height / 2;
@@ -300,22 +331,24 @@ class MobileControls
 
 	static function checkButtonTouch(touch:Dynamic):Void
 	{
-		if (buttonA == null && buttonB == null)
+		if (mobileCamera == null)
 			return;
 
-		var pointX:Float = touch.screenX;
-		var pointY:Float = touch.screenY;
+		var screenX:Float = touch.screenX;
+		var screenY:Float = touch.screenY;
+		var worldX:Float = touch.x;
+		var worldY:Float = touch.y;
 
 		if (buttonA != null && buttonA.visible &&
-			pointX >= buttonA.x && pointX <= buttonA.x + buttonA.width &&
-			pointY >= buttonA.y && pointY <= buttonA.y + buttonA.height)
+			(isPointInside(screenX, screenY, buttonA) ||
+			isPointInside(worldX, worldY, buttonA)))
 		{
 			touchA = true;
 		}
 
 		if (buttonB != null && buttonB.visible &&
-			pointX >= buttonB.x && pointX <= buttonB.x + buttonB.width &&
-			pointY >= buttonB.y && pointY <= buttonB.y + buttonB.height)
+			(isPointInside(screenX, screenY, buttonB) ||
+			isPointInside(worldX, worldY, buttonB)))
 		{
 			touchB = true;
 		}

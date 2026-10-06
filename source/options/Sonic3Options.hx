@@ -35,7 +35,6 @@ class Sonic3Options extends MusicBeatState
 	var categorySprites:Array<Array<FlxSprite>> = [];
 	var selectedArrow:FlxSprite;
 	var optionsSelect:FlxSprite;
-	var background:FlxSprite;
 
 	override public function create():Void
 	{
@@ -45,11 +44,10 @@ class Sonic3Options extends MusicBeatState
 		FlxG.camera.zoom = 3;
 		FlxG.camera.pixelPerfectRender = true;
 
-		background = new FlxSprite(0, 0);
-		background.loadGraphic(Paths.image('dataselect/dataSelect_BG'));
-		background.antialiasing = false;
-		background.alpha = 0;
-		add(background);
+		var bg:FlxSprite = new FlxSprite(0, 0);
+		bg.loadGraphic(Paths.image('dataselect/dataSelect_BG'));
+		bg.antialiasing = false;
+		add(bg);
 
 		updateCategories();
 
@@ -58,14 +56,10 @@ class Sonic3Options extends MusicBeatState
 		createCursor();
 		updateCategoryCursor();
 
-		fadeInOptions();
-
 		MobileControls.create();
 		MobileControls.addToState(this);
 		MobileControls.setEnabled(true);
 		MobileControls.setVisible(true);
-		MobileControls.setAlpha(0);
-		fadeInMobileControls();
 
 		FlxG.sound.playMusic(Paths.music('DataSelect'), 1, true);
 	}
@@ -105,50 +99,6 @@ class Sonic3Options extends MusicBeatState
 		}
 	}
 
-	function fadeInOptions():Void
-	{
-		if (background != null)
-			FlxTween.tween(background, {alpha: 1}, 0.45, {ease: FlxEase.quadOut});
-
-		if (optionsSelect != null)
-		{
-			optionsSelect.alpha = 0;
-			FlxTween.tween(optionsSelect, {alpha: 1}, 0.45, {ease: FlxEase.quadOut});
-		}
-
-		if (selectedArrow != null)
-		{
-			selectedArrow.alpha = 0;
-			FlxTween.tween(selectedArrow, {alpha: 1}, 0.45, {ease: FlxEase.quadOut});
-		}
-
-		for (category in categorySprites)
-		{
-			if (category == null)
-				continue;
-
-			for (letter in category)
-			{
-				if (letter != null)
-				{
-					letter.alpha = 0;
-					FlxTween.tween(letter, {alpha: 1}, 0.45, {ease: FlxEase.quadOut});
-				}
-			}
-		}
-	}
-
-	function fadeInMobileControls():Void
-	{
-		if (MobileControls.arrows != null)
-			FlxTween.tween(MobileControls.arrows, {alpha: 1}, 0.45, {ease: FlxEase.quadOut});
-
-		if (MobileControls.buttonA != null)
-			FlxTween.tween(MobileControls.buttonA, {alpha: 1}, 0.45, {ease: FlxEase.quadOut});
-
-		if (MobileControls.buttonB != null)
-			FlxTween.tween(MobileControls.buttonB, {alpha: 1}, 0.45, {ease: FlxEase.quadOut});
-	}
 
 	function getCurrentLanguage():String
 	{

@@ -540,7 +540,6 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 	{
 		FlxTween.cancelTweensOf(selectedArrow);
 
-		MobileControls.setVisible(false);
 
 		for (sprites in optionSprites)
 			destroySprites(sprites);

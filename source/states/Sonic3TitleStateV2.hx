@@ -881,7 +881,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 			canPressStart = false;
 
 			#if android
-			MobileControls.setEnabled(true);
 			#end
 
 			FlxG.sound.play(

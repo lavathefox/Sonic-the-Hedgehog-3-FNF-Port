@@ -536,9 +536,12 @@ class Sonic3Options extends MusicBeatState
 	{
 		FlxTween.cancelTweensOf(selectedArrow);
 
-		MobileControls.removeFromState(this);
-		MobileControls.setVisible(false);
-		MobileControls.setEnabled(false);
+		if (MobileControls.isAttachedTo(this))
+		{
+			MobileControls.removeFromState(this);
+			MobileControls.setVisible(false);
+			MobileControls.setEnabled(false);
+		}
 
 		super.destroy();
 	}

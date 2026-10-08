@@ -108,14 +108,20 @@ jobs:
             echo "Installing NDK 21.4.7075529 (attempt $attempt/3)..."
             rm -rf "$NDK_DIR"
 
-            if yes | "$SDKMANAGER" --sdk_root="$ANDROID_SDK_ROOT" "ndk;21.4.7075529"; then
-              if [ -f "$NDK_DIR/source.properties" ]; then
-                echo "OK: NDK 21.4.7075529 installed correctly."
-                break
-              fi
+            set +o pipefail
+            yes | "$SDKMANAGER" --sdk_root="$ANDROID_SDK_ROOT" "ndk;21.4.7075529"
+            SDK_EXIT=$?
+            set -o pipefail
+
+            # sdkmanager can exit non-zero when the confirmation pipe closes
+            # after it has finished reading the license prompt. The real
+            # validation is whether the NDK was completely installed.
+            if [ -f "$NDK_DIR/source.properties" ]; then
+              echo "OK: NDK 21.4.7075529 installed correctly."
+              break
             fi
 
-            echo "NDK installation failed or is incomplete."
+            echo "NDK installation failed or is incomplete (sdkmanager exit: $SDK_EXIT)."
             rm -rf "$NDK_DIR"
 
             if [ "$attempt" -eq 3 ]; then

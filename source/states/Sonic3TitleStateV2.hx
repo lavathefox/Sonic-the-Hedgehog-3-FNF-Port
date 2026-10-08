@@ -981,8 +981,11 @@ class Sonic3TitleStateV2 extends MusicBeatState
 	override public function destroy():Void
 	{
 		#if android
-		MobileControls.removeFromState(this);
-		MobileControls.setEnabled(false);
+		if (MobileControls.isAttachedTo(this))
+		{
+			MobileControls.removeFromState(this);
+			MobileControls.setEnabled(false);
+		}
 		#end
 
 		super.destroy();

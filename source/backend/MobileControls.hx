@@ -482,6 +482,15 @@ class MobileControls
 		#end
 	}
 
+	public static function isAttachedTo(state:Dynamic):Bool
+	{
+		#if android
+		return initialized && currentState == state;
+		#else
+		return false;
+		#end
+	}
+
 	public static function setEnabled(value:Bool):Void
 	{
 		enabled = value;

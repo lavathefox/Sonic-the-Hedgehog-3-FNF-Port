@@ -428,7 +428,10 @@ class Paths
 		//trace('precaching sound: $file');
 		if(!currentTrackedSounds.exists(file))
 		{
-			#if sys
+			#if android
+			if(OpenFlAssets.exists(file, SOUND))
+				currentTrackedSounds.set(file, OpenFlAssets.getSound(file));
+			#elseif sys
 			if(FileSystem.exists(file))
 				currentTrackedSounds.set(file, Sound.fromFile(file));
 			#else

@@ -8,6 +8,7 @@ import flixel.util.FlxColor;
 
 import backend.Song;
 import backend.Paths;
+import backend.MobileControls;
 
 class DataSelectState extends MusicBeatState
 {
@@ -80,6 +81,13 @@ class DataSelectState extends MusicBeatState
 		add(blackFade);
 
 		updateSelection(true);
+
+		#if android
+		MobileControls.create();
+		MobileControls.addToState(this);
+		MobileControls.setEnabled(true);
+		MobileControls.setVisible(true);
+		#end
 
 		FlxG.sound.playMusic(
 			Paths.music('DataSelect'),
@@ -378,6 +386,10 @@ class DataSelectState extends MusicBeatState
 	{
 		super.update(elapsed);
 
+		#if android
+		MobileControls.update();
+		#end
+
 		globalTimer++;
 
 		if (globalTimer >= 60)
@@ -401,4 +413,18 @@ class DataSelectState extends MusicBeatState
 		if (FlxG.keys.justPressed.ENTER)
 			confirmSelection();
 	}
+	override public function destroy():Void
+	{
+		#if android
+		if (MobileControls.isAttachedTo(this))
+		{
+			MobileControls.setVisible(false);
+			MobileControls.setEnabled(false);
+			MobileControls.removeFromState(this);
+		}
+		#end
+
+		super.destroy();
+	}
+
 }

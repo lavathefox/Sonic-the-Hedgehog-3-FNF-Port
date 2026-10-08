@@ -896,7 +896,8 @@ class Sonic3TitleStateV2 extends MusicBeatState
 	function goDataSelect():Void
 	{
 		#if android
-		MobileControls.removeFromState(this);
+		if (MobileControls.isAttachedTo(this))
+			MobileControls.removeFromState(this);
 		#end
 
 		MusicBeatState.switchState(

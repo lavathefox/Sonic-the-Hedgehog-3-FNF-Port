@@ -88,11 +88,51 @@ jobs:
       - name: Install Android SDK and NDK
         shell: bash
         run: |
-          sdkmanager "platforms;android-31" "build-tools;31.0.0" "ndk;21.4.7075529"
+          set -e
+
+          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          NDK_DIR="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
+
+          echo "Cleaning any incomplete NDK installation..."
+          rm -rf "$NDK_DIR"
+
+          # sdkmanager can leave a corrupted archive behind after a failed download.
+          # Remove only cached NDK archives before retrying the installation.
+          if [ -d "$HOME/.android" ]; then
+            find "$HOME/.android" -type f \( -iname '*21.4.7075529*' -o -iname '*android-ndk-r21e*' \) -delete || true
+          fi
+
+          "$SDKMANAGER" --sdk_root="$ANDROID_SDK_ROOT" "platforms;android-31" "build-tools;31.0.0"
+
+          for attempt in 1 2 3; do
+            echo "Installing NDK 21.4.7075529 (attempt $attempt/3)..."
+            rm -rf "$NDK_DIR"
+
+            if yes | "$SDKMANAGER" --sdk_root="$ANDROID_SDK_ROOT" "ndk;21.4.7075529"; then
+              if [ -f "$NDK_DIR/source.properties" ]; then
+                echo "OK: NDK 21.4.7075529 installed correctly."
+                break
+              fi
+            fi
+
+            echo "NDK installation failed or is incomplete."
+            rm -rf "$NDK_DIR"
+
+            if [ "$attempt" -eq 3 ]; then
+              echo "ERROR: Could not install NDK 21.4.7075529 after 3 attempts."
+              exit 1
+            fi
+
+            sleep 5
+          done
+
           echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/21.4.7075529" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/21.4.7075529" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
+
+          echo "NDK version:"
+          grep 'Pkg.Revision' "$NDK_DIR/source.properties"
 
       - name: Set up Haxelib
         shell: bash

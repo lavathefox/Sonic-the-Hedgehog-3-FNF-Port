@@ -604,7 +604,6 @@ class SonicGraphicsSubstate extends MusicBeatSubstate
 
 		framerateValueSprites = [];
 
-		MobileControls.removeFromState(this);
 
 		ClientPrefs.saveSettings();
 

@@ -76,10 +76,27 @@ class MobileControls
 	{
 		#if android
 		if (initialized)
+		{
+			ensureCamera();
+
+			if (arrows == null)
+				createArrows();
+			else
+				arrows.cameras = [mobileCamera];
+
+			if (buttonA == null || buttonB == null)
+				createButtons();
+			else
+			{
+				buttonA.cameras = [mobileCamera];
+				buttonB.cameras = [mobileCamera];
+			}
+
+			setVisible(visible);
 			return;
+		}
 
 		initialized = true;
-
 		clearPressed();
 
 		createCamera();
@@ -93,6 +110,22 @@ class MobileControls
 	}
 
 	#if android
+
+	static function ensureCamera():Void
+	{
+		if (mobileCamera == null)
+		{
+			createCamera();
+			return;
+		}
+
+		if (!FlxG.cameras.list.contains(mobileCamera))
+			FlxG.cameras.add(mobileCamera, false);
+
+		mobileCamera.bgColor.alpha = 0;
+		mobileCamera.scroll.set(0, 0);
+		mobileCamera.zoom = 1;
+	}
 
 	static function createCamera():Void
 	{

@@ -134,7 +134,7 @@ class DataSelectState extends MusicBeatState
 		);
 
 		arrow.loadGraphic(
-			Paths.image('dataselect/dataselectArrow')
+			Paths.image('dataselect/dataselectarrow')
 		);
 
 		add(arrow);
@@ -150,7 +150,7 @@ class DataSelectState extends MusicBeatState
 		);
 
 		bfDataSelect.frames = Paths.getSparrowAtlas(
-			'dataselect/BfDataSelect'
+			'dataselect/BFDataSelect'
 		);
 
 		bfDataSelect.animation.addByPrefix(

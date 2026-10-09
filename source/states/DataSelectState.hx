@@ -401,17 +401,22 @@ class DataSelectState extends MusicBeatState
 		if (isMoving || confirming)
 			return;
 
-		if (FlxG.keys.justPressed.LEFT)
+		if (FlxG.keys.justPressed.LEFT || MobileControls.leftJustPressed)
 		{
 			selectPrevious();
 		}
-		else if (FlxG.keys.justPressed.RIGHT)
+		else if (FlxG.keys.justPressed.RIGHT || MobileControls.rightJustPressed)
 		{
 			selectNext();
 		}
 
-		if (FlxG.keys.justPressed.ENTER)
+		if (FlxG.keys.justPressed.ENTER || MobileControls.aJustPressed)
 			confirmSelection();
+
+		if (MobileControls.bJustPressed)
+		{
+			// B is intentionally reserved for returning once a title transition is implemented.
+		}
 	}
 	override public function destroy():Void
 	{

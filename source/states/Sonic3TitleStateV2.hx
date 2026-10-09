@@ -982,10 +982,7 @@ class Sonic3TitleStateV2 extends MusicBeatState
 	{
 		#if android
 		if (MobileControls.isAttachedTo(this))
-		{
 			MobileControls.removeFromState(this);
-			MobileControls.setEnabled(false);
-		}
 		#end
 
 		super.destroy();

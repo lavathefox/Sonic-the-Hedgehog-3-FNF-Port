@@ -417,11 +417,7 @@ class DataSelectState extends MusicBeatState
 	{
 		#if android
 		if (MobileControls.isAttachedTo(this))
-		{
-			MobileControls.setVisible(false);
-			MobileControls.setEnabled(false);
 			MobileControls.removeFromState(this);
-		}
 		#end
 
 		super.destroy();

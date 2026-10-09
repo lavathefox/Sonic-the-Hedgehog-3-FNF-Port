@@ -77,6 +77,7 @@ class MobileControls
 		#if android
 		if (initialized)
 		{
+			ensureCamera();
 			setVisible(visible);
 			return;
 		}
@@ -105,6 +106,23 @@ class MobileControls
 		mobileCamera.zoom = 1;
 
 		FlxG.cameras.add(mobileCamera, false);
+	}
+
+	static function ensureCamera():Void
+	{
+		if (mobileCamera == null)
+			createCamera();
+		else if (FlxG.cameras.list.indexOf(mobileCamera) == -1)
+			FlxG.cameras.add(mobileCamera, false);
+
+		if (arrows != null)
+			arrows.cameras = [mobileCamera];
+
+		if (buttonA != null)
+			buttonA.cameras = [mobileCamera];
+
+		if (buttonB != null)
+			buttonB.cameras = [mobileCamera];
 	}
 
 	static function createArrows():Void

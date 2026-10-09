@@ -110,10 +110,10 @@ class MobileControls
 
 	static function ensureCamera():Void
 	{
-		if (mobileCamera == null)
+		// State transitions can remove the old camera from FlxG.cameras.
+		// Recreate it instead of re-registering a possibly stale camera.
+		if (mobileCamera == null || FlxG.cameras.list.indexOf(mobileCamera) == -1)
 			createCamera();
-		else if (FlxG.cameras.list.indexOf(mobileCamera) == -1)
-			FlxG.cameras.add(mobileCamera, false);
 
 		if (arrows != null)
 			arrows.cameras = [mobileCamera];

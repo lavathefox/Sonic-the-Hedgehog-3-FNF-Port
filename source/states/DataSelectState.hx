@@ -373,8 +373,8 @@ class DataSelectState extends MusicBeatState
 	function startLevel():Void
 	{
 		PlayState.SONG = Song.loadFromJson(
-			'angel-test',
-			'angel-test'
+			'too-slow',
+			'too-slow'
 		);
 
 		LoadingState.loadAndSwitchState(

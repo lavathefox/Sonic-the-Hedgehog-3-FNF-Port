@@ -636,6 +636,12 @@ class PlayState extends MusicBeatState
 		splash.alpha = 0.000001; //cant make it invisible or it won't allow precaching
 
 		super.create();
+		#if android
+		MobileControls.create();
+		MobileControls.addToState(this);
+		MobileControls.setEnabled(true);
+		MobileControls.setVisible(true);
+		#end
 		Paths.clearUnusedMemory();
 
 		cacheCountdown();

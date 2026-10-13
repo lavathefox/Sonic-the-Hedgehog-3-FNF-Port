@@ -5,6 +5,8 @@ import flixel.FlxCamera;
 import flixel.FlxSprite;
 import flixel.tweens.FlxEase;
 import flixel.tweens.FlxTween;
+import flixel.util.FlxColor;
+import backend.ClientPrefs;
 
 class MobileControls
 {
@@ -36,6 +38,12 @@ class MobileControls
 	public static var arrows:FlxSprite;
 	public static var buttonA:FlxSprite;
 	public static var buttonB:FlxSprite;
+	public static var pauseButton:FlxSprite;
+	static var pauseBars:Array<FlxSprite> = [];
+	public static var hitboxArrows:FlxSprite;
+	public static var hitboxA:FlxSprite;
+	public static var hitboxB:FlxSprite;
+	public static var pauseJustPressed:Bool = false;
 
 	static var mobileCamera:FlxCamera;
 
@@ -68,6 +76,8 @@ class MobileControls
 
 	static var previousA:Bool = false;
 	static var previousB:Bool = false;
+	static var touchPause:Bool = false;
+	static var previousPause:Bool = false;
 
 	static var fadeTimer:Float = 0;
 	static var fadeDuration:Float = 0.45;
@@ -88,6 +98,8 @@ class MobileControls
 		createCamera();
 		createArrows();
 		createButtons();
+		createHitboxes();
+		createPauseButton();
 
 		setVisible(visible);
 		#else
@@ -172,6 +184,44 @@ class MobileControls
 		buttonB.cameras = [mobileCamera];
 	}
 
+	static function createHitboxes():Void
+	{
+		hitboxArrows = new FlxSprite(arrowX, arrowY);
+		hitboxArrows.makeGraphic(Std.int(FlxG.width * 0.28), Std.int(FlxG.height * 0.28), 0x55FF0000);
+		hitboxArrows.scrollFactor.set();
+		hitboxArrows.cameras = [mobileCamera];
+
+		hitboxA = new FlxSprite(buttonAX, buttonAY);
+		hitboxA.makeGraphic(Std.int(FlxG.width * 0.1), Std.int(FlxG.height * 0.1), 0x55FF0000);
+		hitboxA.scrollFactor.set();
+		hitboxA.cameras = [mobileCamera];
+
+		hitboxB = new FlxSprite(buttonBX, buttonBY);
+		hitboxB.makeGraphic(Std.int(FlxG.width * 0.1), Std.int(FlxG.height * 0.1), 0x55FF0000);
+		hitboxB.scrollFactor.set();
+		hitboxB.cameras = [mobileCamera];
+		applyMobileOptions();
+	}
+
+	static function createPauseButton():Void
+	{
+		pauseButton = new FlxSprite(FlxG.width - 90, 24);
+		pauseButton.makeGraphic(56, 56, 0xAA000000);
+		pauseButton.scrollFactor.set();
+		pauseButton.cameras = [mobileCamera];
+
+		var bar1 = new FlxSprite(pauseButton.x + 16, pauseButton.y + 13);
+		bar1.makeGraphic(7, 30, FlxColor.WHITE);
+		bar1.scrollFactor.set();
+		bar1.cameras = [mobileCamera];
+		var bar2 = new FlxSprite(pauseButton.x + 33, pauseButton.y + 13);
+		bar2.makeGraphic(7, 30, FlxColor.WHITE);
+		bar2.scrollFactor.set();
+		bar2.cameras = [mobileCamera];
+		pauseBars = [bar1, bar2];
+		applyMobileOptions();
+	}
+
 	#end
 
 	public static function addToState(state:Dynamic):Void
@@ -202,8 +252,17 @@ class MobileControls
 
 		if (buttonB != null && !state.members.contains(buttonB))
 			state.add(buttonB);
+		if (hitboxArrows != null && !state.members.contains(hitboxArrows)) state.add(hitboxArrows);
+		if (hitboxA != null && !state.members.contains(hitboxA)) state.add(hitboxA);
+		if (hitboxB != null && !state.members.contains(hitboxB)) state.add(hitboxB);
+		if (Std.isOfType(state, states.PlayState) && pauseButton != null)
+		{
+			if (!state.members.contains(pauseButton)) state.add(pauseButton);
+			for (bar in pauseBars) if (!state.members.contains(bar)) state.add(bar);
+		}
 
 		setVisible(visible);
+		applyMobileOptions();
 		#end
 	}
 
@@ -219,8 +278,12 @@ class MobileControls
 		if (buttonA != null && state.members.contains(buttonA))
 			state.remove(buttonA, false);
 
-		if (buttonB != null && state.members.contains(buttonB))
-			state.remove(buttonB, false);
+		if (buttonB != null && state.members.contains(buttonB)) state.remove(buttonB, false);
+		if (hitboxArrows != null && state.members.contains(hitboxArrows)) state.remove(hitboxArrows, false);
+		if (hitboxA != null && state.members.contains(hitboxA)) state.remove(hitboxA, false);
+		if (hitboxB != null && state.members.contains(hitboxB)) state.remove(hitboxB, false);
+		if (pauseButton != null && state.members.contains(pauseButton)) state.remove(pauseButton, false);
+		for (bar in pauseBars) if (state.members.contains(bar)) state.remove(bar, false);
 
 		if (currentState == state)
 			currentState = null;
@@ -249,6 +312,7 @@ class MobileControls
 
 		touchA = false;
 		touchB = false;
+		touchPause = false;
 
 		for (touch in FlxG.touches.list)
 		{
@@ -274,6 +338,7 @@ class MobileControls
 
 		aJustPressed = aPressed && !previousA;
 		bJustPressed = bPressed && !previousB;
+		pauseJustPressed = touchPause && !previousPause;
 
 		previousUp = upPressed;
 		previousDown = downPressed;
@@ -282,6 +347,7 @@ class MobileControls
 
 		previousA = aPressed;
 		previousB = bPressed;
+		previousPause = touchPause;
 
 		updateAnimation();
 
@@ -381,11 +447,8 @@ class MobileControls
 			touchA = true;
 		}
 
-		if (buttonB != null && buttonB.visible &&
-			isPointInside(pointX, pointY, buttonB))
-		{
-			touchB = true;
-		}
+		if (buttonB != null && buttonB.visible && isPointInside(pointX, pointY, buttonB)) touchB = true;
+		if (pauseButton != null && pauseButton.visible && isPointInside(pointX, pointY, pauseButton)) touchPause = true;
 	}
 
 	static function updateAnimation():Void
@@ -499,6 +562,18 @@ class MobileControls
 
 		if (buttonB != null)
 			buttonB.alpha = value;
+		#end
+	}
+
+	public static function applyMobileOptions():Void
+	{
+		#if android
+		var showHitbox:Bool = ClientPrefs.data.mobileShowHitbox;
+		for (box in [hitboxArrows, hitboxA, hitboxB])
+			if (box != null) box.visible = showHitbox && visible;
+		var showPause:Bool = ClientPrefs.data.mobilePauseButton && Std.isOfType(currentState, states.PlayState) && visible;
+		if (pauseButton != null) pauseButton.visible = showPause;
+		for (bar in pauseBars) if (bar != null) bar.visible = showPause;
 		#end
 	}
 

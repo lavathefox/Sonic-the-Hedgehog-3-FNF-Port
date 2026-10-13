@@ -45,7 +45,7 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		background.cameras = [optionsCamera];
 		add(background);
 
-		createTextSprites('MOBILE OPTIONS', titleSprites, (FlxG.width - getTextWidth('MOBILE OPTIONS')) / 2, 125, 3);
+		createTextSprites('MOBILE OPTIONS', titleSprites, (FlxG.width - getTextWidth('MOBILE OPTIONS', 3)) / 2, 125, 3);
 
 		selectedArrow = new FlxSprite(115, optionY);
 		selectedArrow.loadGraphic(Paths.image('pauseMenuEXE/selectedArrow'));

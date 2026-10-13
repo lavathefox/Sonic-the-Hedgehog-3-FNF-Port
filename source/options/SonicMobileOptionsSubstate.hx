@@ -1,6 +1,7 @@
 package options;
 
 import flixel.FlxG;
+import flixel.FlxCamera;
 import flixel.FlxSprite;
 import flixel.text.FlxText;
 import flixel.util.FlxColor;
@@ -17,20 +18,30 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 	var labels:Array<FlxText> = [];
 	var values:Array<FlxText> = [];
 	var selectedArrow:FlxSprite;
+	var optionsCamera:FlxCamera;
 
 	override public function create():Void
 	{
 		super.create();
 
+		optionsCamera = new FlxCamera();
+		optionsCamera.bgColor.alpha = 0;
+		optionsCamera.zoom = 1;
+		optionsCamera.scroll.set(0, 0);
+		optionsCamera.pixelPerfectRender = true;
+		FlxG.cameras.add(optionsCamera, false);
+
 		var background:FlxSprite = new FlxSprite(0, 0);
 		background.makeGraphic(FlxG.width, FlxG.height, FlxColor.fromRGB(0, 0, 0));
 		background.alpha = 0.8;
 		background.scrollFactor.set();
+		background.cameras = [optionsCamera];
 		add(background);
 
 		var title:FlxText = new FlxText(0, 70, FlxG.width, 'MOBILE OPTIONS', 32);
 		title.setFormat(Paths.font('vcr.ttf'), 32, FlxColor.WHITE, CENTER);
 		title.scrollFactor.set();
+		title.cameras = [optionsCamera];
 		add(title);
 
 		selectedArrow = new FlxSprite(115, 190);
@@ -39,6 +50,7 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		selectedArrow.scale.set(2, 2);
 		selectedArrow.updateHitbox();
 		selectedArrow.scrollFactor.set();
+		selectedArrow.cameras = [optionsCamera];
 		add(selectedArrow);
 
 		createOption('SHOW HITBOX', 0);
@@ -55,12 +67,14 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		var option:FlxText = new FlxText(165, y, 540, label, 24);
 		option.setFormat(Paths.font('vcr.ttf'), 24, FlxColor.WHITE, LEFT);
 		option.scrollFactor.set();
+		option.cameras = [optionsCamera];
 		add(option);
 		labels.push(option);
 
 		var value:FlxText = new FlxText(720, y, 180, '', 24);
 		value.setFormat(Paths.font('vcr.ttf'), 24, FlxColor.WHITE, CENTER);
 		value.scrollFactor.set();
+		value.cameras = [optionsCamera];
 		add(value);
 		values.push(value);
 	}
@@ -134,6 +148,11 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 	override function destroy():Void
 	{
 		ClientPrefs.saveSettings();
+		if (optionsCamera != null)
+		{
+			FlxG.cameras.remove(optionsCamera, true);
+			optionsCamera = null;
+		}
 		super.destroy();
 	}
 }

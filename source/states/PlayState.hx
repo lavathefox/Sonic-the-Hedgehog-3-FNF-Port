@@ -2,6 +2,7 @@ package states;
 
 import backend.Highscore;
 import backend.StageData;
+import backend.MobileControls;
 import backend.WeekData;
 import backend.Song;
 import backend.Rating;
@@ -1690,6 +1691,10 @@ class PlayState extends MusicBeatState
 
 		super.update(elapsed);
 
+		#if android
+		MobileControls.update();
+		#end
+
 		setOnScripts('curDecStep', curDecStep);
 		setOnScripts('curDecBeat', curDecBeat);
 
@@ -1698,7 +1703,7 @@ class PlayState extends MusicBeatState
 			botplayTxt.alpha = 1 - Math.sin((Math.PI * botplaySine) / 180);
 		}
 
-		if (controls.PAUSE && startedCountdown && canPause)
+		if ((controls.PAUSE || MobileControls.pauseJustPressed) && startedCountdown && canPause)
 		{
 			var ret:Dynamic = callOnScripts('onPause', null, true);
 			if(ret != LuaUtils.Function_Stop) {

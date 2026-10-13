@@ -479,6 +479,7 @@ class MobileControls
 
 		aJustPressed = false;
 		bJustPressed = false;
+		pauseJustPressed = false;
 	}
 
 	static function clearPressed():Void
@@ -530,6 +531,7 @@ class MobileControls
 		if (buttonB != null)
 			buttonB.visible = value;
 
+		applyMobileOptions();
 		if (value)
 			fadeIn();
 		#end

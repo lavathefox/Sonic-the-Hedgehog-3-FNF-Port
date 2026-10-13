@@ -10,6 +10,8 @@ import states.TitleState;
 @:structInit class SaveVariables {
   public var sonicTitleCardStyle:String = 'DEFAULT';
   public var sonicHUDStyle:String = 'DEFAULT';
+  public var mobileShowHitbox:Bool = false;
+  public var mobilePauseButton:Bool = true;
 	public var downScroll:Bool = false;
 	public var middleScroll:Bool = false;
 	public var opponentStrums:Bool = true;

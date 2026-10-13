@@ -153,6 +153,10 @@ class Sonic3Options extends MusicBeatState
 					'Languages'
 				];
 		}
+
+		#if android
+		categories.push('Mobile Options');
+		#end
 	}
 
 	function getOptionsSelectPath():String
@@ -370,6 +374,11 @@ class Sonic3Options extends MusicBeatState
 
 			case 6:
 				openLanguage();
+
+			#if android
+			case 7:
+				openMobileOptions();
+			#end
 		}
 	}
 
@@ -440,6 +449,22 @@ class Sonic3Options extends MusicBeatState
 
 		openSubState(new options.SonicLanguageSubstate());
 	}
+
+	#if android
+	function openMobileOptions():Void
+	{
+		if (subStateOpen)
+			return;
+
+		FlxG.sound.play(Paths.sound('confirmMenu'));
+		subStateOpen = true;
+		canSelect = false;
+		isMoving = false;
+		FlxTween.cancelTweensOf(selectedArrow);
+		hideCategories();
+		openSubState(new options.SonicMobileOptionsSubstate());
+	}
+	#end
 
 	function hideCategories():Void
 	{

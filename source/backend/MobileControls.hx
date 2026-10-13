@@ -404,7 +404,7 @@ class MobileControls
 		var pointX:Float = point.x;
 		var pointY:Float = point.y;
 
-		if (!isPointInside(pointX, pointY, arrows))
+		if (hitboxArrows == null || !hitboxArrows.containsPoint(pointX, pointY))
 			return;
 
 		var centerX:Float = arrows.x + arrows.width / 2;
@@ -442,13 +442,13 @@ class MobileControls
 		var pointX:Float = point.x;
 		var pointY:Float = point.y;
 
-		if (buttonA != null && buttonA.visible &&
-			isPointInside(pointX, pointY, buttonA))
+		if (buttonA != null && buttonA.visible && hitboxA != null &&
+			hitboxA.containsPoint(pointX, pointY))
 		{
 			touchA = true;
 		}
 
-		if (buttonB != null && buttonB.visible && isPointInside(pointX, pointY, buttonB)) touchB = true;
+		if (buttonB != null && buttonB.visible && hitboxB != null && hitboxB.containsPoint(pointX, pointY)) touchB = true;
 		if (pauseButton != null && pauseButton.visible && isPointInside(pointX, pointY, pauseButton)) touchPause = true;
 	}
 

@@ -570,7 +570,7 @@ class MobileControls
 	public static function applyMobileOptions():Void
 	{
 		#if android
-		var showHitbox:Bool = ClientPrefs.data.mobileShowHitbox;
+		var showHitbox:Bool = ClientPrefs.data.mobileShowHitbox && Std.isOfType(currentState, states.PlayState) && visible;
 		for (box in [hitboxArrows, hitboxA, hitboxB])
 			if (box != null) box.visible = showHitbox && visible;
 		var showPause:Bool = ClientPrefs.data.mobilePauseButton && Std.isOfType(currentState, states.PlayState) && visible;

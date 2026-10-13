@@ -7,6 +7,7 @@ import flixel.tweens.FlxEase;
 import flixel.tweens.FlxTween;
 import flixel.util.FlxColor;
 import backend.ClientPrefs;
+import mobile.HitBox;
 
 class MobileControls
 {
@@ -40,9 +41,9 @@ class MobileControls
 	public static var buttonB:FlxSprite;
 	public static var pauseButton:FlxSprite;
 	static var pauseBars:Array<FlxSprite> = [];
-	public static var hitboxArrows:FlxSprite;
-	public static var hitboxA:FlxSprite;
-	public static var hitboxB:FlxSprite;
+	public static var hitboxArrows:HitBox;
+	public static var hitboxA:HitBox;
+	public static var hitboxB:HitBox;
 	public static var pauseJustPressed:Bool = false;
 
 	static var mobileCamera:FlxCamera;
@@ -135,6 +136,11 @@ class MobileControls
 
 		if (buttonB != null)
 			buttonB.cameras = [mobileCamera];
+		if (hitboxArrows != null) hitboxArrows.cameras = [mobileCamera];
+		if (hitboxA != null) hitboxA.cameras = [mobileCamera];
+		if (hitboxB != null) hitboxB.cameras = [mobileCamera];
+		if (pauseButton != null) pauseButton.cameras = [mobileCamera];
+		for (bar in pauseBars) if (bar != null) bar.cameras = [mobileCamera];
 	}
 
 	static function createArrows():Void
@@ -186,20 +192,15 @@ class MobileControls
 
 	static function createHitboxes():Void
 	{
-		hitboxArrows = new FlxSprite(arrowX, arrowY);
-		hitboxArrows.makeGraphic(Std.int(FlxG.width * 0.28), Std.int(FlxG.height * 0.28), 0x55FF0000);
-		hitboxArrows.scrollFactor.set();
+		hitboxArrows = new HitBox(arrowX, arrowY, arrows.width, arrows.height, 'arrows');
 		hitboxArrows.cameras = [mobileCamera];
 
-		hitboxA = new FlxSprite(buttonAX, buttonAY);
-		hitboxA.makeGraphic(Std.int(FlxG.width * 0.1), Std.int(FlxG.height * 0.1), 0x55FF0000);
-		hitboxA.scrollFactor.set();
+		hitboxA = new HitBox(buttonAX, buttonAY, buttonA.width, buttonA.height, 'buttonA');
 		hitboxA.cameras = [mobileCamera];
 
-		hitboxB = new FlxSprite(buttonBX, buttonBY);
-		hitboxB.makeGraphic(Std.int(FlxG.width * 0.1), Std.int(FlxG.height * 0.1), 0x55FF0000);
-		hitboxB.scrollFactor.set();
+		hitboxB = new HitBox(buttonBX, buttonBY, buttonB.width, buttonB.height, 'buttonB');
 		hitboxB.cameras = [mobileCamera];
+
 		applyMobileOptions();
 	}
 
@@ -620,18 +621,21 @@ class MobileControls
 			arrows.x = arrowX;
 			arrows.y = arrowY;
 		}
+		if (hitboxArrows != null) hitboxArrows.setBounds(arrowX, arrowY, arrows != null ? arrows.width : hitboxArrows.width, arrows != null ? arrows.height : hitboxArrows.height);
 
 		if (buttonA != null)
 		{
 			buttonA.x = buttonAX;
 			buttonA.y = buttonAY;
 		}
+		if (hitboxA != null) hitboxA.setBounds(buttonAX, buttonAY, buttonA != null ? buttonA.width : hitboxA.width, buttonA != null ? buttonA.height : hitboxA.height);
 
 		if (buttonB != null)
 		{
 			buttonB.x = buttonBX;
 			buttonB.y = buttonBY;
 		}
+		if (hitboxB != null) hitboxB.setBounds(buttonBX, buttonBY, buttonB != null ? buttonB.width : hitboxB.width, buttonB != null ? buttonB.height : hitboxB.height);
 		#end
 	}
 
@@ -645,18 +649,21 @@ class MobileControls
 		{
 			arrows.scale.set(arrowScale, arrowScale);
 			arrows.updateHitbox();
+			if (hitboxArrows != null) hitboxArrows.setBounds(arrows.x, arrows.y, arrows.width, arrows.height);
 		}
 
 		if (buttonA != null)
 		{
 			buttonA.scale.set(buttonScale, buttonScale);
 			buttonA.updateHitbox();
+			if (hitboxA != null) hitboxA.setBounds(buttonA.x, buttonA.y, buttonA.width, buttonA.height);
 		}
 
 		if (buttonB != null)
 		{
 			buttonB.scale.set(buttonScale, buttonScale);
 			buttonB.updateHitbox();
+			if (hitboxB != null) hitboxB.setBounds(buttonB.x, buttonB.y, buttonB.width, buttonB.height);
 		}
 		#end
 	}

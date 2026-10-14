@@ -383,8 +383,14 @@ class DataSelectState extends MusicBeatState
 		#if sys
 		if (FileSystem.exists(chartPath))
 		{
-			PlayState.SONG = Song.loadFromJson('too-slow', 'too-slow');
-			loadedChart = PlayState.SONG != null;
+			PlayState.SONG = Song.getChart('too-slow', 'too-slow');
+			if (PlayState.SONG != null)
+			{
+				Song.chartPath = chartPath;
+				Song.loadedSongName = 'too-slow';
+				StageData.loadDirectory(PlayState.SONG);
+				loadedChart = true;
+			}
 		}
 		else
 		{

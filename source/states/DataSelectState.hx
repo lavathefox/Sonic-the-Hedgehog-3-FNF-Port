@@ -403,7 +403,7 @@ class DataSelectState extends MusicBeatState
 		{
 			var fallbackPaths:Array<String> = [
 				'example_mods/data/too-slow/too-slow.json',
-				'mods/data/too-slow/too-slow.json',
+				'mods/Sonic the Hedgehog 3 (FNF Port)/data/too-slow/too-slow.json',
 				'mods/too-slow/data/too-slow.json'
 			];
 

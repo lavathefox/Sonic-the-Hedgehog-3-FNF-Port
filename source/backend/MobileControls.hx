@@ -40,8 +40,7 @@ class MobileControls
 	public static var buttonA:FlxSprite;
 	public static var buttonB:FlxSprite;
 	public static var pauseButton:FlxSprite;
-	static var pauseBars:Array<FlxSprite> = [];
-	public static var hitboxArrows:HitBox;
+		public static var hitboxArrows:HitBox;
 	public static var hitboxA:HitBox;
 	public static var hitboxB:HitBox;
 	public static var pauseJustPressed:Bool = false;
@@ -140,7 +139,6 @@ class MobileControls
 		if (hitboxA != null) hitboxA.cameras = [mobileCamera];
 		if (hitboxB != null) hitboxB.cameras = [mobileCamera];
 		if (pauseButton != null) pauseButton.cameras = [mobileCamera];
-		for (bar in pauseBars) if (bar != null) bar.cameras = [mobileCamera];
 	}
 
 	static function createArrows():Void
@@ -206,20 +204,13 @@ class MobileControls
 
 	static function createPauseButton():Void
 	{
-		pauseButton = new FlxSprite(FlxG.width - 90, 24);
-		pauseButton.makeGraphic(56, 56, 0xAA000000);
+		pauseButton = new FlxSprite(FlxG.width - 80, 24);
+		pauseButton.loadGraphic(Paths.image('mobile/pause'));
+		pauseButton.setGraphicSize(56, 56);
+		pauseButton.updateHitbox();
+		pauseButton.antialiasing = false;
 		pauseButton.scrollFactor.set();
 		pauseButton.cameras = [mobileCamera];
-
-		var bar1 = new FlxSprite(pauseButton.x + 16, pauseButton.y + 13);
-		bar1.makeGraphic(7, 30, FlxColor.WHITE);
-		bar1.scrollFactor.set();
-		bar1.cameras = [mobileCamera];
-		var bar2 = new FlxSprite(pauseButton.x + 33, pauseButton.y + 13);
-		bar2.makeGraphic(7, 30, FlxColor.WHITE);
-		bar2.scrollFactor.set();
-		bar2.cameras = [mobileCamera];
-		pauseBars = [bar1, bar2];
 		applyMobileOptions();
 	}
 
@@ -259,7 +250,6 @@ class MobileControls
 		if (Std.isOfType(state, states.PlayState) && pauseButton != null)
 		{
 			if (!state.members.contains(pauseButton)) state.add(pauseButton);
-			for (bar in pauseBars) if (!state.members.contains(bar)) state.add(bar);
 		}
 
 		setVisible(visible);
@@ -284,7 +274,6 @@ class MobileControls
 		if (hitboxA != null && state.members.contains(hitboxA)) state.remove(hitboxA, false);
 		if (hitboxB != null && state.members.contains(hitboxB)) state.remove(hitboxB, false);
 		if (pauseButton != null && state.members.contains(pauseButton)) state.remove(pauseButton, false);
-		for (bar in pauseBars) if (state.members.contains(bar)) state.remove(bar, false);
 
 		if (currentState == state)
 			currentState = null;
@@ -576,7 +565,6 @@ class MobileControls
 			if (box != null) box.visible = showHitbox && visible;
 		var showPause:Bool = ClientPrefs.data.mobilePauseButton && Std.isOfType(currentState, states.PlayState) && visible;
 		if (pauseButton != null) pauseButton.visible = showPause;
-		for (bar in pauseBars) if (bar != null) bar.visible = showPause;
 		#end
 	}
 

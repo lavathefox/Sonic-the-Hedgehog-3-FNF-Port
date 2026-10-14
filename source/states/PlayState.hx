@@ -19,6 +19,10 @@ import lime.utils.Assets;
 import openfl.utils.Assets as OpenFlAssets;
 import openfl.events.KeyboardEvent;
 import haxe.Json;
+#if android
+import sys.FileSystem;
+import sys.io.File;
+#end
 
 import cutscenes.DialogueBoxPsych;
 
@@ -142,6 +146,96 @@ class PlayState extends MusicBeatState
 		return stageUI == "pixel" || stageUI.endsWith("-pixel");
 
 	public static var SONG:SwagSong = null;
+	#if android
+	public static var requestedChartName:String = null;
+
+	static function findAndroidChart(directory:String, fileName:String, depth:Int = 0):String
+	{
+		if (depth > 12 || !FileSystem.exists(directory) || !FileSystem.isDirectory(directory)) return null;
+
+		var entries:Array<String>;
+		try
+		{
+			entries = FileSystem.readDirectory(directory);
+		}
+		catch (e:Dynamic)
+		{
+			return null;
+		}
+
+		entries.sort(Reflect.compare);
+		for (entry in entries)
+		{
+			var fullPath:String = directory + (StringTools.endsWith(directory, "/") ? "" : "/") + entry;
+			if (FileSystem.isDirectory(fullPath))
+			{
+				var folderName:String = entry.toLowerCase();
+				if (entry.startsWith(".") || ["cache", "temp", "tmp", "build", ".git", ".gradle", "node_modules"].contains(folderName)) continue;
+				var found:String = findAndroidChart(fullPath, fileName, depth + 1);
+				if (found != null) return found;
+			}
+			else if (entry.toLowerCase() == fileName.toLowerCase())
+			{
+				return fullPath;
+			}
+		}
+		return null;
+	}
+
+	static function loadRequestedAndroidChart():Bool
+	{
+		if (requestedChartName == null || requestedChartName.length == 0) return SONG != null;
+
+		var songName:String = Paths.formatToSongPath(requestedChartName);
+		var chartFile:String = songName + ".json";
+		var roots:Array<String> = [
+			"mods",
+			"example_mods",
+			"assets",
+			"/storage/emulated/0/Android/data/com.shadowmario.psychengine/files",
+			"/storage/emulated/0/Download",
+			Sys.getCwd()
+		];
+		var checked:Map<String, Bool> = new Map<String, Bool>();
+
+		for (root in roots)
+		{
+			var normalizedRoot:String = root;
+			while (normalizedRoot.length > 1 && StringTools.endsWith(normalizedRoot, "/"))
+				normalizedRoot = normalizedRoot.substr(0, normalizedRoot.length - 1);
+			if (checked.exists(normalizedRoot)) continue;
+			checked.set(normalizedRoot, true);
+
+			var foundPath:String = findAndroidChart(normalizedRoot, chartFile);
+			if (foundPath == null) continue;
+
+			try
+			{
+				var loaded:SwagSong = Song.parseJSON(File.getContent(foundPath), songName);
+				if (loaded == null || loaded.notes == null)
+				{
+					trace("Android chart search: ignored invalid chart at " + foundPath);
+					continue;
+				}
+
+				SONG = loaded;
+				Song.chartPath = foundPath;
+				Song.loadedSongName = songName;
+				StageData.loadDirectory(SONG);
+				requestedChartName = null;
+				trace("Android chart search: loaded " + songName + " from " + foundPath);
+				return true;
+			}
+			catch (e:Dynamic)
+			{
+				trace("Android chart search: failed to read " + foundPath + ": " + e);
+			}
+		}
+
+		trace("Android chart search: could not find " + chartFile + " in accessible folders.");
+		return false;
+	}
+	#end
 	public static var isStoryMode:Bool = false;
 	public static var storyWeek:Int = 0;
 	public static var storyPlaylist:Array<String> = [];
@@ -270,6 +364,14 @@ class PlayState extends MusicBeatState
 	public static var nextReloadAll:Bool = false;
 	override public function create()
 	{
+		#if android
+		if (requestedChartName != null && !loadRequestedAndroidChart())
+		{
+			FlxG.log.error("Could not find chart " + requestedChartName + ". Put " + Paths.formatToSongPath(requestedChartName) + ".json in an accessible mods/data folder.");
+			FlxG.switchState(new states.MainMenuState());
+			return;
+		}
+		#end
 		//trace('Playback Rate: ' + playbackRate);
 		_lastLoadedModDirectory = Mods.currentModDirectory;
 		Paths.clearStoredMemory();

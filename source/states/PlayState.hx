@@ -176,7 +176,15 @@ class PlayState extends MusicBeatState
 			}
 			else if (entry.toLowerCase() == fileName.toLowerCase())
 			{
-				return fullPath;
+				try
+				{
+					var candidate:SwagSong = Song.parseJSON(File.getContent(fullPath), fileName);
+					if (candidate != null && candidate.notes != null) return fullPath;
+				}
+				catch (e:Dynamic)
+				{
+					trace("Android chart search: skipped invalid JSON at " + fullPath);
+				}
 			}
 		}
 		return null;

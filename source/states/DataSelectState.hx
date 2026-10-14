@@ -377,6 +377,13 @@ class DataSelectState extends MusicBeatState
 
 	function startLevel():Void
 	{
+		#if android
+		PlayState.requestedChartName = 'too-slow';
+		PlayState.SONG = null;
+		LoadingState.loadAndSwitchState(new PlayState());
+		return;
+		#end
+
 		var chartPath:String = Paths.json('too-slow/too-slow');
 		var loadedChart:Bool = false;
 

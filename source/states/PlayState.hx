@@ -149,109 +149,66 @@ class PlayState extends MusicBeatState
 	#if android
 	public static var requestedChartName:String = null;
 
-	static var androidChartSearchVisited:Int = 0;
-	static inline var ANDROID_CHART_SEARCH_MAX_DIRS:Int = 2500;
-
-	static function findAndroidChart(directory:String, fileName:String, depth:Int = 0):String
-	{
-		if (depth > 10 || androidChartSearchVisited >= ANDROID_CHART_SEARCH_MAX_DIRS
-			|| !FileSystem.exists(directory) || !FileSystem.isDirectory(directory)) return null;
-
-		androidChartSearchVisited++;
-		var entries:Array<String>;
-		try
-		{
-			entries = FileSystem.readDirectory(directory);
-		}
-		catch (e:Dynamic)
-		{
-			return null;
-		}
-
-		entries.sort(Reflect.compare);
-		for (entry in entries)
-		{
-			if (androidChartSearchVisited >= ANDROID_CHART_SEARCH_MAX_DIRS) break;
-			var fullPath:String = directory + (StringTools.endsWith(directory, "/") ? "" : "/") + entry;
-			if (FileSystem.isDirectory(fullPath))
-			{
-				var folderName:String = entry.toLowerCase();
-				if (entry.startsWith(".") || ["cache", "temp", "tmp", "build", ".git", ".gradle", "node_modules", "obb", "media", "thumbnails"].contains(folderName)) continue;
-				var found:String = findAndroidChart(fullPath, fileName, depth + 1);
-				if (found != null) return found;
-			}
-			else if (entry.toLowerCase() == fileName.toLowerCase())
-			{
-				try
-				{
-					var candidate:SwagSong = Song.parseJSON(File.getContent(fullPath), fileName);
-					if (candidate != null && candidate.notes != null) return fullPath;
-				}
-				catch (e:Dynamic)
-				{
-					trace("Android chart search: skipped invalid JSON at " + fullPath);
-				}
-			}
-		}
-		return null;
-	}
-
 	static function loadRequestedAndroidChart():Bool
 	{
 		if (requestedChartName == null || requestedChartName.length == 0) return SONG != null;
 
 		var songName:String = Paths.formatToSongPath(requestedChartName);
-		var chartFile:String = songName + ".json";
-		var cwd:String = Sys.getCwd();
-		var roots:Array<String> = [
-			"mods",
-			"example_mods",
-			cwd + "/mods",
-			cwd + "/example_mods",
-			"assets/shared/data",
-			"assets/preload/data",
-			"/storage/emulated/0/Android/data/com.shadowmario.psychengine/files/mods",
-			"/storage/emulated/0/Android/data/com.shadowmario.psychengine/files",
-			"/storage/emulated/0/Download"
-		];
-		androidChartSearchVisited = 0;
-		var checked:Map<String, Bool> = new Map<String, Bool>();
 
-		for (root in roots)
+		// First use Psych Engine's normal asset/mod resolver. This avoids scanning
+		// the phone's storage while the game is on the main thread.
+		try
 		{
-			var normalizedRoot:String = root;
-			while (normalizedRoot.length > 1 && StringTools.endsWith(normalizedRoot, "/"))
-				normalizedRoot = normalizedRoot.substr(0, normalizedRoot.length - 1);
-			if (checked.exists(normalizedRoot)) continue;
-			checked.set(normalizedRoot, true);
+			var chart:SwagSong = Song.getChart(songName, songName);
+			if (chart != null && chart.notes != null)
+			{
+				SONG = chart;
+				requestedChartName = null;
+				trace("Data Select: loaded " + songName + " through Song.getChart()");
+				return true;
+			}
+		}
+		catch (e:Dynamic)
+		{
+			trace("Data Select: standard chart load failed: " + e);
+		}
 
-			var foundPath:String = findAndroidChart(normalizedRoot, chartFile);
-			if (foundPath == null) continue;
+		// Only check expected mod chart locations. Never recursively scan Download,
+		// the whole app directory, or unrelated storage folders.
+		var chartFile:String = songName + ".json";
+		var relativePath:String = "data/" + songName + "/" + chartFile;
+		var candidates:Array<String> = [
+			"mods/Sonic the Hedgehog 3 (FNF Port)/" + relativePath,
+			"mods/" + relativePath,
+			"example_mods/" + relativePath,
+			"example_mods/Sonic the Hedgehog 3 (FNF Port)/" + relativePath,
+			"/storage/emulated/0/Android/data/com.shadowmario.psychengine/files/mods/Sonic the Hedgehog 3 (FNF Port)/" + relativePath,
+			"/storage/emulated/0/Android/data/com.shadowmario.psychengine/files/mods/" + relativePath
+		];
 
+		for (path in candidates)
+		{
+			if (!FileSystem.exists(path) || FileSystem.isDirectory(path)) continue;
 			try
 			{
-				var loaded:SwagSong = Song.parseJSON(File.getContent(foundPath), songName);
-				if (loaded == null || loaded.notes == null)
-				{
-					trace("Android chart search: ignored invalid chart at " + foundPath);
-					continue;
-				}
+				var chart:SwagSong = Song.parseJSON(File.getContent(path), songName);
+				if (chart == null || chart.notes == null) continue;
 
-				SONG = loaded;
-				Song.chartPath = foundPath;
+				SONG = chart;
+				Song.chartPath = path;
 				Song.loadedSongName = songName;
 				StageData.loadDirectory(SONG);
 				requestedChartName = null;
-				trace("Android chart search: loaded " + songName + " from " + foundPath);
+				trace("Data Select: loaded " + songName + " from " + path);
 				return true;
 			}
 			catch (e:Dynamic)
 			{
-				trace("Android chart search: failed to read " + foundPath + ": " + e);
+				trace("Data Select: invalid chart at " + path + ": " + e);
 			}
 		}
 
-		trace("Android chart search: could not find " + chartFile + " in accessible folders.");
+		trace("Data Select: chart not found at expected locations: " + chartFile);
 		return false;
 	}
 	#end

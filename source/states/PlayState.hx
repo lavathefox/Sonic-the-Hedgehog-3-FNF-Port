@@ -180,10 +180,13 @@ class PlayState extends MusicBeatState
 		var candidates:Array<String> = [
 			"mods/Sonic the Hedgehog 3 (FNF Port)/" + relativePath,
 			"mods/" + relativePath,
+			"mods/too-slow/data/" + chartFile,
 			"example_mods/" + relativePath,
 			"example_mods/Sonic the Hedgehog 3 (FNF Port)/" + relativePath,
+			"example_mods/too-slow/data/" + chartFile,
 			"/storage/emulated/0/Android/data/com.shadowmario.psychengine/files/mods/Sonic the Hedgehog 3 (FNF Port)/" + relativePath,
-			"/storage/emulated/0/Android/data/com.shadowmario.psychengine/files/mods/" + relativePath
+			"/storage/emulated/0/Android/data/com.shadowmario.psychengine/files/mods/" + relativePath,
+			"/storage/emulated/0/Android/data/com.shadowmario.psychengine/files/mods/too-slow/data/" + chartFile
 		];
 
 		for (path in candidates)

@@ -149,10 +149,15 @@ class PlayState extends MusicBeatState
 	#if android
 	public static var requestedChartName:String = null;
 
+	static var androidChartSearchVisited:Int = 0;
+	static inline var ANDROID_CHART_SEARCH_MAX_DIRS:Int = 2500;
+
 	static function findAndroidChart(directory:String, fileName:String, depth:Int = 0):String
 	{
-		if (depth > 12 || !FileSystem.exists(directory) || !FileSystem.isDirectory(directory)) return null;
+		if (depth > 10 || androidChartSearchVisited >= ANDROID_CHART_SEARCH_MAX_DIRS
+			|| !FileSystem.exists(directory) || !FileSystem.isDirectory(directory)) return null;
 
+		androidChartSearchVisited++;
 		var entries:Array<String>;
 		try
 		{
@@ -166,11 +171,12 @@ class PlayState extends MusicBeatState
 		entries.sort(Reflect.compare);
 		for (entry in entries)
 		{
+			if (androidChartSearchVisited >= ANDROID_CHART_SEARCH_MAX_DIRS) break;
 			var fullPath:String = directory + (StringTools.endsWith(directory, "/") ? "" : "/") + entry;
 			if (FileSystem.isDirectory(fullPath))
 			{
 				var folderName:String = entry.toLowerCase();
-				if (entry.startsWith(".") || ["cache", "temp", "tmp", "build", ".git", ".gradle", "node_modules"].contains(folderName)) continue;
+				if (entry.startsWith(".") || ["cache", "temp", "tmp", "build", ".git", ".gradle", "node_modules", "obb", "media", "thumbnails"].contains(folderName)) continue;
 				var found:String = findAndroidChart(fullPath, fileName, depth + 1);
 				if (found != null) return found;
 			}
@@ -196,14 +202,19 @@ class PlayState extends MusicBeatState
 
 		var songName:String = Paths.formatToSongPath(requestedChartName);
 		var chartFile:String = songName + ".json";
+		var cwd:String = Sys.getCwd();
 		var roots:Array<String> = [
 			"mods",
 			"example_mods",
-			"assets",
+			cwd + "/mods",
+			cwd + "/example_mods",
+			"assets/shared/data",
+			"assets/preload/data",
+			"/storage/emulated/0/Android/data/com.shadowmario.psychengine/files/mods",
 			"/storage/emulated/0/Android/data/com.shadowmario.psychengine/files",
-			"/storage/emulated/0/Download",
-			Sys.getCwd()
+			"/storage/emulated/0/Download"
 		];
+		androidChartSearchVisited = 0;
 		var checked:Map<String, Bool> = new Map<String, Bool>();
 
 		for (root in roots)

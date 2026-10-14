@@ -380,7 +380,7 @@ class DataSelectState extends MusicBeatState
 		#if android
 		PlayState.requestedChartName = 'too-slow';
 		PlayState.SONG = null;
-		LoadingState.loadAndSwitchState(new PlayState());
+		LoadingState.loadAndSwitchState(new PlayState(), true);
 		return;
 		#end
 

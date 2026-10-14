@@ -9,6 +9,11 @@ import flixel.util.FlxColor;
 import backend.Song;
 import backend.Paths;
 import backend.MobileControls;
+import backend.StageData;
+#if sys
+import sys.FileSystem;
+import sys.io.File;
+#end
 
 class DataSelectState extends MusicBeatState
 {
@@ -372,14 +377,60 @@ class DataSelectState extends MusicBeatState
 
 	function startLevel():Void
 	{
-		PlayState.SONG = Song.loadFromJson(
-			'too-slow',
-			'too-slow'
-		);
+		var chartPath:String = Paths.json('too-slow/too-slow');
+		var loadedChart:Bool = false;
 
-		LoadingState.loadAndSwitchState(
-			new PlayState()
-		);
+		#if sys
+		if (FileSystem.exists(chartPath))
+		{
+			PlayState.SONG = Song.loadFromJson('too-slow', 'too-slow');
+			loadedChart = PlayState.SONG != null;
+		}
+		else
+		{
+			var fallbackPaths:Array<String> = [
+				'example_mods/data/too-slow/too-slow.json',
+				'mods/data/too-slow/too-slow.json',
+				'mods/too-slow/data/too-slow.json'
+			];
+
+			for (path in fallbackPaths)
+			{
+				if (!loadedChart && FileSystem.exists(path))
+				{
+					try
+					{
+						PlayState.SONG = Song.parseJSON(File.getContent(path), 'too-slow');
+						if (PlayState.SONG != null)
+						{
+							Song.chartPath = path;
+							Song.loadedSongName = 'too-slow';
+							StageData.loadDirectory(PlayState.SONG);
+							loadedChart = true;
+						}
+					}
+					catch (e:Dynamic)
+					{
+						trace('Failed to load Too Slow chart from ' + path + ': ' + e);
+					}
+				}
+			}
+		}
+		#else
+		PlayState.SONG = Song.loadFromJson('too-slow', 'too-slow');
+		loadedChart = PlayState.SONG != null;
+		#end
+
+		if (!loadedChart)
+		{
+			trace('Data Select: Too Slow chart was not found. Expected data/too-slow/too-slow.json in mods or example_mods.');
+			FlxG.log.error('Data Select: Could not load the Too Slow chart. Check the chart JSON path.');
+			confirming = false;
+			isMoving = false;
+			return;
+		}
+
+		LoadingState.loadAndSwitchState(new PlayState());
 	}
 
 	override public function update(elapsed:Float):Void

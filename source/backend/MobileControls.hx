@@ -205,7 +205,7 @@ class MobileControls
 	static function createPauseButton():Void
 	{
 		pauseButton = new FlxSprite(FlxG.width - 80, 24);
-		pauseButton.loadGraphic(Paths.image('mobile/pause'));
+		pauseButton.loadGraphic(Paths.image('mobile/pauseButton'));
 		pauseButton.setGraphicSize(56, 56);
 		pauseButton.updateHitbox();
 		pauseButton.antialiasing = false;

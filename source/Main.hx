@@ -221,9 +221,11 @@ class Main extends Sprite
 		dateNow = dateNow.replace(" ", "_");
 		dateNow = dateNow.replace(":", "'");
 
-		var crashFolder:String = "./crash/";
 		#if android
-		crashFolder = "/storage/emulated/0/Sonic 3 FNF Port Crashes/";
+		// Save inside the app-specific external files directory, which Android allows the app to write to.
+		var crashFolder:String = Path.addTrailingSlash(System.applicationStorageDirectory) + "Sonic 3 FNF Port Crashes/";
+		#else
+		var crashFolder:String = "./crash/";
 		#end
 		path = crashFolder + "PsychEngine_" + dateNow + ".txt";
 
@@ -232,48 +234,30 @@ class Main extends Sprite
 			switch (stackItem)
 			{
 				case FilePos(s, file, line, column):
-					errMsg += file + " (line " + line + ")\n";
+					errMsg += file + " (line " + line + ")\\n";
 				default:
 					Sys.println(stackItem);
 			}
 		}
 
-		errMsg += "\nUncaught Error: " + e.error;
+		errMsg += "\\nUncaught Error: " + e.error;
 		// remove if you're modding and want the crash log message to contain the link
 		// please remember to actually modify the link for the github page to report the issues to.
 		#if officialBuild
-		errMsg += "\nPlease report this error to the GitHub page: https://github.com/ShadowMario/FNF-PsychEngine";
+		errMsg += "\\nPlease report this error to the GitHub page: https://github.com/ShadowMario/FNF-PsychEngine";
 		#end
-		errMsg += "\n\n> Crash Handler written by: sqirra-rng";
+		errMsg += "\\n\\n> Crash Handler written by: sqirra-rng";
 
 		var savedPath:String = path;
 		try
 		{
 			if (!FileSystem.exists(crashFolder))
 				FileSystem.createDirectory(crashFolder);
-			File.saveContent(path, errMsg + "\n");
+			File.saveContent(path, errMsg + "\\n");
 		}
 		catch (saveError:Dynamic)
 		{
-			#if android
-			// Android 11+ may block writing directly to /storage/emulated/0.
-			// Fall back to the app-specific external files directory, which needs no storage permission.
-			crashFolder = Path.addTrailingSlash(System.applicationStorageDirectory) + "Sonic 3 FNF Port Crashes/";
-			path = crashFolder + "PsychEngine_" + dateNow + ".txt";
-			try
-			{
-				if (!FileSystem.exists(crashFolder))
-					FileSystem.createDirectory(crashFolder);
-				File.saveContent(path, errMsg + "\n");
-				savedPath = path;
-			}
-			catch (fallbackError:Dynamic)
-			{
-				Sys.println("Could not save crash log: " + fallbackError);
-			}
-			#else
-			Sys.println("Could not save crash log: " + saveError);
-			#end
+			Sys.println("Could not save crash log to " + path + ": " + saveError);
 		}
 
 		Sys.println(errMsg);

@@ -221,7 +221,11 @@ class Main extends Sprite
 		dateNow = dateNow.replace(" ", "_");
 		dateNow = dateNow.replace(":", "'");
 
-		path = "./crash/" + "PsychEngine_" + dateNow + ".txt";
+		var crashFolder:String = "./crash/";
+		#if android
+		crashFolder = "/storage/emulated/0/Sonic 3 FNF Port Crashes/";
+		#end
+		path = crashFolder + "PsychEngine_" + dateNow + ".txt";
 
 		for (stackItem in callStack)
 		{
@@ -242,15 +246,42 @@ class Main extends Sprite
 		#end
 		errMsg += "\n\n> Crash Handler written by: sqirra-rng";
 
-		if (!FileSystem.exists("./crash/"))
-			FileSystem.createDirectory("./crash/");
-
-		File.saveContent(path, errMsg + "\n");
+		var savedPath:String = path;
+		try
+		{
+			if (!FileSystem.exists(crashFolder))
+				FileSystem.createDirectory(crashFolder);
+			File.saveContent(path, errMsg + "\n");
+		}
+		catch (saveError:Dynamic)
+		{
+			#if android
+			// Android 11+ may block writing directly to /storage/emulated/0.
+			// Fall back to the app-specific external files directory, which needs no storage permission.
+			crashFolder = Path.addTrailingSlash(System.applicationStorageDirectory) + "Sonic 3 FNF Port Crashes/";
+			path = crashFolder + "PsychEngine_" + dateNow + ".txt";
+			try
+			{
+				if (!FileSystem.exists(crashFolder))
+					FileSystem.createDirectory(crashFolder);
+				File.saveContent(path, errMsg + "\n");
+				savedPath = path;
+			}
+			catch (fallbackError:Dynamic)
+			{
+				Sys.println("Could not save crash log: " + fallbackError);
+			}
+			#else
+			Sys.println("Could not save crash log: " + saveError);
+			#end
+		}
 
 		Sys.println(errMsg);
-		Sys.println("Crash dump saved in " + Path.normalize(path));
+		Sys.println("Crash dump saved in " + Path.normalize(savedPath));
 
+		#if !android
 		Application.current.window.alert(errMsg, "Error!");
+		#end
 		#if DISCORD_ALLOWED
 		DiscordClient.shutdown();
 		#end

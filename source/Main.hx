@@ -255,26 +255,26 @@ class Main extends Sprite
 			switch (stackItem)
 			{
 				case FilePos(s, file, line, column):
-					errMsg += file + " (line " + line + ")\\n";
+					errMsg += file + " (line " + line + ")\n";
 				default:
 					Sys.println(stackItem);
 			}
 		}
 
-		errMsg += "\\nUncaught Error: " + e.error;
+		errMsg += "\nUncaught Error: " + e.error;
 		// remove if you're modding and want the crash log message to contain the link
 		// please remember to actually modify the link for the github page to report the issues to.
 		#if officialBuild
-		errMsg += "\\nPlease report this error to the GitHub page: https://github.com/ShadowMario/FNF-PsychEngine";
+		errMsg += "\nPlease report this error to the GitHub page: https://github.com/ShadowMario/FNF-PsychEngine";
 		#end
-		errMsg += "\\n\\n> Crash Handler written by: sqirra-rng";
+		errMsg += "\n\n> Crash Handler written by: sqirra-rng";
 
 		var savedPath:String = path;
 		try
 		{
 			if (!FileSystem.exists(crashFolder))
 				FileSystem.createDirectory(crashFolder);
-			File.saveContent(path, errMsg + "\\n");
+			File.saveContent(path, errMsg + "\n");
 		}
 		catch (saveError:Dynamic)
 		{

@@ -312,6 +312,14 @@ jobs:
             fi
           done
 
+      - name: Upload Android native libraries for crash analysis
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sonic3-FNF-Port-Android-Native-Libraries
+          path: export/**/*.so
+          if-no-files-found: warn
+          retention-days: 14
+
       - name: Upload Android APK
         uses: actions/upload-artifact@v4
         with:

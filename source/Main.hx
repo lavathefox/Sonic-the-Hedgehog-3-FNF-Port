@@ -91,7 +91,15 @@ class Main extends Sprite
 				FileSystem.createDirectory(crashFolder);
 			var crashLogPath:String = crashFolder + "CRASH_LOG.txt";
 			if (!FileSystem.exists(crashLogPath))
-				File.saveContent(crashLogPath, "Sonic 3 FNF Port crash log is ready.\nIf the game closes unexpectedly, reopen this file to check whether a Haxe crash was captured. Native Android crashes may not be recorded here.\n");
+				File.saveContent(crashLogPath, "Sonic 3 FNF Port diagnostic log.\nHaxe errors can be recorded here; native crashes such as SIGSEGV may stop the process before this handler runs.\n");
+
+			// Keep a launch history so a log file is useful even when the crash handler is never reached.
+			var launchLog = File.append(crashLogPath, false);
+			launchLog.writeString("\n=== APP STARTED: " + Date.now().toString() + " ===\n");
+			launchLog.writeString("Package: me.funkin.sonic3\n");
+			launchLog.writeString("Storage directory: " + System.applicationStorageDirectory + "\n");
+			launchLog.writeString("If the app closes without a crash entry, check Android native logs; a native crash may bypass Haxe's crash handler.\n");
+			launchLog.close();
 		}
 		catch (setupError:Dynamic)
 		{
@@ -274,7 +282,10 @@ class Main extends Sprite
 		{
 			if (!FileSystem.exists(crashFolder))
 				FileSystem.createDirectory(crashFolder);
-			File.saveContent(path, errMsg + "\n");
+			var crashOutput = File.append(path, false);
+			crashOutput.writeString("\n=== HAXE CRASH: " + Date.now().toString() + " ===\n");
+			crashOutput.writeString(errMsg + "\n");
+			crashOutput.close();
 		}
 		catch (saveError:Dynamic)
 		{

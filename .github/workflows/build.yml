@@ -1,4 +1,4 @@
-Name: Build Windows + Android
+name: Build Windows + Android
 
 on:
   push:

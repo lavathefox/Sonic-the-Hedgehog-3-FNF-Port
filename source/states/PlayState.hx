@@ -191,7 +191,7 @@ class PlayState extends MusicBeatState
 
 		var roots:Array<String> = ["mods", "example_mods"];
 		var appStorage:String = lime.system.System.applicationStorageDirectory;
-		roots.push(Path.addTrailingSlash(appStorage) + "mods");
+		roots.push(haxe.io.Path.addTrailingSlash(appStorage) + "mods");
 		roots.push(Path.addTrailingSlash(appStorage) + "example_mods");
 
 		for (root in roots)

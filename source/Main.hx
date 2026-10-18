@@ -35,6 +35,8 @@ import backend.ALSoftConfig; // Just to make sure DCE doesn't remove this, since
 import openfl.events.UncaughtErrorEvent;
 import haxe.CallStack;
 import haxe.io.Path;
+import sys.FileSystem;
+import sys.io.File;
 #end
 
 import backend.Highscore;
@@ -80,6 +82,24 @@ class Main extends Sprite
 		#elseif ios
 		Sys.setCwd(lime.system.System.applicationStorageDirectory);
 		#end
+		#if CRASH_HANDLER
+		#if android
+		try
+		{
+			var crashFolder:String = Path.addTrailingSlash(System.applicationStorageDirectory) + "Sonic 3 FNF Port Crashes/";
+			if (!FileSystem.exists(crashFolder))
+				FileSystem.createDirectory(crashFolder);
+			var crashLogPath:String = crashFolder + "CRASH_LOG.txt";
+			if (!FileSystem.exists(crashLogPath))
+				File.saveContent(crashLogPath, "Sonic 3 FNF Port crash log is ready.\nIf the game closes unexpectedly, reopen this file to check whether a Haxe crash was captured. Native Android crashes may not be recorded here.\n");
+		}
+		catch (setupError:Dynamic)
+		{
+			Sys.println("Could not initialize crash log folder: " + setupError);
+		}
+		#end
+		#end
+
 		#if VIDEOS_ALLOWED
 		hxvlc.util.Handle.init(#if (hxvlc >= "1.8.0")  ['--no-lua'] #end);
 		#end
@@ -222,12 +242,13 @@ class Main extends Sprite
 		dateNow = dateNow.replace(":", "'");
 
 		#if android
-		// Save inside the app-specific external files directory, which Android allows the app to write to.
+		// Save inside the app-specific files directory and use one easy-to-find log file.
 		var crashFolder:String = Path.addTrailingSlash(System.applicationStorageDirectory) + "Sonic 3 FNF Port Crashes/";
+		path = crashFolder + "CRASH_LOG.txt";
 		#else
 		var crashFolder:String = "./crash/";
-		#end
 		path = crashFolder + "PsychEngine_" + dateNow + ".txt";
+		#end
 
 		for (stackItem in callStack)
 		{

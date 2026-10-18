@@ -160,9 +160,12 @@ class PlayState extends MusicBeatState
 		try
 		{
 			var chart:SwagSong = Song.getChart(songName, songName);
-			if (chart != null && chart.notes != null)
+			if (chart != null && chart.notes != null && chart.notes.length > 0)
 			{
 				SONG = chart;
+				Song.chartPath = Paths.json(songName + "/" + songName);
+				Song.loadedSongName = songName;
+				StageData.loadDirectory(SONG);
 				requestedChartName = null;
 				trace("Data Select: loaded " + songName + " through Song.getChart()");
 				return true;

@@ -173,8 +173,8 @@ class PlayState extends MusicBeatState
 			trace("Data Select: standard chart load failed: " + e);
 		}
 
-		// Only check expected mod chart locations. Never recursively scan Download,
-		// the whole app directory, or unrelated storage folders.
+		// Search every mod folder recursively, because the chart may be nested
+		// inside a mod with a different folder name. Stay inside known mod roots.
 		var chartFile:String = songName + ".json";
 		var relativePath:String = "data/" + songName + "/" + chartFile;
 		var candidates:Array<String> = [
@@ -189,13 +189,24 @@ class PlayState extends MusicBeatState
 			"/storage/emulated/0/Android/data/me.funkin.sonic3/files/mods/too-slow/data/" + chartFile
 		];
 
+		var roots:Array<String> = ["mods", "example_mods"];
+		var appStorage:String = lime.system.System.applicationStorageDirectory;
+		roots.push(Path.addTrailingSlash(appStorage) + "mods");
+		roots.push(Path.addTrailingSlash(appStorage) + "example_mods");
+
+		for (root in roots)
+			collectChartCandidates(root, chartFile, candidates, 0);
+
+		var checked:Map<String, Bool> = new Map<String, Bool>();
 		for (path in candidates)
 		{
+			if (checked.exists(path)) continue;
+			checked.set(path, true);
 			if (!FileSystem.exists(path) || FileSystem.isDirectory(path)) continue;
 			try
 			{
 				var chart:SwagSong = Song.parseJSON(File.getContent(path), songName);
-				if (chart == null || chart.notes == null) continue;
+				if (chart == null || chart.notes == null || chart.notes.length == 0) continue;
 
 				SONG = chart;
 				Song.chartPath = path;
@@ -211,8 +222,34 @@ class PlayState extends MusicBeatState
 			}
 		}
 
-		trace("Data Select: chart not found at expected locations: " + chartFile);
+		trace("Data Select: chart not found in mods/example_mods roots: " + chartFile);
 		return false;
+	}
+
+	static function collectChartCandidates(root:String, chartFile:String, output:Array<String>, depth:Int):Void
+	{
+		if (depth > 8 || !FileSystem.exists(root) || !FileSystem.isDirectory(root)) return;
+
+		var entries:Array<String>;
+		try
+		{
+			entries = FileSystem.readDirectory(root);
+		}
+		catch (e:Dynamic)
+		{
+			trace("Data Select: cannot read mod directory " + root + ": " + e);
+			return;
+		}
+
+		for (entry in entries)
+		{
+			var path:String = haxe.io.Path.addTrailingSlash(root) + entry;
+			if (FileSystem.isDirectory(path))
+				collectChartCandidates(path, chartFile, output, depth + 1);
+			else if (entry.toLowerCase() == chartFile.toLowerCase() && path.indexOf("/data/") != -1)
+				output.push(path);
+		}
+	}
 	}
 	#end
 	public static var isStoryMode:Bool = false;

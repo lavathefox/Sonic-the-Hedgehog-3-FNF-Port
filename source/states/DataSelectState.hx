@@ -378,8 +378,13 @@ class DataSelectState extends MusicBeatState
 	function startLevel():Void
 	{
 		#if android
+		// Let PlayState resolve the chart through Psych's asset loader and then
+		// search all accessible mod folders if the standard path does not work.
+		FlxG.sound.music.stop();
 		PlayState.requestedChartName = 'too-slow';
 		PlayState.SONG = null;
+		Song.chartPath = null;
+		Song.loadedSongName = null;
 		LoadingState.loadAndSwitchState(new PlayState(), true);
 		return;
 		#end

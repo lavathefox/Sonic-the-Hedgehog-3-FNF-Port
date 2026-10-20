@@ -253,7 +253,6 @@ class PlayState extends MusicBeatState
 				output.push(path);
 		}
 	}
-	}
 	#end
 	public static var isStoryMode:Bool = false;
 	public static var storyWeek:Int = 0;

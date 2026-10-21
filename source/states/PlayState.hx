@@ -383,6 +383,7 @@ class PlayState extends MusicBeatState
 	override public function create()
 	{
 		#if android
+		trace("ANDROID_DIAG: PlayState.create entered; requestedChartName=" + requestedChartName + ", SONG=" + (SONG == null ? "null" : SONG.song));
 		if (requestedChartName != null && !loadRequestedAndroidChart())
 		{
 			FlxG.log.error("Could not find chart " + requestedChartName + ". Put " + Paths.formatToSongPath(requestedChartName) + ".json in an accessible mods/data folder.");
@@ -391,6 +392,9 @@ class PlayState extends MusicBeatState
 		}
 		#end
 		//trace('Playback Rate: ' + playbackRate);
+		#if android
+		trace("ANDROID_DIAG: chart check passed; SONG=" + (SONG == null ? "null" : SONG.song) + ", notes=" + (SONG == null || SONG.notes == null ? -1 : SONG.notes.length));
+		#end
 		_lastLoadedModDirectory = Mods.currentModDirectory;
 		Paths.clearStoredMemory();
 		if(nextReloadAll)
@@ -440,8 +444,14 @@ class PlayState extends MusicBeatState
 		persistentUpdate = true;
 		persistentDraw = true;
 
+		#if android
+		trace("ANDROID_DIAG: before BPM setup");
+		#end
 		Conductor.mapBPMChanges(SONG);
 		Conductor.bpm = SONG.bpm;
+		#if android
+		trace("ANDROID_DIAG: BPM setup complete; bpm=" + SONG.bpm);
+		#end
 
 		#if DISCORD_ALLOWED
 		// String that contains the mode defined here so it isn't necessary to call changePresence for each mode
@@ -462,8 +472,14 @@ class PlayState extends MusicBeatState
 			SONG.stage = StageData.vanillaSongStage(Paths.formatToSongPath(Song.loadedSongName));
 
 		curStage = SONG.stage;
+		#if android
+		trace("ANDROID_DIAG: stage selected: " + curStage);
+		#end
 
 		var stageData:StageFile = StageData.getStageFile(curStage);
+		#if android
+		trace("ANDROID_DIAG: stage data loaded; defaultZoom=" + stageData.defaultZoom);
+		#end
 		defaultCamZoom = stageData.defaultZoom;
 
 		stageUI = "normal";
@@ -498,6 +514,9 @@ class PlayState extends MusicBeatState
 		dadGroup = new FlxSpriteGroup(DAD_X, DAD_Y);
 		gfGroup = new FlxSpriteGroup(GF_X, GF_Y);
 
+		#if android
+		trace("ANDROID_DIAG: before stage construction");
+		#end
 		switch (curStage)
 		{
 			case 'stage': new StageWeek1(); 			//Week 1
@@ -512,6 +531,9 @@ class PlayState extends MusicBeatState
 			case 'phillyStreets': new PhillyStreets(); 	//Weekend 1 - Darnell, Lit Up, 2Hot
 			case 'phillyBlazin': new PhillyBlazin();	//Weekend 1 - Blazin
 		}
+		#if android
+		trace("ANDROID_DIAG: stage construction complete");
+		#end
 		if(isPixelStage) introSoundsSuffix = '-pixel';
 
 		#if (LUA_ALLOWED || HSCRIPT_ALLOWED)
@@ -529,11 +551,23 @@ class PlayState extends MusicBeatState
 			gfGroup.add(gf);
 		}
 
+		#if android
+		trace("ANDROID_DIAG: before opponent Character: " + SONG.player2);
+		#end
 		dad = new Character(0, 0, SONG.player2);
+		#if android
+		trace("ANDROID_DIAG: opponent Character created");
+		#end
 		startCharacterPos(dad, true);
 		dadGroup.add(dad);
 
+		#if android
+		trace("ANDROID_DIAG: before player Character: " + SONG.player1);
+		#end
 		boyfriend = new Character(0, 0, SONG.player1, true);
+		#if android
+		trace("ANDROID_DIAG: player Character created");
+		#end
 		startCharacterPos(boyfriend);
 		boyfriendGroup.add(boyfriend);
 

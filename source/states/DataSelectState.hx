@@ -1,7 +1,9 @@
 package states;
 
+import flixel.FlxCamera;
 import flixel.FlxG;
 import flixel.FlxSprite;
+import flixel.text.FlxText;
 import flixel.tweens.FlxTween;
 import flixel.tweens.FlxEase;
 import flixel.util.FlxColor;
@@ -17,6 +19,8 @@ import sys.io.File;
 
 class DataSelectState extends MusicBeatState
 {
+	static inline var SONG_ID:String = 'too-slow';
+
 	var selection:Int = 1;
 	var isMoving:Bool = false;
 	var doFlicker:Bool = true;
@@ -52,6 +56,10 @@ class DataSelectState extends MusicBeatState
 
 	var saves:Array<FlxSprite> = [];
 	var portraits:Array<FlxSprite> = [];
+
+	// On-screen error message (on Android the log is hard to read)
+	var errorCam:FlxCamera;
+	var errorText:FlxText;
 
 	override public function create():Void
 	{
@@ -375,80 +383,148 @@ class DataSelectState extends MusicBeatState
 		);
 	}
 
-	function startLevel():Void
+	/**
+	 * Loads the Too Slow chart into PlayState.SONG.
+	 * Works the same on every platform (including Android) and NEVER
+	 * lets an exception escape: it returns false if loading fails.
+	 */
+	function loadChart(errors:Array<String>):Bool
 	{
-		#if android
-		// Let PlayState resolve the chart through Psych's asset loader and then
-		// search all accessible mod folders if the standard path does not work.
-		FlxG.sound.music.stop();
-		PlayState.requestedChartName = 'too-slow';
-		PlayState.SONG = null;
-		Song.chartPath = null;
-		Song.loadedSongName = null;
-		LoadingState.loadAndSwitchState(new PlayState(), true);
-		return;
-		#end
-
-		var chartPath:String = Paths.json('too-slow/too-slow');
-		var loadedChart:Bool = false;
-
-		#if sys
-		if (FileSystem.exists(chartPath))
+		// 1) Psych's own loader (assets + mods)
+		try
 		{
-			PlayState.SONG = Song.getChart('too-slow', 'too-slow');
+			PlayState.SONG = Song.getChart(SONG_ID, SONG_ID);
 			if (PlayState.SONG != null)
 			{
-				Song.chartPath = chartPath;
-				Song.loadedSongName = 'too-slow';
+				Song.loadedSongName = SONG_ID;
 				StageData.loadDirectory(PlayState.SONG);
-				loadedChart = true;
+				return true;
 			}
+			errors.push('Song.getChart returned null');
 		}
-		else
+		catch (e:Dynamic)
 		{
-			var fallbackPaths:Array<String> = [
-				'example_mods/data/too-slow/too-slow.json',
-				'mods/Sonic the Hedgehog 3 (FNF Port)/data/too-slow/too-slow.json',
-				'mods/too-slow/data/too-slow.json'
-			];
+			errors.push('Song.getChart: ' + e);
+		}
 
-			for (path in fallbackPaths)
+		// 2) Manual paths (only on platforms with a file system)
+		#if sys
+		var paths:Array<String> = [
+			Paths.json(SONG_ID + '/' + SONG_ID),
+			'example_mods/data/too-slow/too-slow.json',
+			'mods/Sonic the Hedgehog 3 (FNF Port)/data/too-slow/too-slow.json',
+			'mods/data/too-slow/too-slow.json',
+			'mods/too-slow/data/too-slow.json'
+		];
+
+		// On Android the working directory may not be the expected root,
+		// so also try with Sys.getCwd() prepended.
+		var roots:Array<String> = ['', Sys.getCwd()];
+
+		for (root in roots)
+		{
+			for (p in paths)
 			{
-				if (!loadedChart && FileSystem.exists(path))
+				var full:String = root + p;
+				try
 				{
-					try
+					if (!FileSystem.exists(full))
+						continue;
+
+					PlayState.SONG = Song.parseJSON(File.getContent(full), SONG_ID);
+					if (PlayState.SONG != null)
 					{
-						PlayState.SONG = Song.parseJSON(File.getContent(path), 'too-slow');
-						if (PlayState.SONG != null)
-						{
-							Song.chartPath = path;
-							Song.loadedSongName = 'too-slow';
-							StageData.loadDirectory(PlayState.SONG);
-							loadedChart = true;
-						}
+						Song.chartPath = full;
+						Song.loadedSongName = SONG_ID;
+						StageData.loadDirectory(PlayState.SONG);
+						return true;
 					}
-					catch (e:Dynamic)
-					{
-						trace('Failed to load Too Slow chart from ' + path + ': ' + e);
-					}
+				}
+				catch (e:Dynamic)
+				{
+					errors.push(full + ': ' + e);
 				}
 			}
 		}
+
+		errors.push('No too-slow.json file found in any of the tested paths');
 		#else
-		PlayState.SONG = Song.loadFromJson('too-slow', 'too-slow');
-		loadedChart = PlayState.SONG != null;
+		try
+		{
+			PlayState.SONG = Song.loadFromJson(SONG_ID, SONG_ID);
+			if (PlayState.SONG != null)
+				return true;
+		}
+		catch (e:Dynamic)
+		{
+			errors.push('Song.loadFromJson: ' + e);
+		}
 		#end
 
-		if (!loadedChart)
+		PlayState.SONG = null;
+		return false;
+	}
+
+	function startLevel():Void
+	{
+		var errors:Array<String> = [];
+
+		// Never enter PlayState without a valid SONG: a null SONG is what closed the app.
+		if (!loadChart(errors))
 		{
-			trace('Data Select: Too Slow chart was not found. Expected data/too-slow/too-slow.json in mods or example_mods.');
-			FlxG.log.error('Data Select: Could not load the Too Slow chart. Check the chart JSON path.');
-			confirming = false;
-			isMoving = false;
+			failToStart('Could not load the Too Slow chart.\n\n' + errors.join('\n'));
 			return;
 		}
 
-		LoadingState.loadAndSwitchState(new PlayState());
+		try
+		{
+			if (FlxG.sound.music != null)
+				FlxG.sound.music.stop();
+
+			LoadingState.loadAndSwitchState(new PlayState(), true);
+		}
+		catch (e:Dynamic)
+		{
+			failToStart('Error while opening PlayState:\n' + e);
+		}
+	}
+
+	function failToStart(message:String):Void
+	{
+		trace('Data Select: ' + message);
+		FlxG.log.error('Data Select: ' + message);
+
+		// Restore everything so the player can try again
+		blueFade.alpha = 0;
+		blackFade.alpha = 0;
+		bfDataSelect.animation.finishCallback = null;
+		bfDataSelect.animation.play('idle', true);
+		confirming = false;
+		isMoving = false;
+		doFlicker = true;
+
+		showError(message);
+	}
+
+	function showError(message:String):Void
+	{
+		if (errorCam == null)
+		{
+			errorCam = new FlxCamera();
+			errorCam.bgColor = FlxColor.TRANSPARENT;
+			FlxG.cameras.add(errorCam, false);
+		}
+
+		if (errorText == null)
+		{
+			errorText = new FlxText(10, 10, FlxG.width - 20, '', 20);
+			errorText.color = FlxColor.RED;
+			errorText.setBorderStyle(OUTLINE, FlxColor.BLACK, 2);
+			errorText.cameras = [errorCam];
+			add(errorText);
+		}
+
+		errorText.text = message;
 	}
 
 	override public function update(elapsed:Float):Void
@@ -481,8 +557,8 @@ class DataSelectState extends MusicBeatState
 
 		if (FlxG.keys.justPressed.ENTER || MobileControls.aJustPressed)
 			confirmSelection();
-
 	}
+
 	override public function destroy():Void
 	{
 		#if android
@@ -492,5 +568,4 @@ class DataSelectState extends MusicBeatState
 
 		super.destroy();
 	}
-
 }

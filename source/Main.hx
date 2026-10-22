@@ -86,9 +86,8 @@ class Main extends Sprite
 			// Use /storage/emulated/0/.Sonic3Funkin as the working directory (mods live in its "mods" folder).
 			if (Sonic3Storage.ensureFolders(true))
 			{
-				// Access already granted: copy the mods bundled in the APK the first time, if any.
-				if (Sonic3Storage.isModsFolderEmpty())
-					Sonic3Storage.copyBundledMods();
+				// Access already granted: copy the mods bundled in the APK (first run, or when BUNDLE_REVISION was raised).
+				Sonic3Storage.syncBundledMods();
 			}
 			else
 			{

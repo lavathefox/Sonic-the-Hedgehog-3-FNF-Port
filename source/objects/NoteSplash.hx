@@ -95,7 +95,26 @@ class NoteSplash extends FlxSprite
 		}
 		else if (Paths.fileExists('$path.json', TEXT))
 		{
-			var config:Dynamic = haxe.Json.parse(Paths.getTextFromFile('$path.json'));
+			// An empty or broken JSON must not crash the game: fall back to the "no json" lookup below.
+			var rawJson:String = Paths.getTextFromFile('$path.json');
+			var config:Dynamic = null;
+
+			if (rawJson != null && rawJson.trim().length > 0)
+			{
+				try
+				{
+					config = haxe.Json.parse(rawJson);
+				}
+				catch (e:Dynamic)
+				{
+					trace('NoteSplash: invalid JSON in $path.json -> ' + e);
+				}
+			}
+			else
+			{
+				trace('NoteSplash: $path.json is empty, ignoring it.');
+			}
+
 			if (config != null)
 			{
 				var tempConfig:NoteSplashConfig = {

@@ -124,15 +124,20 @@ class Sonic3Storage
 
 	/**
 	 * Copies every asset whose id starts with "mods/" (plus "modsList.txt")
-	 * from the APK into the .Sonic3Funkin folder. Files that already exist are
-	 * skipped, so it is safe to call on every launch.
+	 * from the APK into the .Sonic3Funkin folder.
+	 *
+	 * - Existing files are kept, unless they are empty (an empty file in the
+	 *   mods folder would hide the real one and break JSON parsing).
+	 * - Bundled files that are empty or cannot be read are skipped instead of
+	 *   being written as 0-byte files.
 	 *
 	 * This only finds something if the mods are embedded in the APK
 	 * (for example with <assets path="mods" ... /> in project.xml).
 	 *
+	 * @param overwrite Replace files that already exist.
 	 * @return how many files were copied.
 	 */
-	public static function copyBundledMods():Int
+	public static function copyBundledMods(overwrite:Bool = false):Int
 	{
 		#if (android && sys)
 		var copied:Int = 0;
@@ -150,11 +155,19 @@ class Sonic3Storage
 
 			try
 			{
-				if (FileSystem.exists(target))
+				if (!overwrite && FileSystem.exists(target) && FileSystem.stat(target).size > 0)
 					continue;
 
+				var bytes = Assets.getBytes(id);
+
+				if (bytes == null || bytes.length == 0)
+				{
+					trace('Sonic3Storage: skipped ' + id + ' (the bundled file is empty or could not be read)');
+					continue;
+				}
+
 				createDirectory(Path.directory(target));
-				File.saveBytes(target, Assets.getBytes(id));
+				File.saveBytes(target, bytes);
 				copied++;
 			}
 			catch (e:Dynamic)
@@ -164,6 +177,62 @@ class Sonic3Storage
 		}
 
 		trace('Sonic3Storage: copied ' + copied + ' file(s) into ' + getModsFolder());
+		return copied;
+		#else
+		return 0;
+		#end
+	}
+
+	/** Raise this number whenever example_mods changes and installed games must receive the new files. */
+	public static inline var BUNDLE_REVISION:Int = 1;
+
+	/**
+	 * Copies the bundled mods when needed: on the first run, when the mods folder
+	 * is empty, or when BUNDLE_REVISION was raised (that case replaces existing files).
+	 * Remembers the revision in .Sonic3Funkin/.mods_revision.
+	 *
+	 * @return how many files were copied.
+	 */
+	public static function syncBundledMods():Int
+	{
+		#if (android && sys)
+		if (!ensureFolders())
+			return 0;
+
+		var marker:String = getRoot() + '.mods_revision';
+		var current:Int = -1;
+
+		try
+		{
+			if (FileSystem.exists(marker))
+			{
+				var parsed:Null<Int> = Std.parseInt(StringTools.trim(File.getContent(marker)));
+
+				if (parsed != null)
+					current = parsed;
+			}
+		}
+		catch (e:Dynamic) {}
+
+		var revisionChanged:Bool = current != BUNDLE_REVISION;
+
+		// Same revision and the mods folder already has files: nothing to do.
+		if (!revisionChanged && !isModsFolderEmpty())
+			return 0;
+
+		var copied:Int = copyBundledMods(revisionChanged);
+
+		// Only remember the revision when something was really copied,
+		// so a build without bundled mods does not block a later one.
+		if (copied > 0)
+		{
+			try
+			{
+				File.saveContent(marker, Std.string(BUNDLE_REVISION));
+			}
+			catch (e:Dynamic) {}
+		}
+
 		return copied;
 		#else
 		return 0;

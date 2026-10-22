@@ -187,7 +187,7 @@ class PermissionState extends FlxState
 		{
 			if (Sonic3Storage.ensureFolders(true))
 			{
-				var copied:Int = Sonic3Storage.copyBundledMods();
+				var copied:Int = Sonic3Storage.syncBundledMods();
 				trace('PermissionState: copied ' + copied + ' bundled mod file(s)');
 
 				// The working directory changed, so scan the mods folder again.

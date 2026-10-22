@@ -77,14 +77,30 @@ class Main extends Sprite
 		backend.Native.fixScaling();
 		#end
 
+		var showPermissionScreen:Bool = false;
+
 		// Credits to MAJigsaw77 (he's the og author for this code)
 		#if android
-		// Use /storage/emulated/0/.Sonic3Funkin as the working directory (mods live in its "mods" folder).
-		// If the storage permission is missing, fall back to the app's private storage directory.
-		if (!Sonic3Storage.ensureFolders(true))
+		if (Sonic3Storage.hasPermission())
 		{
-			Sys.println("Could not use " + Sonic3Storage.getRoot() + ", falling back to the app storage directory.");
+			// Use /storage/emulated/0/.Sonic3Funkin as the working directory (mods live in its "mods" folder).
+			if (Sonic3Storage.ensureFolders(true))
+			{
+				// Access already granted: copy the mods bundled in the APK the first time, if any.
+				if (Sonic3Storage.isModsFolderEmpty())
+					Sonic3Storage.copyBundledMods();
+			}
+			else
+			{
+				Sys.println("Could not use " + Sonic3Storage.getRoot() + ", falling back to the app storage directory.");
+				Sys.setCwd(Path.addTrailingSlash(System.applicationStorageDirectory));
+			}
+		}
+		else
+		{
+			// No storage access yet: use the private directory for now and show the permission screen first.
 			Sys.setCwd(Path.addTrailingSlash(System.applicationStorageDirectory));
+			showPermissionScreen = true;
 		}
 		#elseif ios
 		Sys.setCwd(lime.system.System.applicationStorageDirectory);
@@ -189,7 +205,11 @@ class Main extends Sprite
 		Controls.instance = new Controls();
 		ClientPrefs.loadDefaultKeys();
 		#if ACHIEVEMENTS_ALLOWED Achievements.load(); #end
-		addChild(new FlxGame(game.width, game.height, game.initialState, game.framerate, game.framerate, game.skipSplash, game.startFullscreen));
+		var startState:Class<FlxState> = game.initialState;
+		if (showPermissionScreen)
+			startState = states.PermissionState;
+
+		addChild(new FlxGame(game.width, game.height, startState, game.framerate, game.framerate, game.skipSplash, game.startFullscreen));
 
 		#if !mobile
 		fpsVar = new FPSCounter(10, 3, 0xFFFFFF);

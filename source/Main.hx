@@ -40,6 +40,7 @@ import sys.io.File;
 #end
 
 import backend.Highscore;
+import backend.Sonic3Storage;
 
 // NATIVE API STUFF, YOU CAN IGNORE THIS AND SCROLL //
 #if (linux && !debug)
@@ -78,7 +79,13 @@ class Main extends Sprite
 
 		// Credits to MAJigsaw77 (he's the og author for this code)
 		#if android
-		Sys.setCwd(Path.addTrailingSlash(System.applicationStorageDirectory));
+		// Use /storage/emulated/0/.Sonic3Funkin as the working directory (mods live in its "mods" folder).
+		// If the storage permission is missing, fall back to the app's private storage directory.
+		if (!Sonic3Storage.ensureFolders(true))
+		{
+			Sys.println("Could not use " + Sonic3Storage.getRoot() + ", falling back to the app storage directory.");
+			Sys.setCwd(Path.addTrailingSlash(System.applicationStorageDirectory));
+		}
 		#elseif ios
 		Sys.setCwd(lime.system.System.applicationStorageDirectory);
 		#end
@@ -86,7 +93,7 @@ class Main extends Sprite
 		#if android
 		try
 		{
-			var crashFolder:String = Path.addTrailingSlash(System.applicationStorageDirectory) + "Sonic 3 FNF Port Crashes/";
+			var crashFolder:String = getAndroidCrashFolder();
 			if (!FileSystem.exists(crashFolder))
 				FileSystem.createDirectory(crashFolder);
 			var crashLogPath:String = crashFolder + "CRASH_LOG.txt";
@@ -98,6 +105,7 @@ class Main extends Sprite
 			launchLog.writeString("\n=== APP STARTED: " + Date.now().toString() + " ===\n");
 			launchLog.writeString("Package: me.funkin.sonic3\n");
 			launchLog.writeString("Storage directory: " + System.applicationStorageDirectory + "\n");
+			launchLog.writeString("Working directory: " + Sys.getCwd() + "\n");
 			launchLog.writeString("If the app closes without a crash entry, check Android native logs; a native crash may bypass Haxe's crash handler.\n");
 			launchLog.close();
 		}
@@ -236,6 +244,21 @@ class Main extends Sprite
 		}
 	}
 
+	#if (CRASH_HANDLER && android)
+	/**
+	 * Folder where crash logs are written on Android.
+	 * Prefers the public .Sonic3Funkin folder so the log can be opened with a
+	 * file manager; falls back to the app's private storage directory.
+	 */
+	static function getAndroidCrashFolder():String
+	{
+		if (FileSystem.exists(Sonic3Storage.getRoot()))
+			return Sonic3Storage.getRoot() + "Crashes/";
+
+		return Path.addTrailingSlash(System.applicationStorageDirectory) + "Sonic 3 FNF Port Crashes/";
+	}
+	#end
+
 	// Code was entirely made by sqirra-rng for their fnf engine named "Izzy Engine", big props to them!!!
 	// very cool person for real they don't get enough credit for their work
 	#if CRASH_HANDLER
@@ -250,8 +273,8 @@ class Main extends Sprite
 		dateNow = dateNow.replace(":", "'");
 
 		#if android
-		// Save inside the app-specific files directory and use one easy-to-find log file.
-		var crashFolder:String = Path.addTrailingSlash(System.applicationStorageDirectory) + "Sonic 3 FNF Port Crashes/";
+		// Save in the public .Sonic3Funkin folder when available and use one easy-to-find log file.
+		var crashFolder:String = getAndroidCrashFolder();
 		path = crashFolder + "CRASH_LOG.txt";
 		#else
 		var crashFolder:String = "./crash/";

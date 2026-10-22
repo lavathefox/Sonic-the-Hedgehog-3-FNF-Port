@@ -123,9 +123,9 @@ class Sonic3Storage
 	}
 
 	/**
-	 * Copies every asset whose id starts with "mods/" from the APK into the
-	 * mods folder. Files that already exist are skipped, so it is safe to call
-	 * on every launch.
+	 * Copies every asset whose id starts with "mods/" (plus "modsList.txt")
+	 * from the APK into the .Sonic3Funkin folder. Files that already exist are
+	 * skipped, so it is safe to call on every launch.
 	 *
 	 * This only finds something if the mods are embedded in the APK
 	 * (for example with <assets path="mods" ... /> in project.xml).
@@ -142,7 +142,8 @@ class Sonic3Storage
 
 		for (id in Assets.list())
 		{
-			if (!StringTools.startsWith(id, 'mods/'))
+			// Mods live under "mods/"; "modsList.txt" (enabled mods) sits next to that folder.
+			if (!StringTools.startsWith(id, 'mods/') && id != 'modsList.txt')
 				continue;
 
 			var target:String = getRoot() + id;

@@ -24,7 +24,7 @@
 	
 	<!-- ______________________ PSYCH ENGINE CUSTOMIZATION ______________________ -->
 
-	<define name="MODS_ALLOWED" if="desktop" />
+    <define name="MODS_ALLOWED" if="desktop || android" />
 	<define name="HSCRIPT_ALLOWED" if="desktop || mobile" />
 	<define name="LUA_ALLOWED" if="desktop || mobile" />
 	<define name="ACHIEVEMENTS_ALLOWED" />
@@ -63,8 +63,15 @@
 
 	<android permission="android.permission.INTERNET" />
 	<android permission="android.permission.VIBRATE" />
-	<android permission="android.permission.READ_EXTERNAL_STORAGE" if="lime < 8.0.0" />
-	<android permission="android.permission.WRITE_EXTERNAL_STORAGE" if="lime < 8.0.0" />
+	<android permission="android.permission.READ_EXTERNAL_STORAGE" />
+	<android permission="android.permission.WRITE_EXTERNAL_STORAGE" />
+	<android permission="android.permission.MANAGE_EXTERNAL_STORAGE" />
+
+	<!-- Java helper used by Sonic3Storage (permission check and request through JNI) -->
+	<template path="project/StorageHelper.java" rename="app/src/main/java/me/funkin/sonic3/StorageHelper.java" if="android"/>
+
+	<!-- Custom manifest: keep it commented out until the app starts correctly without it. -->
+	<!-- <template path="project/AndroidManifest.xml" rename="app/src/main/AndroidManifest.xml" if="android"/> -->
 
 	<!-- _____________________________ Path Settings ____________________________ -->
 

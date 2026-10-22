@@ -6,6 +6,9 @@ import sys.FileSystem;
 import sys.io.File;
 #end
 import openfl.utils.Assets;
+#if android
+import lime.system.JNI;
+#end
 
 /**
  * Creates the ".Sonic3Funkin" storage folder (with a "mods" folder inside)
@@ -43,6 +46,48 @@ class Sonic3Storage
 	public static function getModsFolder():String
 	{
 		return getRoot() + 'mods/';
+	}
+
+	/**
+	 * True when the app may write to the shared storage
+	 * ("All files access" on Android 11+, the storage permission below that).
+	 * Needs project/StorageHelper.java to be part of the Android build.
+	 */
+	public static function hasPermission():Bool
+	{
+		#if android
+		try
+		{
+			var check:Dynamic = JNI.createStaticMethod('me/funkin/sonic3/StorageHelper', 'hasAllFilesAccess', '()Z');
+			return check();
+		}
+		catch (e:Dynamic)
+		{
+			trace('Sonic3Storage: permission check failed -> ' + e);
+			return false;
+		}
+		#else
+		return true;
+		#end
+	}
+
+	/**
+	 * Opens the system screen (Android 11+) or dialog (Android 6-10) where the
+	 * user grants storage access. The user has to relaunch the game afterwards.
+	 */
+	public static function requestPermission():Void
+	{
+		#if android
+		try
+		{
+			var request:Dynamic = JNI.createStaticMethod('me/funkin/sonic3/StorageHelper', 'requestAllFilesAccess', '()V');
+			request();
+		}
+		catch (e:Dynamic)
+		{
+			trace('Sonic3Storage: permission request failed -> ' + e);
+		}
+		#end
 	}
 
 	/**
@@ -121,6 +166,24 @@ class Sonic3Storage
 		return copied;
 		#else
 		return 0;
+		#end
+	}
+
+	/** True when the mods folder is missing or has nothing inside it. */
+	public static function isModsFolderEmpty():Bool
+	{
+		#if sys
+		try
+		{
+			var mods:String = getModsFolder();
+			return !FileSystem.exists(mods) || FileSystem.readDirectory(mods).length == 0;
+		}
+		catch (e:Dynamic)
+		{
+			return true;
+		}
+		#else
+		return false;
 		#end
 	}
 

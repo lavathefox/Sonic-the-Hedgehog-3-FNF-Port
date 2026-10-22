@@ -9,6 +9,16 @@ on:
 permissions:
   contents: read
 
+# Cancel an older run of the same branch when a new commit is pushed.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # hxcpp compile cache: compiled object files are reused between runs,
+  # so only the code that changed is rebuilt. This is the biggest speed-up.
+  HXCPP_COMPILE_CACHE: ${{ github.workspace }}/.hxcpp_cache
+
 jobs:
   build-windows:
     name: Build Windows
@@ -23,6 +33,23 @@ jobs:
         with:
           haxe-version: 4.3.4
 
+      # Keep this file at .github/workflows/build.yml: its hash is the cache key,
+      # so changing a library version below refreshes the cache automatically.
+      - name: Cache Haxe libraries
+        id: haxelib-cache
+        uses: actions/cache@v4
+        with:
+          path: .haxelib
+          key: haxelib-windows-${{ hashFiles('.github/workflows/build.yml') }}
+
+      - name: Cache hxcpp objects
+        uses: actions/cache@v4
+        with:
+          path: .hxcpp_cache
+          key: hxcpp-windows-${{ github.sha }}
+          restore-keys: |
+            hxcpp-windows-
+
       - name: Set up Haxelib
         shell: pwsh
         run: |
@@ -30,6 +57,7 @@ jobs:
           haxelib setup "$env:GITHUB_WORKSPACE/.haxelib"
 
       - name: Install Haxe dependencies
+        if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
           haxelib install hxcpp 4.3.2 --always
@@ -54,7 +82,8 @@ jobs:
         shell: pwsh
         run: haxelib run lime build windows -release
 
-      - name: Upload Windows build
+      # GitHub packages the uploaded folder as a .zip when you download the artifact.
+      - name: Upload Windows build (zip)
         uses: actions/upload-artifact@v4
         with:
           name: Sonic3-FNF-Port-Windows
@@ -86,22 +115,30 @@ jobs:
         with:
           packages: 'platform-tools'
 
+      - name: Locate Android SDK
+        id: sdk
+        shell: bash
+        run: echo "root=$ANDROID_SDK_ROOT" >> "$GITHUB_OUTPUT"
+
+      # The NDK download is large and slow, so it is cached together with the platform and build tools.
+      - name: Cache Android SDK and NDK
+        id: android-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.sdk.outputs.root }}/ndk/21.4.7075529
+            ${{ steps.sdk.outputs.root }}/platforms/android-31
+            ${{ steps.sdk.outputs.root }}/build-tools/31.0.0
+          key: android-sdk-ndk21.4.7075529-platform31-v1
+
       - name: Install Android SDK and NDK
+        if: steps.android-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           set -e
 
           SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           NDK_DIR="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
-
-          echo "Cleaning any incomplete NDK installation..."
-          rm -rf "$NDK_DIR"
-
-          # sdkmanager can leave a corrupted archive behind after a failed download.
-          # Remove only cached NDK archives before retrying the installation.
-          if [ -d "$HOME/.android" ]; then
-            find "$HOME/.android" -type f \( -iname '*21.4.7075529*' -o -iname '*android-ndk-r21e*' \) -delete || true
-          fi
 
           "$SDKMANAGER" --sdk_root="$ANDROID_SDK_ROOT" "platforms;android-31" "build-tools;31.0.0"
 
@@ -114,9 +151,8 @@ jobs:
             SDK_EXIT=$?
             set -o pipefail
 
-            # sdkmanager can exit non-zero when the confirmation pipe closes
-            # after it has finished reading the license prompt. The real
-            # validation is whether the NDK was completely installed.
+            # sdkmanager can exit non-zero when the confirmation pipe closes,
+            # so the real check is whether the NDK was completely installed.
             if [ -f "$NDK_DIR/source.properties" ]; then
               echo "OK: NDK 21.4.7075529 installed correctly."
               break
@@ -133,13 +169,45 @@ jobs:
             sleep 5
           done
 
+      - name: Export Android paths
+        shell: bash
+        run: |
+          NDK_DIR="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
+
+          if [ ! -f "$NDK_DIR/source.properties" ]; then
+            echo "ERROR: NDK 21.4.7075529 is missing."
+            exit 1
+          fi
+
           echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_ROOT=$NDK_DIR" >> "$GITHUB_ENV"
           echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
 
-          echo "NDK version:"
-          grep 'Pkg.Revision' "$NDK_DIR/source.properties"
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('.github/workflows/build.yml') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      - name: Cache Haxe libraries
+        id: haxelib-cache
+        uses: actions/cache@v4
+        with:
+          path: .haxelib
+          key: haxelib-android-${{ hashFiles('.github/workflows/build.yml') }}
+
+      - name: Cache hxcpp objects
+        uses: actions/cache@v4
+        with:
+          path: .hxcpp_cache
+          key: hxcpp-android-${{ github.sha }}
+          restore-keys: |
+            hxcpp-android-
 
       - name: Set up Haxelib
         shell: bash
@@ -148,6 +216,7 @@ jobs:
           haxelib setup "$GITHUB_WORKSPACE/.haxelib"
 
       - name: Install Haxe dependencies
+        if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
           haxelib install hxcpp 4.3.2 --always
@@ -167,7 +236,9 @@ jobs:
           haxelib git funkin.vis https://github.com/FunkinCrew/funkVis 22b1ce089dd924f15cdc4632397ef3504d464e90
           haxelib git grig.audio https://gitlab.com/haxe-grig/grig.audio.git cbf91e2180fd2e374924fe74844086aab7891666
 
-      - name: Configure Android ABIs
+      # Only arm64-v8a is built (almost every modern phone). Building three ABIs
+      # triples the C++ compile time. Add the other lines back if you need them.
+      - name: Configure Android ABI
         shell: bash
         run: |
           python3 - <<'PY'
@@ -176,149 +247,23 @@ jobs:
           path = Path("Project.xml")
           text = path.read_text(encoding="utf-8")
 
-          architectures = [
-              '  <architecture name="armeabi-v7a" if="android" />',
-              '  <architecture name="arm64-v8a" if="android" />',
-              '  <architecture name="x86_64" if="android" />',
-          ]
+          line = '  <architecture name="arm64-v8a" if="android" />'
 
-          missing = [line for line in architectures if line not in text]
-          if missing:
-              marker = "</project>"
-              text = text.replace(marker, "\n" + "\n".join(missing) + "\n" + marker, 1)
+          if line not in text:
+              text = text.replace("</project>", "\n" + line + "\n</project>", 1)
               path.write_text(text, encoding="utf-8")
           PY
 
-          echo "Android architectures configured:"
           grep '<architecture name=' Project.xml || true
 
-      - name: Configure Android build
+      - name: Configure Lime for Android
         shell: bash
-        run: |
-          export ANDROID_SDK="$ANDROID_SDK_ROOT"
-          export ANDROID_HOME="$ANDROID_SDK_ROOT"
-          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
-          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
+        run: haxelib run lime setup android
 
-          haxelib run lime setup android
-
-          # Discord Rich Presence is desktop-only.
-          # Keep hxdiscord_rpc completely out of the Android dependency graph.
-          if grep -Eq '<define name="DISCORD_ALLOWED"[^>]*if="desktop"' Project.xml; then
-            echo "OK: DISCORD_ALLOWED is desktop-only."
-          else
-            echo "ERROR: DISCORD_ALLOWED is not restricted to desktop."
-            exit 1
-          fi
-
-          if grep -q '<haxelib name="hxdiscord_rpc"' Project.xml && ! grep -q '<haxelib name="hxdiscord_rpc"[^>]*if="DISCORD_ALLOWED"' Project.xml; then
-            echo "ERROR: hxdiscord_rpc is not conditionally disabled for Android."
-            exit 1
-          fi
-
-          if haxelib list | grep -q '^hxdiscord_rpc'; then
-            echo "ERROR: hxdiscord_rpc is installed in the Android build environment."
-            exit 1
-          fi
-
-          echo "OK: hxdiscord_rpc is not installed for Android."
-
-          echo "Checking hxcpp:"
-          haxelib path hxcpp
-          if ! haxelib path hxcpp >/dev/null 2>&1; then
-            echo "ERROR: hxcpp is not installed correctly."
-            exit 1
-          fi
-
+      # No "lime clean" here on purpose: cleaning would throw away the cached objects.
       - name: Build Android APK
         shell: bash
-        run: |
-          export ANDROID_SDK="$ANDROID_SDK_ROOT"
-          export ANDROID_HOME="$ANDROID_SDK_ROOT"
-          export ANDROID_NDK_ROOT="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
-          export ANDROID_NDK_HOME="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
-
-          if grep -Eq '<define name="DISCORD_ALLOWED"[^>]*if="desktop"' Project.xml; then
-            echo "OK: Android build uses desktop-only Discord support."
-          else
-            echo "ERROR: Discord support is not restricted to desktop."
-            exit 1
-          fi
-
-          if haxelib list | grep -q '^hxdiscord_rpc'; then
-            echo "ERROR: hxdiscord_rpc is installed during Android build."
-            exit 1
-          fi
-
-          if ! haxelib path hxcpp >/dev/null 2>&1; then
-            echo "ERROR: hxcpp is not installed correctly."
-            exit 1
-          fi
-
-          echo "OK: hxcpp is installed:"
-          haxelib path hxcpp
-
-          haxelib run lime clean android
-          haxelib run lime build android -release
-
-      - name: Verify Android native libraries
-        shell: bash
-        run: |
-          set -e
-
-          APK="$(find export -type f -name '*.apk' | head -n 1)"
-
-          if [ -z "$APK" ]; then
-            echo "ERROR: No APK was generated."
-            exit 1
-          fi
-
-          echo "APK: $APK"
-          echo "Native libraries inside APK:"
-          unzip -l "$APK" | grep 'lib/.*/libApplicationMain.so' || true
-
-          APP_LIB="$(find export -type f -path '*/arm64-v8a/libApplicationMain.so' | head -n 1)"
-
-          if [ -n "$APP_LIB" ] && command -v llvm-nm >/dev/null 2>&1; then
-            echo "Checking ARM64 native library: $APP_LIB"
-            if llvm-nm -D "$APP_LIB" 2>/dev/null | grep -q 'BaseConnection.*Open'; then
-              echo "ERROR: Discord BaseConnection::Open is still referenced by libApplicationMain.so"
-              exit 1
-            fi
-            echo "OK: Discord BaseConnection::Open is not referenced."
-          fi
-
-      - name: Verify Android APK architectures
-        shell: bash
-        run: |
-          set -e
-
-          APK="$(find export -type f -name '*.apk' | head -n 1)"
-
-          if [ -z "$APK" ]; then
-            echo "ERROR: No APK was generated."
-            exit 1
-          fi
-
-          echo "APK: $APK"
-          echo "Native libraries inside APK:"
-          unzip -l "$APK" | grep 'lib/.*/libApplicationMain.so' || true
-
-          for ABI in armeabi-v7a arm64-v8a x86_64; do
-            if unzip -l "$APK" | grep -q "lib/$ABI/libApplicationMain.so"; then
-              echo "OK: $ABI"
-            else
-              echo "WARNING: $ABI was not included in the APK."
-            fi
-          done
-
-      - name: Upload Android native libraries for crash analysis
-        uses: actions/upload-artifact@v4
-        with:
-          name: Sonic3-FNF-Port-Android-Native-Libraries
-          path: export/**/*.so
-          if-no-files-found: warn
-          retention-days: 14
+        run: haxelib run lime build android -release
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v4

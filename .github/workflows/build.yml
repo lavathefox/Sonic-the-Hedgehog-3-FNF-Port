@@ -151,40 +151,61 @@ jobs:
       - name: Install Android SDK and NDK
         if: steps.android-cache.outputs.cache-hit != 'true'
         shell: bash
+        timeout-minutes: 50
         run: |
-          set -e
+          set -euo pipefail
 
           SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           NDK_DIR="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
+          PLATFORM_DIR="$ANDROID_SDK_ROOT/platforms/android-31"
+          BUILD_TOOLS_DIR="$ANDROID_SDK_ROOT/build-tools/31.0.0"
 
-          "$SDKMANAGER" --sdk_root="$ANDROID_SDK_ROOT" "platforms;android-31" "build-tools;31.0.0"
+          if [ ! -x "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager not found at $SDKMANAGER"
+            find "$ANDROID_SDK_ROOT/cmdline-tools" -maxdepth 4 -name sdkmanager -type f 2>/dev/null || true
+            exit 1
+          fi
 
-          for attempt in 1 2 3; do
-            echo "Installing NDK 21.4.7075529 (attempt $attempt/3)..."
-            rm -rf "$NDK_DIR"
+          install_package() {
+            local package="$1"
+            local check_file="$2"
+            local attempt=1
+            while [ "$attempt" -le 3 ]; do
+              if [ -f "$check_file" ]; then
+                echo "Already installed: $package"
+                return 0
+              fi
 
-            set +o pipefail
-            yes | "$SDKMANAGER" --sdk_root="$ANDROID_SDK_ROOT" "ndk;21.4.7075529"
-            SDK_EXIT=$?
-            set -o pipefail
+              echo "::group::Installing $package (attempt $attempt/3)"
+              set +e
+              yes | timeout 15m "$SDKMANAGER" --sdk_root="$ANDROID_SDK_ROOT" "$package"
+              local statuses=( "${PIPESTATUS[@]}" )
+              set -e
+              echo "::endgroup::"
 
-            # sdkmanager can exit non-zero when the confirmation pipe closes,
-            # so the real check is whether the NDK was completely installed.
-            if [ -f "$NDK_DIR/source.properties" ]; then
-              echo "OK: NDK 21.4.7075529 installed correctly."
-              break
-            fi
+              if [ -f "$check_file" ]; then
+                echo "Verified installation: $package"
+                return 0
+              fi
 
-            echo "NDK installation failed or is incomplete (sdkmanager exit: $SDK_EXIT)."
-            rm -rf "$NDK_DIR"
+              echo "::warning::Package $package is incomplete (yes exit ${statuses[0]:-unknown}, sdkmanager/timeout exit ${statuses[1]:-unknown})."
+              if [ "$attempt" -lt 3 ]; then
+                sleep 5
+              fi
+              attempt=$((attempt + 1))
+            done
 
-            if [ "$attempt" -eq 3 ]; then
-              echo "ERROR: Could not install NDK 21.4.7075529 after 3 attempts."
-              exit 1
-            fi
+            echo "::error::Failed to install $package after 3 attempts."
+            return 1
+          }
 
-            sleep 5
-          done
+          mkdir -p "$ANDROID_SDK_ROOT"
+          install_package "platforms;android-31" "$PLATFORM_DIR/android.jar"
+          install_package "build-tools;31.0.0" "$BUILD_TOOLS_DIR/aapt"
+          install_package "ndk;21.4.7075529" "$NDK_DIR/source.properties"
+
+          echo "Android SDK and NDK installation verified."
+          cat "$NDK_DIR/source.properties" | grep -E 'Pkg.Revision|Pkg.Desc' || true
 
       - name: Export Android paths
         shell: bash

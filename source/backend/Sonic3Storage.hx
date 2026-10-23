@@ -122,14 +122,25 @@ class Sonic3Storage
 		#end
 	}
 
+	/** File types that are read as text when their bytes come back empty. */
+	static final TEXT_EXTENSIONS:Array<String> = ['json', 'xml', 'txt', 'lua', 'hx', 'hxc', 'frag', 'vert', 'csv'];
+
+	static function isTextFile(id:String):Bool
+	{
+		return TEXT_EXTENSIONS.contains(Path.extension(id).toLowerCase());
+	}
+
 	/**
 	 * Copies every asset whose id starts with "mods/" (plus "modsList.txt")
 	 * from the APK into the .Sonic3Funkin folder.
 	 *
 	 * - Existing files are kept, unless they are empty (an empty file in the
-	 *   mods folder would hide the real one and break JSON parsing).
+	 *   mods folder would hide the real one and break JSON/XML parsing).
 	 * - Bundled files that are empty or cannot be read are skipped instead of
 	 *   being written as 0-byte files.
+	 * - Text files that come back empty as bytes are read again as text.
+	 * - A summary is written to .Sonic3Funkin/copy_report.txt after every copy,
+	 *   so problems can be read with a file manager.
 	 *
 	 * This only finds something if the mods are embedded in the APK
 	 * (for example with <assets path="mods" ... /> in project.xml).
@@ -141,6 +152,8 @@ class Sonic3Storage
 	{
 		#if (android && sys)
 		var copied:Int = 0;
+		var listed:Int = 0;
+		var problems:Array<String> = [];
 
 		if (!ensureFolders())
 			return 0;
@@ -151,6 +164,7 @@ class Sonic3Storage
 			if (!StringTools.startsWith(id, 'mods/') && id != 'modsList.txt')
 				continue;
 
+			listed++;
 			var target:String = getRoot() + id;
 
 			try
@@ -160,26 +174,75 @@ class Sonic3Storage
 
 				var bytes = Assets.getBytes(id);
 
+				// Some text assets come back empty as bytes: read them as text instead.
+				if ((bytes == null || bytes.length == 0) && isTextFile(id))
+				{
+					var text:String = Assets.getText(id);
+
+					if (text != null && text.length > 0)
+					{
+						createDirectory(Path.directory(target));
+						File.saveContent(target, text);
+						copied++;
+						continue;
+					}
+				}
+
 				if (bytes == null || bytes.length == 0)
 				{
-					trace('Sonic3Storage: skipped ' + id + ' (the bundled file is empty or could not be read)');
+					problems.push('EMPTY  ' + id);
 					continue;
 				}
 
 				createDirectory(Path.directory(target));
 				File.saveBytes(target, bytes);
+
+				var written:Int = FileSystem.stat(target).size;
+
+				if (written != bytes.length)
+					problems.push('SIZE   ' + id + ' (expected ' + bytes.length + ', wrote ' + written + ')');
+
 				copied++;
 			}
 			catch (e:Dynamic)
 			{
-				trace('Sonic3Storage: failed to copy ' + id + ' -> ' + e);
+				problems.push('ERROR  ' + id + ' -> ' + e);
 			}
 		}
 
-		trace('Sonic3Storage: copied ' + copied + ' file(s) into ' + getModsFolder());
+		writeCopyReport(listed, copied, problems);
+		trace('Sonic3Storage: copied ' + copied + ' of ' + listed + ' bundled file(s) into ' + getModsFolder());
 		return copied;
 		#else
 		return 0;
+		#end
+	}
+
+	/** Writes .Sonic3Funkin/copy_report.txt with the result of the last copy. */
+	static function writeCopyReport(listed:Int, copied:Int, problems:Array<String>):Void
+	{
+		#if sys
+		try
+		{
+			var lines:Array<String> = [
+				'Sonic3Storage copy report',
+				'Bundled files found: ' + listed,
+				'Files copied: ' + copied,
+				'Problems: ' + problems.length,
+				''
+			];
+
+			var shown:Int = Std.int(Math.min(problems.length, 200));
+
+			for (i in 0...shown)
+				lines.push(problems[i]);
+
+			if (problems.length > shown)
+				lines.push('... and ' + (problems.length - shown) + ' more');
+
+			File.saveContent(getRoot() + 'copy_report.txt', lines.join('\n'));
+		}
+		catch (e:Dynamic) {}
 		#end
 	}
 

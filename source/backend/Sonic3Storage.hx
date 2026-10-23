@@ -247,7 +247,7 @@ class Sonic3Storage
 	}
 
 	/** Raise this number whenever example_mods changes and installed games must receive the new files. */
-	public static inline var BUNDLE_REVISION:Int = 2;
+	public static inline var BUNDLE_REVISION:Int = 3;
 
 	/**
 	 * Copies the bundled mods when needed: on the first run, when the mods folder

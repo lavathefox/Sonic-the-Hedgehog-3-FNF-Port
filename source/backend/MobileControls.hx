@@ -8,6 +8,7 @@ import flixel.tweens.FlxTween;
 import flixel.util.FlxColor;
 import backend.ClientPrefs;
 import mobile.HitBox;
+import objects.Hitbox;
 
 class MobileControls
 {
@@ -40,6 +41,7 @@ class MobileControls
 	public static var buttonA:FlxSprite;
 	public static var buttonB:FlxSprite;
 	public static var pauseButton:FlxSprite;
+	public static var gameplayHitbox:Hitbox;
 		public static var hitboxArrows:HitBox;
 	public static var hitboxA:HitBox;
 	public static var hitboxB:HitBox;
@@ -96,6 +98,7 @@ class MobileControls
 		clearPressed();
 
 		createCamera();
+		createGameplayHitbox();
 		createArrows();
 		createButtons();
 		createHitboxes();
@@ -139,6 +142,17 @@ class MobileControls
 		if (hitboxA != null) hitboxA.cameras = [mobileCamera];
 		if (hitboxB != null) hitboxB.cameras = [mobileCamera];
 		if (pauseButton != null) pauseButton.cameras = [mobileCamera];
+		if (gameplayHitbox != null) gameplayHitbox.cameras = [mobileCamera];
+	}
+
+	static function createGameplayHitbox():Void
+	{
+		Hitbox.style = 'Gradient';
+		Hitbox.opacity = 0.35;
+		Hitbox.invisible = false;
+		Hitbox.ignoreTop = 72;
+		gameplayHitbox = new Hitbox();
+		gameplayHitbox.cameras = [mobileCamera];
 	}
 
 	static function createArrows():Void
@@ -236,6 +250,9 @@ class MobileControls
 
 		currentState = state;
 
+		if (Std.isOfType(state, states.PlayState) && gameplayHitbox != null && !state.members.contains(gameplayHitbox))
+			state.add(gameplayHitbox);
+
 		if (arrows != null && !state.members.contains(arrows))
 			state.add(arrows);
 
@@ -262,6 +279,9 @@ class MobileControls
 		#if android
 		if (state == null)
 			return;
+
+		if (gameplayHitbox != null && state.members.contains(gameplayHitbox))
+			state.remove(gameplayHitbox, false);
 
 		if (arrows != null && state.members.contains(arrows))
 			state.remove(arrows, false);
@@ -439,6 +459,28 @@ class MobileControls
 
 		if (buttonB != null && buttonB.visible && hitboxB != null && hitboxB.containsPoint(pointX, pointY)) touchB = true;
 		if (pauseButton != null && pauseButton.visible && isPointInside(pointX, pointY, pauseButton)) touchPause = true;
+	}
+
+	public static function isReservedTouch(touch:Dynamic):Bool
+	{
+		#if android
+		var point:Dynamic = getTouchPosition(touch);
+		if (point == null)
+			return false;
+
+		var x:Float = point.x;
+		var y:Float = point.y;
+
+		if (arrows != null && arrows.visible && hitboxArrows != null && hitboxArrows.containsPoint(x, y))
+			return true;
+		if (buttonA != null && buttonA.visible && hitboxA != null && hitboxA.containsPoint(x, y))
+			return true;
+		if (buttonB != null && buttonB.visible && hitboxB != null && hitboxB.containsPoint(x, y))
+			return true;
+		if (pauseButton != null && pauseButton.visible && isPointInside(x, y, pauseButton))
+			return true;
+		#end
+		return false;
 	}
 
 	static function updateAnimation():Void
@@ -680,6 +722,12 @@ class MobileControls
 		{
 			buttonB.destroy();
 			buttonB = null;
+		}
+
+		if (gameplayHitbox != null)
+		{
+			gameplayHitbox.destroy();
+			gameplayHitbox = null;
 		}
 
 		if (mobileCamera != null)

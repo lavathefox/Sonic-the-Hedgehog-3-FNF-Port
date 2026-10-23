@@ -36,7 +36,7 @@ class Hitbox extends FlxSpriteGroup
 	public static var hitboxScale:Float = 1.0;
 
 	/** Lane opacity while a finger is on it (0 to 1). */
-	public static var opacity:Float = 0.55;
+	public static var opacity:Float = 0.95;
 
 	/** Hide the lanes but keep the touch input working. */
 	public static var invisible:Bool = false;

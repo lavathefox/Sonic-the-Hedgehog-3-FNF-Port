@@ -11,6 +11,7 @@ import openfl.display.BitmapData;
 import flixel.FlxBasic;
 import flixel.FlxObject;
 import flixel.FlxState;
+import flixel.util.FlxColor;
 
 #if (!flash && sys)
 import flixel.addons.display.FlxRuntimeShader;
@@ -23,6 +24,7 @@ import objects.Note;
 import objects.NoteSplash;
 import objects.Character;
 
+import states.PlayState;
 import states.MainMenuState;
 import states.StoryMenuState;
 import states.FreeplayState;

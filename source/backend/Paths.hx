@@ -29,6 +29,9 @@ class Paths
 	inline public static var SOUND_EXT = #if web "mp3" #else "ogg" #end;
 	inline public static var VIDEO_EXT = "mp4";
 
+	/** Textures bigger than this (in pixels) are never moved to the GPU cache: many phones cannot create them. */
+	static inline var MAX_GPU_TEXTURE:Int = 4096;
+
 	public static function excludeAsset(key:String) {
 		if (!dumpExclusions.contains(key))
 			dumpExclusions.push(key);
@@ -59,6 +62,11 @@ class Paths
 	@:access(flixel.system.frontEnds.BitmapFrontEnd._cache)
 	public static function clearStoredMemory()
 	{
+		// Folder listings used by the case-insensitive lookup may be outdated (files can be copied after startup).
+		#if (MODS_ALLOWED && sys)
+		clearDirectoryCache();
+		#end
+
 		// clear anything not in the tracked assets list
 		for (key in FlxG.bitmap._cache.keys())
 		{
@@ -147,8 +155,32 @@ class Paths
 	static public function setCurrentLevel(name:String)
 		currentLevel = name.toLowerCase();
 
+	/**
+	 * Cleans an asset key coming from a script or a mod: Windows-style backslashes,
+	 * repeated slashes, a leading "./" and surrounding spaces are fixed.
+	 * Those only worked on Windows, so they are a common reason for missing sprites on Android.
+	 */
+	public static function normalizeKey(key:String):String
+	{
+		if (key == null)
+			return key;
+
+		key = StringTools.trim(StringTools.replace(key, '\\', '/'));
+
+		while (key.indexOf('//') != -1)
+			key = StringTools.replace(key, '//', '/');
+
+		while (StringTools.startsWith(key, './'))
+			key = key.substr(2);
+
+		return key;
+	}
+
 	public static function getPath(file:String, ?type:AssetType = TEXT, ?parentfolder:String, ?modsAllowed:Bool = true):String
 	{
+		file = normalizeKey(file);
+		parentfolder = normalizeKey(parentfolder);
+
 		#if MODS_ALLOWED
 		if(modsAllowed)
 		{
@@ -160,12 +192,14 @@ class Paths
 
 			// Android storage is case-sensitive, unlike many Windows setups.
 			// Resolve each path component without changing the stored filename.
+			#if sys
 			var resolvedModded:String = resolveModPathCaseInsensitive(modded);
 			if (resolvedModded != null && FileSystem.exists(resolvedModded))
 			{
 				trace('MOD PATH CASE FALLBACK: ' + modded + ' -> ' + resolvedModded);
 				return resolvedModded;
 			}
+			#end
 		}
 		#end
 
@@ -182,6 +216,38 @@ class Paths
 	}
 
 	#if (MODS_ALLOWED && sys)
+	// Lowercase name -> real name, per folder. Reading a big folder (like images/) on every
+	// failed lookup is slow on phones, so each listing is read once and kept.
+	static var directoryCache:Map<String, Map<String, String>> = new Map();
+
+	/** Forgets the cached folder listings (called when the memory is cleared and after files are copied). */
+	public static function clearDirectoryCache():Void
+	{
+		directoryCache = new Map();
+	}
+
+	static function listDirectory(directory:String):Map<String, String>
+	{
+		var cached:Map<String, String> = directoryCache.get(directory);
+
+		if (cached != null)
+			return cached;
+
+		var listing:Map<String, String> = new Map();
+
+		for (entry in FileSystem.readDirectory(directory))
+		{
+			var lower:String = entry.toLowerCase();
+
+			// If two names only differ by case, keep the first one.
+			if (!listing.exists(lower))
+				listing.set(lower, entry);
+		}
+
+		directoryCache.set(directory, listing);
+		return listing;
+	}
+
 	static function resolveModPathCaseInsensitive(path:String):String
 	{
 		if (path == null || path.length == 0)
@@ -208,15 +274,7 @@ class Paths
 				if (!FileSystem.exists(directory) || !FileSystem.isDirectory(directory))
 					return null;
 
-				var match:String = null;
-				for (entry in FileSystem.readDirectory(directory))
-				{
-					if (entry.toLowerCase() == part.toLowerCase())
-					{
-						match = entry;
-						break;
-					}
-				}
+				var match:String = listDirectory(directory).get(part.toLowerCase());
 
 				if (match == null)
 					return null;
@@ -238,6 +296,50 @@ class Paths
 		}
 	}
 	#end
+
+	static var reportedProblems:Map<String, Bool> = new Map();
+	static var reportedCount:Int = 0;
+
+	static function currentModName():String
+	{
+		#if MODS_ALLOWED
+		return Mods.currentModDirectory;
+		#else
+		return '';
+		#end
+	}
+
+	/**
+	 * Android only: writes a line to asset_problems.txt (in the working directory, next to the
+	 * mods folder) the first time an asset fails to load or looks risky, so the exact name can be
+	 * read with a file manager. The file is replaced on every launch.
+	 *
+	 * @param kind IMAGE, ATLAS, SOUND or LARGE.
+	 */
+	public static function reportAssetProblem(kind:String, key:String, detail:String):Void
+	{
+		#if (android && sys)
+		var id:String = kind + '|' + key;
+
+		if (reportedProblems.exists(id) || reportedCount >= 300)
+			return;
+
+		reportedProblems.set(id, true);
+		reportedCount++;
+
+		try
+		{
+			var output = reportedCount == 1 ? File.write('asset_problems.txt', false) : File.append('asset_problems.txt', false);
+
+			if (reportedCount == 1)
+				output.writeString('Assets that failed to load. Each line: type, key, details.\n');
+
+			output.writeString(kind + '  ' + key + '  |  ' + detail + '  |  mod: ' + currentModName() + '\n');
+			output.close();
+		}
+		catch (e:Dynamic) {}
+		#end
+	}
 
 	inline static public function getFolderPath(file:String, folder = "shared")
 		return 'assets/$folder/$file';
@@ -295,7 +397,7 @@ class Paths
 	public static var currentTrackedAssets:Map<String, FlxGraphic> = [];
 	static public function image(key:String, ?parentFolder:String = null, ?allowGPU:Bool = true):FlxGraphic
 	{
-		key = Language.getFileTranslation('images/$key') + '.png';
+		key = Language.getFileTranslation('images/' + normalizeKey(key)) + '.png';
 		var bitmap:BitmapData = null;
 		if (currentTrackedAssets.exists(key))
 		{
@@ -340,11 +442,17 @@ class Paths
 			if (bitmap == null)
 			{
 				trace('BITMAP ERROR: Bitmap not found or unreadable: ' + file + ' | key: ' + key);
+				reportAssetProblem('IMAGE', key, 'not found or unreadable, looked for: ' + file);
 				return null;
 			}
 		}
 
-		if (allowGPU && ClientPrefs.data.cacheOnGPU && bitmap.image != null)
+		// Very large textures can fail on phones (usually the limit is 4096 px per side).
+		var tooLargeForGPU:Bool = bitmap.width > MAX_GPU_TEXTURE || bitmap.height > MAX_GPU_TEXTURE;
+		if (tooLargeForGPU)
+			reportAssetProblem('LARGE', key, bitmap.width + 'x' + bitmap.height + ' px, may not render on phones with a 4096 px texture limit');
+
+		if (allowGPU && ClientPrefs.data.cacheOnGPU && bitmap.image != null && !tooLargeForGPU)
 		{
 			bitmap.lock();
 			if (bitmap.__texture == null)
@@ -393,14 +501,12 @@ class Paths
 		#if MODS_ALLOWED
 		if(!ignoreMods)
 		{
-			var modKey:String = key;
-			if(parentFolder == 'songs') modKey = 'songs/$key';
+			var modKey:String = normalizeKey(key);
+			if(parentFolder == 'songs') modKey = 'songs/$modKey';
 
-			for(mod in Mods.getGlobalMods())
-				if (FileSystem.exists(mods('$mod/$modKey')))
-					return true;
-
-			if (FileSystem.exists(mods(Mods.currentModDirectory + '/' + modKey)) || FileSystem.exists(mods(modKey)))
+			// modFolders checks the current mod, the global mods and mods/<key>,
+			// including the case-insensitive lookup used on Android.
+			if (FileSystem.exists(modFolders(modKey)))
 				return true;
 		}
 		#end
@@ -420,6 +526,7 @@ class Paths
 			if (imageLoaded == null || xmlContent == null || xmlContent.length == 0)
 			{
 				trace('ATLAS ERROR: Sparrow key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' xml=' + xmlPath);
+				reportAssetProblem('ATLAS', key, 'image=' + (imageLoaded == null ? 'missing' : 'ok') + ', xml=' + xmlPath + (xmlContent == null || xmlContent.length == 0 ? ' (empty)' : ''));
 				return null;
 			}
 			return FlxAtlasFrames.fromSparrow(imageLoaded, xmlContent);
@@ -435,6 +542,7 @@ class Paths
 			if (imageLoaded == null || jsonContent == null || jsonContent.length == 0)
 			{
 				trace('ATLAS ERROR: TexturePacker key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' json=' + jsonPath);
+				reportAssetProblem('ATLAS', key, 'image=' + (imageLoaded == null ? 'missing' : 'ok') + ', json=' + jsonPath + (jsonContent == null || jsonContent.length == 0 ? ' (empty)' : ''));
 				return null;
 			}
 			return FlxAtlasFrames.fromTexturePackerJson(imageLoaded, jsonContent);
@@ -475,6 +583,7 @@ class Paths
 			if (imageLoaded == null || xmlContent == null || xmlContent.length == 0)
 			{
 				trace('ATLAS ERROR: key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' xml=' + xmlPath + ' xmlLength=' + (xmlContent == null ? -1 : xmlContent.length));
+				reportAssetProblem('ATLAS', key, 'image=' + (imageLoaded == null ? 'missing' : 'ok') + ', xml=' + xmlPath + (xmlContent == null || xmlContent.length == 0 ? ' (empty)' : ''));
 				return null;
 			}
 			return FlxAtlasFrames.fromSparrow(imageLoaded, xmlContent);
@@ -483,6 +592,7 @@ class Paths
 		if (OpenFlAssets.exists(xmlPath, TEXT))
 			return FlxAtlasFrames.fromSparrow(imageLoaded, xmlPath);
 		trace('ATLAS ERROR: Sparrow XML not found: ' + xmlPath + ' (key=' + key + ')');
+		reportAssetProblem('ATLAS', key, 'Sparrow XML not found: ' + xmlPath);
 		return null;
 	}
 
@@ -497,6 +607,7 @@ class Paths
 			if (imageLoaded == null || txtContent == null || txtContent.length == 0)
 			{
 				trace('ATLAS ERROR: Packer key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' txt=' + txtPath);
+				reportAssetProblem('ATLAS', key, 'image=' + (imageLoaded == null ? 'missing' : 'ok') + ', txt=' + txtPath + (txtContent == null || txtContent.length == 0 ? ' (empty)' : ''));
 				return null;
 			}
 			return FlxAtlasFrames.fromSpriteSheetPacker(imageLoaded, txtContent);
@@ -505,6 +616,7 @@ class Paths
 		if (OpenFlAssets.exists(txtPath, TEXT))
 			return FlxAtlasFrames.fromSpriteSheetPacker(imageLoaded, txtPath);
 		trace('ATLAS ERROR: Packer TXT not found: ' + txtPath + ' (key=' + key + ')');
+		reportAssetProblem('ATLAS', key, 'no .xml/.json/.txt atlas found, last tried: ' + txtPath);
 		return null;
 	}
 
@@ -519,6 +631,7 @@ class Paths
 			if (imageLoaded == null || jsonContent == null || jsonContent.length == 0)
 			{
 				trace('ATLAS ERROR: JSON key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' json=' + jsonPath);
+				reportAssetProblem('ATLAS', key, 'image=' + (imageLoaded == null ? 'missing' : 'ok') + ', json=' + jsonPath + (jsonContent == null || jsonContent.length == 0 ? ' (empty)' : ''));
 				return null;
 			}
 			return FlxAtlasFrames.fromTexturePackerJson(imageLoaded, jsonContent);
@@ -527,6 +640,7 @@ class Paths
 		if (OpenFlAssets.exists(jsonPath, TEXT))
 			return FlxAtlasFrames.fromTexturePackerJson(imageLoaded, jsonPath);
 		trace('ATLAS ERROR: Aseprite JSON not found: ' + jsonPath + ' (key=' + key + ')');
+		reportAssetProblem('ATLAS', key, 'Aseprite JSON not found: ' + jsonPath);
 		return null;
 	}
 
@@ -559,6 +673,7 @@ class Paths
 			{
 				trace('SOUND NOT FOUND: $key, PATH: $path');
 				FlxG.log.error('SOUND NOT FOUND: $key, PATH: $path');
+				reportAssetProblem('SOUND', key, 'not found, looked for: ' + file);
 				return FlxAssets.getSound('flixel/sounds/beep');
 			}
 		}

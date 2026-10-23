@@ -321,33 +321,42 @@ class Paths
 
 	static public function getAtlas(key:String, ?parentFolder:String = null, ?allowGPU:Bool = true):FlxAtlasFrames
 	{
-		var useMod = false;
 		var imageLoaded:FlxGraphic = image(key, parentFolder, allowGPU);
+		var xmlPath:String = getPath('images/$key.xml', TEXT, parentFolder, true);
+		var jsonPath:String = getPath('images/$key.json', TEXT, parentFolder, true);
 
-		var myXml:Dynamic = getPath('images/$key.xml', TEXT, parentFolder, true);
-		if(OpenFlAssets.exists(myXml) #if MODS_ALLOWED || (FileSystem.exists(myXml) && (useMod = true)) #end )
+		#if MODS_ALLOWED
+		if (FileSystem.exists(xmlPath))
 		{
-			#if MODS_ALLOWED
-			return FlxAtlasFrames.fromSparrow(imageLoaded, (useMod ? File.getContent(myXml) : myXml));
-			#else
-			return FlxAtlasFrames.fromSparrow(imageLoaded, myXml);
-			#end
-		}
-		else
-		{
-			var myJson:Dynamic = getPath('images/$key.json', TEXT, parentFolder, true);
-			if(OpenFlAssets.exists(myJson) #if MODS_ALLOWED || (FileSystem.exists(myJson) && (useMod = true)) #end )
+			var xmlContent:String = File.getContent(xmlPath);
+			if (imageLoaded == null || xmlContent == null || xmlContent.length == 0)
 			{
-				#if MODS_ALLOWED
-				return FlxAtlasFrames.fromTexturePackerJson(imageLoaded, (useMod ? File.getContent(myJson) : myJson));
-				#else
-				return FlxAtlasFrames.fromTexturePackerJson(imageLoaded, myJson);
-				#end
+				trace('ATLAS ERROR: Sparrow key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' xml=' + xmlPath);
+				return null;
 			}
+			return FlxAtlasFrames.fromSparrow(imageLoaded, xmlContent);
 		}
-		return getPackerAtlas(key, parentFolder);
+		#end
+		if (OpenFlAssets.exists(xmlPath, TEXT))
+			return FlxAtlasFrames.fromSparrow(imageLoaded, xmlPath);
+
+		#if MODS_ALLOWED
+		if (FileSystem.exists(jsonPath))
+		{
+			var jsonContent:String = File.getContent(jsonPath);
+			if (imageLoaded == null || jsonContent == null || jsonContent.length == 0)
+			{
+				trace('ATLAS ERROR: TexturePacker key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' json=' + jsonPath);
+				return null;
+			}
+			return FlxAtlasFrames.fromTexturePackerJson(imageLoaded, jsonContent);
+		}
+		#end
+		if (OpenFlAssets.exists(jsonPath, TEXT))
+			return FlxAtlasFrames.fromTexturePackerJson(imageLoaded, jsonPath);
+
+		return getPackerAtlas(key, parentFolder, allowGPU);
 	}
-	
 	static public function getMultiAtlas(keys:Array<String>, ?parentFolder:String = null, ?allowGPU:Bool = true):FlxAtlasFrames
 	{
 		

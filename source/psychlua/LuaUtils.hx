@@ -330,26 +330,64 @@ class LuaUtils
 	
 	public static function loadFrames(spr:FlxSprite, image:String, spriteType:String)
 	{
-		switch(spriteType.toLowerCase().replace(' ', ''))
+		if (spr == null || image == null || image.trim().length == 0)
 		{
-			//case "texture" | "textureatlas" | "tex":
-				//spr.frames = AtlasFrameMaker.construct(image);
-
-			//case "texture_noaa" | "textureatlas_noaa" | "tex_noaa":
-				//spr.frames = AtlasFrameMaker.construct(image, null, true);
-
-			case 'aseprite', 'ase', 'json', 'jsoni8':
-				spr.frames = Paths.getAsepriteAtlas(image);
-
-			case "packer", 'packeratlas', 'pac':
-				spr.frames = Paths.getPackerAtlas(image);
-
-			case 'sparrow', 'sparrowatlas', 'sparrowv2':
-				spr.frames = Paths.getSparrowAtlas(image);
-
-			default:
-				spr.frames = Paths.getAtlas(image);
+			trace('ATLAS ERROR: loadFrames received an empty sprite or image path.');
+			return;
 		}
+
+		var requestedType:String = spriteType == null ? 'auto' : spriteType.toLowerCase().replace(' ', '');
+		var loadErrors:Array<String> = [];
+
+		function tryAtlas(type:String):Bool
+		{
+			try
+			{
+				var atlas:FlxAtlasFrames = null;
+				switch (type)
+				{
+					case 'aseprite', 'ase', 'json', 'jsoni8':
+						atlas = Paths.getAsepriteAtlas(image);
+					case 'packer', 'packeratlas', 'pac':
+						atlas = Paths.getPackerAtlas(image);
+					case 'sparrow', 'sparrowatlas', 'sparrowv2':
+						atlas = Paths.getSparrowAtlas(image);
+					default:
+						atlas = Paths.getAtlas(image);
+				}
+
+				if (atlas != null && atlas.numFrames > 0)
+				{
+					spr.frames = atlas;
+					return true;
+				}
+				loadErrors.push(type + ': no frames loaded');
+			}
+			catch (e:Dynamic)
+			{
+				loadErrors.push(type + ': ' + Std.string(e));
+			}
+			return false;
+		}
+
+		if (tryAtlas(requestedType))
+			return;
+
+		// Mod atlases can be mislabeled or packaged with a different metadata format.
+		// Try the common formats before leaving a sprite with empty frames.
+		var fallbackTypes:Array<String> = ['sparrow', 'packer', 'aseprite', 'auto'];
+		for (type in fallbackTypes)
+		{
+			if (type == requestedType || (type == 'auto' && requestedType == 'auto'))
+				continue;
+			if (tryAtlas(type))
+			{
+				trace('ATLAS FALLBACK: loaded "' + image + '" using ' + type + ' metadata (requested ' + requestedType + ').');
+				return;
+			}
+		}
+
+		trace('ATLAS ERROR: unable to load "' + image + '" (requested type=' + requestedType + '). ' + loadErrors.join(' | '));
 	}
 
 	public static function destroyObject(tag:String) {

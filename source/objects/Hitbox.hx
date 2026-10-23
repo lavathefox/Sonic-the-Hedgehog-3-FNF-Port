@@ -75,7 +75,12 @@ class Hitbox extends FlxSpriteGroup
 		}
 
 		#if FLX_TOUCH
-		var laneWidth:Float = FlxG.width / LANES;
+		// Wider outer lanes make Left and Right easier to hit on mobile.
+		// On a 959px screen: Left/Right get 30% each, Down/Up get 20% each.
+		var screenWidth:Float = FlxG.width;
+		var leftBoundary:Float = screenWidth * 0.30;
+		var downBoundary:Float = screenWidth * 0.50;
+		var upBoundary:Float = screenWidth * 0.70;
 
 		for (touch in FlxG.touches.list)
 		{
@@ -87,12 +92,15 @@ class Hitbox extends FlxSpriteGroup
 				continue;
 			#end
 
-			var lane:Int = Std.int(touch.screenX / laneWidth);
-
-			if (lane < 0)
+			var lane:Int;
+			if (touch.screenX < leftBoundary)
 				lane = 0;
-			else if (lane >= LANES)
-				lane = LANES - 1;
+			else if (touch.screenX < downBoundary)
+				lane = 1;
+			else if (touch.screenX < upBoundary)
+				lane = 2;
+			else
+				lane = 3;
 
 			held[lane] = true;
 		}
@@ -111,11 +119,20 @@ class Hitbox extends FlxSpriteGroup
 			previous[i] = false;
 		}
 
-		var laneWidth:Int = Std.int(Math.ceil(FlxG.width / LANES));
+		var screenWidth:Int = FlxG.width;
+		var boundaries:Array<Int> = [
+			0,
+			Std.int(screenWidth * 0.30),
+			Std.int(screenWidth * 0.50),
+			Std.int(screenWidth * 0.70),
+			screenWidth
+		];
 
 		for (i in 0...LANES)
 		{
-			var lane:FlxSprite = new FlxSprite(i * laneWidth, 0);
+			var laneX:Int = boundaries[i];
+			var laneWidth:Int = boundaries[i + 1] - laneX;
+			var lane:FlxSprite = new FlxSprite(laneX, 0);
 			lane.loadGraphic(createLaneBitmap(style, laneWidth, FlxG.height), false, 0, 0, true);
 			lane.color = laneColor(i);
 			lane.alpha = 0;

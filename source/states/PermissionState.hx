@@ -99,11 +99,14 @@ class PermissionState extends FlxState
 		if (FlxG.mouse.justPressed && FlxG.mouse.overlaps(target))
 			return true;
 
+		// FlxG.touches only exists when touch support is compiled in (not on desktop builds).
+		#if FLX_TOUCH
 		for (touch in FlxG.touches.list)
 		{
 			if (touch.justPressed && touch.overlaps(target))
 				return true;
 		}
+		#end
 
 		return false;
 	}

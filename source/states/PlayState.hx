@@ -3,6 +3,7 @@ package states;
 import backend.Highscore;
 import backend.StageData;
 import backend.MobileControls;
+import objects.Hitbox;
 import backend.WeekData;
 import backend.Song;
 import backend.Rating;
@@ -2987,9 +2988,10 @@ class PlayState extends MusicBeatState
 		var holdArray:Array<Bool> = [];
 		var pressArray:Array<Bool> = [];
 		var releaseArray:Array<Bool> = [];
-		for (key in keysArray)
+		for (i in 0...keysArray.length)
 		{
-			holdArray.push(controls.pressed(key));
+			var key = keysArray[i];
+			holdArray.push(controls.pressed(key) || Hitbox.pressed(i));
 			pressArray.push(controls.justPressed(key));
 			releaseArray.push(controls.justReleased(key));
 		}
@@ -2999,6 +3001,12 @@ class PlayState extends MusicBeatState
 			for (i in 0...pressArray.length)
 				if(pressArray[i] && strumsBlocked[i] != true)
 					keyPressed(i);
+
+		for (i in 0...keysArray.length)
+		{
+			if (Hitbox.justPressed(i) && strumsBlocked[i] != true)
+				keyPressed(i);
+		}
 
 		if (startedCountdown && !inCutscene && !boyfriend.stunned && generatedMusic)
 		{
@@ -3032,6 +3040,12 @@ class PlayState extends MusicBeatState
 			for (i in 0...releaseArray.length)
 				if(releaseArray[i] || strumsBlocked[i] == true)
 					keyReleased(i);
+
+		for (i in 0...keysArray.length)
+		{
+			if (Hitbox.justReleased(i) || strumsBlocked[i] == true)
+				keyReleased(i);
+		}
 	}
 
 	function noteMiss(daNote:Note):Void { //You didn't hit the key and let it go offscreen, also used by Hurt Notes

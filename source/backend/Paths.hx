@@ -593,18 +593,39 @@ class Paths
 
 	static public function modFolders(key:String)
 	{
-		if(Mods.currentModDirectory != null && Mods.currentModDirectory.length > 0)
+		// Resolve the active mod first. On Android, exact-case checks can fail
+		// even when the file exists, and falling back to mods/<key> loses the
+		// active mod's directory entirely.
+		if (Mods.currentModDirectory != null && Mods.currentModDirectory.length > 0)
 		{
 			var fileToCheck:String = mods(Mods.currentModDirectory + '/' + key);
-			if(FileSystem.exists(fileToCheck))
+			if (FileSystem.exists(fileToCheck))
 				return fileToCheck;
+
+			#if sys
+			var resolved:String = resolveModPathCaseInsensitive(fileToCheck);
+			if (resolved != null && FileSystem.exists(resolved))
+			{
+				trace('MOD FILE CASE FALLBACK: ' + fileToCheck + ' -> ' + resolved);
+				return resolved;
+			}
+			#end
 		}
 
-		for(mod in Mods.getGlobalMods())
+		for (mod in Mods.getGlobalMods())
 		{
 			var fileToCheck:String = mods(mod + '/' + key);
-			if(FileSystem.exists(fileToCheck))
+			if (FileSystem.exists(fileToCheck))
 				return fileToCheck;
+
+			#if sys
+			var resolved:String = resolveModPathCaseInsensitive(fileToCheck);
+			if (resolved != null && FileSystem.exists(resolved))
+			{
+				trace('MOD FILE CASE FALLBACK: ' + fileToCheck + ' -> ' + resolved);
+				return resolved;
+			}
+			#end
 		}
 		return 'mods/' + key;
 	}

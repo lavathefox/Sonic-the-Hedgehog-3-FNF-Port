@@ -36,7 +36,7 @@ class Hitbox extends FlxSpriteGroup
 	public static var hitboxScale:Float = 1.0;
 
 	/** Lane opacity while a finger is on it (0 to 1). */
-	public static var opacity:Float = 0.35;
+	public static var opacity:Float = 0.55;
 
 	/** Hide the lanes but keep the touch input working. */
 	public static var invisible:Bool = false;
@@ -81,11 +81,11 @@ class Hitbox extends FlxSpriteGroup
 		// Scale the complete touch area around the center of the screen.
 		var areaWidth:Float = FlxG.width * hitboxScale;
 		var areaHeight:Float = FlxG.height * hitboxScale;
-		var areaX:Float = (FlxG.width - areaWidth) * 0.5;
-		var areaY:Float = (FlxG.height - areaHeight) * 0.5;
+		var areaX:Float = (FlxG.width - areaWidth) * 0.4;
+		var areaY:Float = (FlxG.height - areaHeight) * 0.4;
 		var leftBoundary:Float = areaX + areaWidth * 0.45;
 		var downBoundary:Float = areaX + areaWidth * 0.60;
-		var upBoundary:Float = areaX + areaWidth * 0.85;
+		var upBoundary:Float = areaX + areaWidth * 0.70;
 
 		for (touch in FlxG.touches.list)
 		{
@@ -135,7 +135,7 @@ class Hitbox extends FlxSpriteGroup
 			areaX,
 			areaX + Std.int(areaWidth * 0.45),
 			areaX + Std.int(areaWidth * 0.60),
-			areaX + Std.int(areaWidth * 0.85),
+			areaX + Std.int(areaWidth * 0.70),
 			areaX + areaWidth
 		];
 

@@ -245,13 +245,34 @@ class Paths
 			var file:String = getPath(key, IMAGE, parentFolder, true);
 			#if MODS_ALLOWED
 			if (FileSystem.exists(file))
-				bitmap = BitmapData.fromFile(file);
-			else #end if (OpenFlAssets.exists(file, IMAGE))
-				bitmap = OpenFlAssets.getBitmapData(file);
+			{
+				try
+				{
+					bitmap = BitmapData.fromFile(file);
+				}
+				catch (e:Dynamic)
+				{
+					trace('BITMAP ERROR: File.load failed for ' + file + ' | ' + Std.string(e));
+				}
+			}
+			#end
 
 			if (bitmap == null)
 			{
-				trace('Bitmap not found: $file | key: $key');
+				try
+				{
+					if (OpenFlAssets.exists(file, IMAGE))
+						bitmap = OpenFlAssets.getBitmapData(file);
+				}
+				catch (e:Dynamic)
+				{
+					trace('BITMAP ERROR: OpenFL.load failed for ' + file + ' | ' + Std.string(e));
+				}
+			}
+
+			if (bitmap == null)
+			{
+				trace('BITMAP ERROR: Bitmap not found or unreadable: ' + file + ' | key: ' + key);
 				return null;
 			}
 		}

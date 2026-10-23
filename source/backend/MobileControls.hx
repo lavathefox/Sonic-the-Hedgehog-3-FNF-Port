@@ -49,13 +49,13 @@ class MobileControls
 
 	static var mobileCamera:FlxCamera;
 
-	static var arrowX:Float = 80;
+	static var arrowX:Float = 24;
 	static var arrowY:Float = 500;
 
-	static var buttonAX:Float = 830;
+	static var buttonAX:Float = 855;
 	static var buttonAY:Float = 500;
 
-	static var buttonBX:Float = 700;
+	static var buttonBX:Float = 755;
 	static var buttonBY:Float = 560;
 
 	static var arrowScale:Float = 3;

@@ -373,39 +373,64 @@ class Paths
 		var xmlPath:String = getPath(Language.getFileTranslation('images/$key') + '.xml', TEXT, parentFolder, true);
 		#if MODS_ALLOWED
 		if (FileSystem.exists(xmlPath))
-			return FlxAtlasFrames.fromSparrow(imageLoaded, File.getContent(xmlPath));
+		{
+			var xmlContent:String = File.getContent(xmlPath);
+			if (imageLoaded == null || xmlContent == null || xmlContent.length == 0)
+			{
+				trace('ATLAS ERROR: key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' xml=' + xmlPath + ' xmlLength=' + (xmlContent == null ? -1 : xmlContent.length));
+				return null;
+			}
+			return FlxAtlasFrames.fromSparrow(imageLoaded, xmlContent);
+		}
 		#end
-		return FlxAtlasFrames.fromSparrow(imageLoaded, xmlPath);
+		if (OpenFlAssets.exists(xmlPath, TEXT))
+			return FlxAtlasFrames.fromSparrow(imageLoaded, xmlPath);
+		trace('ATLAS ERROR: Sparrow XML not found: ' + xmlPath + ' (key=' + key + ')');
+		return null;
 	}
 
 	inline static public function getPackerAtlas(key:String, ?parentFolder:String = null, ?allowGPU:Bool = true):FlxAtlasFrames
 	{
 		var imageLoaded:FlxGraphic = image(key, parentFolder, allowGPU);
+		var txtPath:String = getPath(Language.getFileTranslation('images/$key') + '.txt', TEXT, parentFolder, true);
 		#if MODS_ALLOWED
-		var txtExists:Bool = false;
-		
-		var txt:String = modsTxt(key);
-		if(FileSystem.exists(txt)) txtExists = true;
-
-		return FlxAtlasFrames.fromSpriteSheetPacker(imageLoaded, (txtExists ? File.getContent(txt) : getPath(Language.getFileTranslation('images/$key') + '.txt', TEXT, parentFolder)));
-		#else
-		return FlxAtlasFrames.fromSpriteSheetPacker(imageLoaded, getPath(Language.getFileTranslation('images/$key') + '.txt', TEXT, parentFolder));
+		if (FileSystem.exists(txtPath))
+		{
+			var txtContent:String = File.getContent(txtPath);
+			if (imageLoaded == null || txtContent == null || txtContent.length == 0)
+			{
+				trace('ATLAS ERROR: Packer key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' txt=' + txtPath);
+				return null;
+			}
+			return FlxAtlasFrames.fromSpriteSheetPacker(imageLoaded, txtContent);
+		}
 		#end
+		if (OpenFlAssets.exists(txtPath, TEXT))
+			return FlxAtlasFrames.fromSpriteSheetPacker(imageLoaded, txtPath);
+		trace('ATLAS ERROR: Packer TXT not found: ' + txtPath + ' (key=' + key + ')');
+		return null;
 	}
 
 	inline static public function getAsepriteAtlas(key:String, ?parentFolder:String = null, ?allowGPU:Bool = true):FlxAtlasFrames
 	{
 		var imageLoaded:FlxGraphic = image(key, parentFolder, allowGPU);
+		var jsonPath:String = getPath(Language.getFileTranslation('images/$key') + '.json', TEXT, parentFolder, true);
 		#if MODS_ALLOWED
-		var jsonExists:Bool = false;
-
-		var json:String = modsImagesJson(key);
-		if(FileSystem.exists(json)) jsonExists = true;
-
-		return FlxAtlasFrames.fromTexturePackerJson(imageLoaded, (jsonExists ? File.getContent(json) : getPath(Language.getFileTranslation('images/$key') + '.json', TEXT, parentFolder)));
-		#else
-		return FlxAtlasFrames.fromTexturePackerJson(imageLoaded, getPath(Language.getFileTranslation('images/$key') + '.json', TEXT, parentFolder));
+		if (FileSystem.exists(jsonPath))
+		{
+			var jsonContent:String = File.getContent(jsonPath);
+			if (imageLoaded == null || jsonContent == null || jsonContent.length == 0)
+			{
+				trace('ATLAS ERROR: JSON key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' json=' + jsonPath);
+				return null;
+			}
+			return FlxAtlasFrames.fromTexturePackerJson(imageLoaded, jsonContent);
+		}
 		#end
+		if (OpenFlAssets.exists(jsonPath, TEXT))
+			return FlxAtlasFrames.fromTexturePackerJson(imageLoaded, jsonPath);
+		trace('ATLAS ERROR: Aseprite JSON not found: ' + jsonPath + ' (key=' + key + ')');
+		return null;
 	}
 
 	inline static public function formatToSongPath(path:String) {

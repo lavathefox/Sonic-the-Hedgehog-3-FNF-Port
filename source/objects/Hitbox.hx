@@ -84,8 +84,8 @@ class Hitbox extends FlxSpriteGroup
 		var areaX:Float = (FlxG.width - areaWidth) * 0.4;
 		var areaY:Float = (FlxG.height - areaHeight) * 0.4;
 		var leftBoundary:Float = areaX + areaWidth * 0.45;
-		var downBoundary:Float = areaX + areaWidth * 0.60;
-		var upBoundary:Float = areaX + areaWidth * 0.70;
+		var downBoundary:Float = areaX + areaWidth * 0.55;
+		var upBoundary:Float = areaX + areaWidth * 0.60;
 
 		for (touch in FlxG.touches.list)
 		{
@@ -134,8 +134,8 @@ class Hitbox extends FlxSpriteGroup
 		var boundaries:Array<Int> = [
 			areaX,
 			areaX + Std.int(areaWidth * 0.45),
+			areaX + Std.int(areaWidth * 0.55),
 			areaX + Std.int(areaWidth * 0.60),
-			areaX + Std.int(areaWidth * 0.70),
 			areaX + areaWidth
 		];
 

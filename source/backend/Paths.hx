@@ -156,7 +156,16 @@ class Paths
 			if (parentfolder != null) customFile = '$parentfolder/$file';
 
 			var modded:String = modFolders(customFile);
-			if(FileSystem.exists(modded)) return modded;
+			if (FileSystem.exists(modded)) return modded;
+
+			// Android storage is case-sensitive, unlike many Windows setups.
+			// Resolve each path component without changing the stored filename.
+			var resolvedModded:String = resolveModPathCaseInsensitive(modded);
+			if (resolvedModded != null && FileSystem.exists(resolvedModded))
+			{
+				trace('MOD PATH CASE FALLBACK: ' + modded + ' -> ' + resolvedModded);
+				return resolvedModded;
+			}
 		}
 		#end
 
@@ -171,6 +180,64 @@ class Paths
 		}
 		return getSharedPath(file);
 	}
+
+	#if (MODS_ALLOWED && sys)
+	static function resolveModPathCaseInsensitive(path:String):String
+	{
+		if (path == null || path.length == 0)
+			return null;
+
+		try
+		{
+			var absolute:Bool = StringTools.startsWith(path, '/');
+			var current:String = absolute ? '/' : '';
+			var parts:Array<String> = path.split('/');
+
+			for (part in parts)
+			{
+				if (part == null || part.length == 0 || part == '.')
+					continue;
+
+				if (part == '..')
+				{
+					current = haxe.io.Path.normalize(current + '/../');
+					continue;
+				}
+
+				var directory:String = current.length == 0 ? '.' : current;
+				if (!FileSystem.exists(directory) || !FileSystem.isDirectory(directory))
+					return null;
+
+				var match:String = null;
+				for (entry in FileSystem.readDirectory(directory))
+				{
+					if (entry.toLowerCase() == part.toLowerCase())
+					{
+						match = entry;
+						break;
+					}
+				}
+
+				if (match == null)
+					return null;
+
+				if (current == '')
+					current = match;
+				else if (current == '/')
+					current += match;
+				else
+					current += '/' + match;
+			}
+
+			return current;
+		}
+		catch (e:Dynamic)
+		{
+			trace('MOD PATH RESOLVE ERROR: ' + path + ' | ' + Std.string(e));
+			return null;
+		}
+	}
+	#end
 
 	inline static public function getFolderPath(file:String, folder = "shared")
 		return 'assets/$folder/$file';

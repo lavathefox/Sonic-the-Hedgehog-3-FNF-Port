@@ -413,7 +413,15 @@ class MobileControls
 		var pointX:Float = point.x;
 		var pointY:Float = point.y;
 
-		if (hitboxArrows == null || !hitboxArrows.containsPoint(pointX, pointY))
+		// Keep the arrow artwork where it is, but extend only the Left/Right
+		// touch zones horizontally so they are easier to press on a 959x670 screen.
+		var sideTouchPadding:Float = 42;
+		var left:Float = arrows.x - sideTouchPadding;
+		var right:Float = arrows.x + arrows.width + sideTouchPadding;
+		var top:Float = arrows.y;
+		var bottom:Float = arrows.y + arrows.height;
+
+		if (pointX < left || pointX > right || pointY < top || pointY > bottom)
 			return;
 
 		var centerX:Float = arrows.x + arrows.width / 2;

@@ -60,23 +60,40 @@ jobs:
         if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          haxelib install hxcpp 4.3.2 --always
-          haxelib install lime 8.1.2 --always
-          haxelib install openfl 9.3.3 --always
-          haxelib install flixel 5.6.1 --always
-          haxelib install flixel-addons 3.2.2 --always
-          haxelib install flixel-tools 1.5.1 --always
-          haxelib install hscript-iris 1.1.3 --always
-          haxelib install tjson 1.4.0 --always
-          haxelib install hxdiscord_rpc 1.2.4 --always
-          haxelib install hxvlc 2.0.1 --skip-dependencies --always
-          haxelib set hxcpp 4.3.2
-          haxelib set lime 8.1.2
-          haxelib set openfl 9.3.3
-          haxelib git flxanimate https://github.com/Dot-Stuff/flxanimate 768740a56b26aa0c072720e0d1236b94afe68e3e
-          haxelib git linc_luajit https://github.com/superpowers04/linc_luajit 1906c4a96f6bb6df66562b3f24c62f4c5bba14a7
-          haxelib git funkin.vis https://github.com/FunkinCrew/funkVis 22b1ce089dd924f15cdc4632397ef3504d464e90
-          haxelib git grig.audio https://gitlab.com/haxe-grig/grig.audio.git cbf91e2180fd2e374924fe74844086aab7891666
+          $ErrorActionPreference = 'Stop'
+          function Invoke-Haxelib {
+            param([string[]]$Arguments)
+            $label = $Arguments -join ' '
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              Write-Host "::group::haxelib $label (attempt $attempt/3)"
+              & haxelib @Arguments
+              $exitCode = $LASTEXITCODE
+              Write-Host "::endgroup::"
+              if ($exitCode -eq 0) { return }
+              if ($attempt -lt 3) {
+                Write-Warning "haxelib $label failed with exit code $exitCode; retrying in 5 seconds."
+                Start-Sleep -Seconds 5
+              }
+            }
+            throw "haxelib $label failed after 3 attempts."
+          }
+          Invoke-Haxelib @('install', 'hxcpp', '4.3.2', '--always')
+          Invoke-Haxelib @('install', 'lime', '8.1.2', '--always')
+          Invoke-Haxelib @('install', 'openfl', '9.3.3', '--always')
+          Invoke-Haxelib @('install', 'flixel', '5.6.1', '--always')
+          Invoke-Haxelib @('install', 'flixel-addons', '3.2.2', '--always')
+          Invoke-Haxelib @('install', 'flixel-tools', '1.5.1', '--always')
+          Invoke-Haxelib @('install', 'hscript-iris', '1.1.3', '--always')
+          Invoke-Haxelib @('install', 'tjson', '1.4.0', '--always')
+          Invoke-Haxelib @('install', 'hxdiscord_rpc', '1.2.4', '--always')
+          Invoke-Haxelib @('install', 'hxvlc', '2.0.1', '--skip-dependencies', '--always')
+          Invoke-Haxelib @('set', 'hxcpp', '4.3.2')
+          Invoke-Haxelib @('set', 'lime', '8.1.2')
+          Invoke-Haxelib @('set', 'openfl', '9.3.3')
+          Invoke-Haxelib @('git', 'flxanimate', 'https://github.com/Dot-Stuff/flxanimate', '768740a56b26aa0c072720e0d1236b94afe68e3e')
+          Invoke-Haxelib @('git', 'linc_luajit', 'https://github.com/superpowers04/linc_luajit', '1906c4a96f6bb6df66562b3f24c62f4c5bba14a7')
+          Invoke-Haxelib @('git', 'funkin.vis', 'https://github.com/FunkinCrew/funkVis', '22b1ce089dd924f15cdc4632397ef3504d464e90')
+          Invoke-Haxelib @('git', 'grig.audio', 'https://gitlab.com/haxe-grig/grig.audio.git', 'cbf91e2180fd2e374924fe74844086aab7891666')
 
       - name: Build Windows
         shell: pwsh
@@ -219,22 +236,38 @@ jobs:
         if: steps.haxelib-cache.outputs.cache-hit != 'true'
         shell: bash
         run: |
-          haxelib install hxcpp 4.3.2 --always
-          haxelib install lime 8.1.2 --always
-          haxelib install openfl 9.3.3 --always
-          haxelib install flixel 5.6.1 --always
-          haxelib install flixel-addons 3.2.2 --always
-          haxelib install flixel-tools 1.5.1 --always
-          haxelib install hscript-iris 1.1.3 --always
-          haxelib install tjson 1.4.0 --always
-          haxelib install hxvlc 2.0.1 --skip-dependencies --always
-          haxelib set hxcpp 4.3.2
-          haxelib set lime 8.1.2
-          haxelib set openfl 9.3.3
-          haxelib git flxanimate https://github.com/Dot-Stuff/flxanimate 768740a56b26aa0c072720e0d1236b94afe68e3e
-          haxelib git linc_luajit https://github.com/superpowers04/linc_luajit 1906c4a96f6bb6df66562b3f24c62f4c5bba14a7
-          haxelib git funkin.vis https://github.com/FunkinCrew/funkVis 22b1ce089dd924f15cdc4632397ef3504d464e90
-          haxelib git grig.audio https://gitlab.com/haxe-grig/grig.audio.git cbf91e2180fd2e374924fe74844086aab7891666
+          set -euo pipefail
+          haxelib_retry() {
+            local attempt=1
+            echo "Installing: haxelib $*"
+            while [ "$attempt" -le 3 ]; do
+              if timeout 8m haxelib "$@"; then
+                return 0
+              fi
+              local status=$?
+              echo "::warning::haxelib $* failed or timed out (attempt $attempt/3, exit $status)."
+              if [ "$attempt" -lt 3 ]; then sleep 5; fi
+              attempt=$((attempt + 1))
+            done
+            echo "::error::haxelib $* failed after 3 attempts."
+            return 1
+          }
+          haxelib_retry install hxcpp 4.3.2 --always
+          haxelib_retry install lime 8.1.2 --always
+          haxelib_retry install openfl 9.3.3 --always
+          haxelib_retry install flixel 5.6.1 --always
+          haxelib_retry install flixel-addons 3.2.2 --always
+          haxelib_retry install flixel-tools 1.5.1 --always
+          haxelib_retry install hscript-iris 1.1.3 --always
+          haxelib_retry install tjson 1.4.0 --always
+          haxelib_retry install hxvlc 2.0.1 --skip-dependencies --always
+          haxelib_retry set hxcpp 4.3.2
+          haxelib_retry set lime 8.1.2
+          haxelib_retry set openfl 9.3.3
+          haxelib_retry git flxanimate https://github.com/Dot-Stuff/flxanimate 768740a56b26aa0c072720e0d1236b94afe68e3e
+          haxelib_retry git linc_luajit https://github.com/superpowers04/linc_luajit 1906c4a96f6bb6df66562b3f24c62f4c5bba14a7
+          haxelib_retry git funkin.vis https://github.com/FunkinCrew/funkVis 22b1ce089dd924f15cdc4632397ef3504d464e90
+          haxelib_retry git grig.audio https://gitlab.com/haxe-grig/grig.audio.git cbf91e2180fd2e374924fe74844086aab7891666
 
       # Only arm64-v8a is built (almost every modern phone). Building three ABIs
       # triples the C++ compile time. Add the other lines back if you need them.

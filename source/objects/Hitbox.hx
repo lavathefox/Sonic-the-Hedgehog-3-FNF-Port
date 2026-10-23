@@ -78,9 +78,9 @@ class Hitbox extends FlxSpriteGroup
 		// Wider outer lanes make Left and Right easier to hit on mobile.
 		// On a 959px screen: Left/Right get 30% each, Down/Up get 20% each.
 		var screenWidth:Float = FlxG.width;
-		var leftBoundary:Float = screenWidth * 0.17;
-		var downBoundary:Float = screenWidth * 0.30;
-		var upBoundary:Float = screenWidth * 0.50;
+		var leftBoundary:Float = screenWidth * 0.25;
+		var downBoundary:Float = screenWidth * 0.40;
+		var upBoundary:Float = screenWidth * 0.60;
 
 		for (touch in FlxG.touches.list)
 		{
@@ -122,9 +122,9 @@ class Hitbox extends FlxSpriteGroup
 		var screenWidth:Int = FlxG.width;
 		var boundaries:Array<Int> = [
 			0,
-			Std.int(screenWidth * 0.17),
-			Std.int(screenWidth * 0.30),
-			Std.int(screenWidth * 0.50),
+			Std.int(screenWidth * 0.25),
+			Std.int(screenWidth * 0.40),
+			Std.int(screenWidth * 0.60),
 			screenWidth
 		];
 

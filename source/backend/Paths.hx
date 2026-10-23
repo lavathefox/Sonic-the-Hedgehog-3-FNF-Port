@@ -369,18 +369,13 @@ class Paths
 
 	inline static public function getSparrowAtlas(key:String, ?parentFolder:String = null, ?allowGPU:Bool = true):FlxAtlasFrames
 	{
-		if(key.contains('psychic')) trace(key, parentFolder, allowGPU);
 		var imageLoaded:FlxGraphic = image(key, parentFolder, allowGPU);
+		var xmlPath:String = getPath(Language.getFileTranslation('images/$key') + '.xml', TEXT, parentFolder, true);
 		#if MODS_ALLOWED
-		var xmlExists:Bool = false;
-
-		var xml:String = modsXml(key);
-		if(FileSystem.exists(xml)) xmlExists = true;
-
-		return FlxAtlasFrames.fromSparrow(imageLoaded, (xmlExists ? File.getContent(xml) : getPath(Language.getFileTranslation('images/$key') + '.xml', TEXT, parentFolder)));
-		#else
-		return FlxAtlasFrames.fromSparrow(imageLoaded, getPath(Language.getFileTranslation('images/$key') + '.xml', TEXT, parentFolder));
+		if (FileSystem.exists(xmlPath))
+			return FlxAtlasFrames.fromSparrow(imageLoaded, File.getContent(xmlPath));
 		#end
+		return FlxAtlasFrames.fromSparrow(imageLoaded, xmlPath);
 	}
 
 	inline static public function getPackerAtlas(key:String, ?parentFolder:String = null, ?allowGPU:Bool = true):FlxAtlasFrames

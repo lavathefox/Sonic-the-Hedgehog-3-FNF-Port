@@ -11,6 +11,7 @@ import openfl.display.BitmapData;
 import flixel.FlxBasic;
 import flixel.FlxObject;
 import flixel.FlxState;
+import flixel.util.FlxColor;
 
 #if (!flash && sys)
 import flixel.addons.display.FlxRuntimeShader;
@@ -23,6 +24,7 @@ import objects.Note;
 import objects.NoteSplash;
 import objects.Character;
 
+import states.PlayState;
 import states.MainMenuState;
 import states.StoryMenuState;
 import states.FreeplayState;
@@ -943,7 +945,20 @@ class FunkinLua {
 			var leSprite:ModchartSprite = new ModchartSprite(x, y);
 			if(image != null && image.length > 0)
 			{
-				leSprite.loadGraphic(Paths.image(image));
+				var spriteGraphic = Paths.image(image);
+				#if android
+				if (spriteGraphic == null)
+				{
+					var message = 'SPRITE DIAG: image missing: ' + image + ' (tag: ' + tag + ')';
+					trace(message);
+					if (PlayState.instance != null) PlayState.instance.addTextToDebug(message, FlxColor.RED);
+				}
+				else
+				{
+					trace('SPRITE DIAG: image loaded: ' + image + ' (tag: ' + tag + ')');
+				}
+				#end
+				leSprite.loadGraphic(spriteGraphic);
 			}
 			MusicBeatState.getVariables().set(tag, leSprite);
 			leSprite.active = true;
@@ -956,6 +971,13 @@ class FunkinLua {
 			if(image != null && image.length > 0)
 			{
 				LuaUtils.loadFrames(leSprite, image, spriteType);
+				#if android
+				var frameCount = leSprite.frames == null ? 0 : leSprite.frames.numFrames;
+				var message = 'SPRITE DIAG: atlas ' + image + ' | type=' + spriteType + ' | frames=' + frameCount + ' | tag=' + tag;
+				trace(message);
+				if (frameCount <= 0 && PlayState.instance != null)
+					PlayState.instance.addTextToDebug(message, FlxColor.RED);
+				#end
 			}
 			MusicBeatState.getVariables().set(tag, leSprite);
 		});

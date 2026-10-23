@@ -1,6 +1,7 @@
 package objects;
 
 import flixel.FlxG;
+import backend.MobileControls;
 import flixel.FlxSprite;
 import flixel.group.FlxSpriteGroup;
 import flixel.util.FlxColor;
@@ -78,7 +79,7 @@ class Hitbox extends FlxSpriteGroup
 
 		for (touch in FlxG.touches.list)
 		{
-			if (!touch.pressed || touch.screenY < ignoreTop)
+			if (!touch.pressed || touch.screenY < ignoreTop || MobileControls.isReservedTouch(touch))
 				continue;
 
 			var lane:Int = Std.int(touch.screenX / laneWidth);

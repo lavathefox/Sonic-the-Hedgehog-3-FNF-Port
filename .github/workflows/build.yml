@@ -241,10 +241,12 @@ jobs:
             local attempt=1
             echo "Installing: haxelib $*"
             while [ "$attempt" -le 3 ]; do
+              local status=0
               if timeout 8m haxelib "$@"; then
                 return 0
+              else
+                status=$?
               fi
-              local status=$?
               echo "::warning::haxelib $* failed or timed out (attempt $attempt/3, exit $status)."
               if [ "$attempt" -lt 3 ]; then sleep 5; fi
               attempt=$((attempt + 1))

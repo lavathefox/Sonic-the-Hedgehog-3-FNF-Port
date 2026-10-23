@@ -32,6 +32,9 @@ class Hitbox extends FlxSpriteGroup
 	/** One of STYLES. */
 	public static var style:String = 'Gradient';
 
+	/** Overall hitbox size multiplier. 1.0 fills the screen; lower values shrink it. */
+	public static var hitboxScale:Float = 1.0;
+
 	/** Lane opacity while a finger is on it (0 to 1). */
 	public static var opacity:Float = 0.35;
 
@@ -75,16 +78,21 @@ class Hitbox extends FlxSpriteGroup
 		}
 
 		#if FLX_TOUCH
-		// Wider outer lanes make Left and Right easier to hit on mobile.
-		// On a 959px screen: Left/Right get 30% each, Down/Up get 20% each.
-		var screenWidth:Float = FlxG.width;
-		var leftBoundary:Float = screenWidth * 0.25;
-		var downBoundary:Float = screenWidth * 0.40;
-		var upBoundary:Float = screenWidth * 0.60;
+		// Scale the complete touch area around the center of the screen.
+		var areaWidth:Float = FlxG.width * hitboxScale;
+		var areaHeight:Float = FlxG.height * hitboxScale;
+		var areaX:Float = (FlxG.width - areaWidth) * 0.5;
+		var areaY:Float = (FlxG.height - areaHeight) * 0.5;
+		var leftBoundary:Float = areaX + areaWidth * 0.25;
+		var downBoundary:Float = areaX + areaWidth * 0.40;
+		var upBoundary:Float = areaX + areaWidth * 0.60;
 
 		for (touch in FlxG.touches.list)
 		{
 			if (!touch.pressed || touch.screenY < ignoreTop)
+				continue;
+
+			if (touch.screenX < areaX || touch.screenX >= areaX + areaWidth || touch.screenY < areaY || touch.screenY >= areaY + areaHeight)
 				continue;
 
 			#if android
@@ -119,21 +127,24 @@ class Hitbox extends FlxSpriteGroup
 			previous[i] = false;
 		}
 
-		var screenWidth:Int = FlxG.width;
+		var areaWidth:Int = Std.int(FlxG.width * hitboxScale);
+		var areaHeight:Int = Std.int(FlxG.height * hitboxScale);
+		var areaX:Int = Std.int((FlxG.width - areaWidth) * 0.5);
+		var areaY:Int = Std.int((FlxG.height - areaHeight) * 0.5);
 		var boundaries:Array<Int> = [
-			0,
-			Std.int(screenWidth * 0.25),
-			Std.int(screenWidth * 0.40),
-			Std.int(screenWidth * 0.60),
-			screenWidth
+			areaX,
+			areaX + Std.int(areaWidth * 0.25),
+			areaX + Std.int(areaWidth * 0.40),
+			areaX + Std.int(areaWidth * 0.60),
+			areaX + areaWidth
 		];
 
 		for (i in 0...LANES)
 		{
 			var laneX:Int = boundaries[i];
 			var laneWidth:Int = boundaries[i + 1] - laneX;
-			var lane:FlxSprite = new FlxSprite(laneX, 0);
-			lane.loadGraphic(createLaneBitmap(style, laneWidth, FlxG.height), false, 0, 0, true);
+			var lane:FlxSprite = new FlxSprite(laneX, areaY);
+			lane.loadGraphic(createLaneBitmap(style, laneWidth, areaHeight), false, 0, 0, true);
 			lane.color = laneColor(i);
 			lane.alpha = 0;
 			lane.antialiasing = ClientPrefs.data.antialiasing;

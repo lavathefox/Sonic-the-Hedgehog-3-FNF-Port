@@ -79,8 +79,13 @@ class Hitbox extends FlxSpriteGroup
 
 		for (touch in FlxG.touches.list)
 		{
-			if (!touch.pressed || touch.screenY < ignoreTop || MobileControls.isReservedTouch(touch))
+			if (!touch.pressed || touch.screenY < ignoreTop)
 				continue;
+
+			#if android
+			if (MobileControls.isReservedTouch(touch))
+				continue;
+			#end
 
 			var lane:Int = Std.int(touch.screenX / laneWidth);
 

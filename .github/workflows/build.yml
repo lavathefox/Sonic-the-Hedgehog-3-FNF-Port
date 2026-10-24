@@ -316,13 +316,6 @@ jobs:
         shell: bash
         run: haxelib run lime setup android
 
-      - name: Prepare oversized Angel Island textures for Android
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 -m pip install --user Pillow
-          python3 scripts/prepare_android_textures.py
-
       # No "lime clean" here on purpose: cleaning would throw away the cached objects.
       - name: Build Android APK
         shell: bash

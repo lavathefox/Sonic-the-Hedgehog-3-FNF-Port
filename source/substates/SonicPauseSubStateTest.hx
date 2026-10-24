@@ -19,6 +19,7 @@ import states.StoryMenuState;
 import states.FreeplayState;
 import states.DataSelectState;
 import options.OptionsState;
+import backend.MobileControls;
 
 class SonicPauseSubStateTest extends MusicBeatSubstate
 {
@@ -94,6 +95,12 @@ class SonicPauseSubStateTest extends MusicBeatSubstate
 		difficultyChoices.push('BACK');
 
 		setupPage();
+
+		#if android
+		MobileControls.setEnabled(true);
+		MobileControls.addToState(this);
+		MobileControls.setVisible(true);
+		#end
 
 		pauseMusic = new FlxSound();
 
@@ -838,9 +845,13 @@ class SonicPauseSubStateTest extends MusicBeatSubstate
 		if(pauseMusic != null && pauseMusic.volume < 0.5)
 			pauseMusic.volume += 0.01 * elapsed;
 
+		#if android
+		MobileControls.update();
+		#end
+
 		super.update(elapsed);
 
-		if(controls.BACK)
+		if(controls.BACK || #if android MobileControls.bJustPressed #else false #end)
 		{
 			if(inDifficultyMenu)
 			{
@@ -888,10 +899,10 @@ class SonicPauseSubStateTest extends MusicBeatSubstate
 			}
 		}
 
-		if(controls.UI_UP_P)
+		if(controls.UI_UP_P #if android || MobileControls.upJustPressed #end)
 			changeSelection(-1);
 
-		if(controls.UI_DOWN_P)
+		if(controls.UI_DOWN_P #if android || MobileControls.downJustPressed #end)
 			changeSelection(1);
 
 		if(menuItems.length > 0 && menuItems[curSelected] == 'Skip Time')
@@ -932,12 +943,20 @@ class SonicPauseSubStateTest extends MusicBeatSubstate
 			}
 		}
 
-		if(controls.ACCEPT && (cantUnpause <= 0 || !controls.controllerMode))
+		if((controls.ACCEPT #if android || MobileControls.aJustPressed #end) && (cantUnpause <= 0 || !controls.controllerMode || #if android MobileControls.aJustPressed #else false #end))
 			selectCurrentOption();
 	}
 
 	override function destroy():Void
 	{
+		#if android
+		if(PlayState.instance != null)
+		{
+			MobileControls.addToState(PlayState.instance);
+			MobileControls.setVisible(true);
+		}
+		#end
+
 		if(pauseMusic != null)
 			pauseMusic.destroy();
 

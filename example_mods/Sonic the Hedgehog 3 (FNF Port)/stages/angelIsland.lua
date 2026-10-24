@@ -21,7 +21,7 @@ function onCreate()
 
 	-- Normal Angel Island layers
 	createAnimatedStageSprite('ground', 'angelstage/AIZFloorNormal', 0, -20, 'idle', 24, true, true, 'sparrow')
-	createAnimatedStageSprite('bgFire', 'angelstage/aizBGFire', 70, 100, 'idle', 24, true, false, 'sparrow')
+	createAnimatedStageSprite('bgFire', 'angelstage/aizBGFire', 70, 10, 'idle', 24, true, false, 'sparrow')
 	createAnimatedStageSprite('groundFire', 'angelstage/AIZFloorFire', 0, -20, 'idle', 24, true, false, 'sparrow')
 
 	setStageLayerAlpha('bgFire', 0)

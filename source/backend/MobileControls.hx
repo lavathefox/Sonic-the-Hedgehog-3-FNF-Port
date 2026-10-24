@@ -219,7 +219,43 @@ class MobileControls
 	static function createPauseButton():Void
 	{
 		pauseButton = new FlxSprite(FlxG.width - 80, 24);
-		pauseButton.loadGraphic(Paths.image('mobile/pauseButton'));
+
+		// Load the pause icon from the active mod first. Paths.image resolves
+		// mod assets, but an unresolved image can leave Flixel's placeholder graphic.
+		var pauseGraphic:flixel.graphics.FlxGraphic = null;
+		var pausePaths:Array<String> = [
+			'mobile/pauseButton',
+			'mobile/pausebutton',
+			'mobile/PauseButton'
+		];
+
+		for (imagePath in pausePaths)
+		{
+			try
+			{
+				pauseGraphic = Paths.image(imagePath);
+				if (pauseGraphic != null && pauseGraphic.bitmap != null)
+					break;
+				pauseGraphic = null;
+			}
+			catch (e:Dynamic)
+			{
+				pauseGraphic = null;
+			}
+		}
+
+		if (pauseGraphic != null && pauseGraphic.bitmap != null)
+		{
+			pauseButton.loadGraphic(pauseGraphic);
+		}
+		else
+		{
+			trace('MOBILE PAUSE BUTTON ERROR: images/mobile/pauseButton.png was not found or could not be loaded.');
+			Paths.reportAssetProblem('IMAGE', 'mobile/pauseButton', 'pause button image missing or unreadable; checked common filename casing');
+			pauseButton.makeGraphic(56, 56, FlxColor.TRANSPARENT);
+			pauseButton.visible = false;
+		}
+
 		pauseButton.setGraphicSize(56, 56);
 		pauseButton.updateHitbox();
 		pauseButton.antialiasing = false;

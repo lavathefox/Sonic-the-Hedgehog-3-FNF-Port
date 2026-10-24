@@ -30,17 +30,6 @@ class Paths
 	inline public static var SOUND_EXT = #if web "mp3" #else "ogg" #end;
 	inline public static var VIDEO_EXT = "mp4";
 
-	/**
-	 * Biggest allowed texture side on Android (pixels). The real GPU limit is used when it can be read,
-	 * but never more than this cap, to save memory. Bigger images are shrunk when they are loaded.
-	 * Raise it (for example to 16384) on devices with plenty of memory if the shrunk images look too soft.
-	 */
-	public static var textureSizeCap:Int = 8192;
-	static var detectedTextureLimit:Int = 0;
-
-	// graphic key -> how much the image was shrunk (0.5 = half of the original size)
-	static var resizedFactors:Map<String, Float> = new Map();
-
 	public static function excludeAsset(key:String) {
 		if (!dumpExclusions.contains(key))
 			dumpExclusions.push(key);
@@ -185,91 +174,6 @@ class Paths
 		return key;
 	}
 
-	/** The biggest texture side the device can draw (limited by textureSizeCap). Only limited on Android. */
-	static function maxTextureSide():Int
-	{
-		#if android
-		if (detectedTextureLimit <= 0)
-		{
-			detectedTextureLimit = 4096; // safe default when the GPU limit cannot be read
-
-			try
-			{
-				if (lime.graphics.opengl.GL.context != null)
-				{
-					var value:Dynamic = lime.graphics.opengl.GL.getParameter(lime.graphics.opengl.GL.MAX_TEXTURE_SIZE);
-
-					if (value != null && value > 0)
-						detectedTextureLimit = Std.int(value);
-				}
-			}
-			catch (e:Dynamic)
-			{
-				trace('TEXTURE LIMIT: could not read the GPU limit, using 4096 | ' + Std.string(e));
-			}
-
-			trace('TEXTURE LIMIT: GPU ' + detectedTextureLimit + ' px, cap ' + textureSizeCap + ' px');
-		}
-
-		return Std.int(Math.min(detectedTextureLimit, textureSizeCap));
-		#else
-		return 2147483647;
-		#end
-	}
-
-	/** Returns a copy of the bitmap whose biggest side fits the limit, or null if it could not be made. */
-	static function shrinkBitmap(source:BitmapData, limit:Int):BitmapData
-	{
-		try
-		{
-			var factor:Float = limit / Math.max(source.width, source.height);
-			var width:Int = Std.int(Math.max(1, Math.floor(source.width * factor)));
-			var height:Int = Std.int(Math.max(1, Math.floor(source.height * factor)));
-
-			var result:BitmapData = new BitmapData(width, height, true, 0x00000000);
-			var matrix:openfl.geom.Matrix = new openfl.geom.Matrix();
-			matrix.scale(width / source.width, height / source.height);
-			result.draw(source, matrix, null, null, null, true);
-			return result;
-		}
-		catch (e:Dynamic)
-		{
-			trace('RESIZE ERROR: ' + Std.string(e));
-			return null;
-		}
-	}
-
-	/**
-	 * How much a sprite must be scaled up to show a graphic at its original size.
-	 * It is 1 unless the image had to be shrunk to fit the GPU limit.
-	 */
-	public static function restoreScale(graphic:FlxGraphic):Float
-	{
-		if (graphic == null || graphic.key == null)
-			return 1;
-
-		var factor:Null<Float> = resizedFactors.get(graphic.key);
-		return (factor == null || factor <= 0) ? 1 : 1 / factor;
-	}
-
-	/**
-	 * Call it right after loading a graphic into a sprite. If the image was shrunk,
-	 * the sprite is scaled back up so it keeps its original size and position.
-	 */
-	public static function applyRestoreScale(sprite:FlxSprite):Void
-	{
-		if (sprite == null)
-			return;
-
-		var multiplier:Float = restoreScale(sprite.graphic);
-
-		if (multiplier != 1)
-		{
-			sprite.scale.set(sprite.scale.x * multiplier, sprite.scale.y * multiplier);
-			sprite.updateHitbox();
-		}
-	}
-
 	public static function getPath(file:String, ?type:AssetType = TEXT, ?parentfolder:String, ?modsAllowed:Bool = true):String
 	{
 		file = normalizeKey(file);
@@ -408,7 +312,7 @@ class Paths
 	 * mods folder) the first time an asset fails to load or looks risky, so the exact name can be
 	 * read with a file manager. The file is replaced on every launch.
 	 *
-	 * @param kind IMAGE, ATLAS, SOUND, RESIZED (image shrunk to the GPU limit) or LARGE (too big and could not be shrunk).
+	 * @param kind IMAGE, ATLAS or SOUND.
 	 */
 	public static function reportAssetProblem(kind:String, key:String, detail:String):Void
 	{
@@ -541,30 +445,6 @@ class Paths
 			}
 		}
 
-		// Textures bigger than the GPU limit cannot be drawn on phones (the sprite shows nothing).
-		// Shrink them; Paths.applyRestoreScale() brings the sprite back to the original size.
-		var resizeFactor:Float = 1;
-		var textureLimit:Int = maxTextureSide();
-
-		if (bitmap.width > textureLimit || bitmap.height > textureLimit)
-		{
-			var originalWidth:Int = bitmap.width;
-			var originalHeight:Int = bitmap.height;
-			var smaller:BitmapData = shrinkBitmap(bitmap, textureLimit);
-
-			if (smaller != null)
-			{
-				bitmap.dispose();
-				bitmap = smaller;
-				resizeFactor = bitmap.width / originalWidth;
-				reportAssetProblem('RESIZED', key, originalWidth + 'x' + originalHeight + ' -> ' + bitmap.width + 'x' + bitmap.height + ' px (GPU limit ' + textureLimit + ')');
-			}
-			else
-			{
-				reportAssetProblem('LARGE', key, originalWidth + 'x' + originalHeight + ' px, could not be resized (GPU limit ' + textureLimit + ')');
-			}
-		}
-
 		if (allowGPU && ClientPrefs.data.cacheOnGPU && bitmap.image != null)
 		{
 			bitmap.lock();
@@ -583,11 +463,6 @@ class Paths
 		var graph:FlxGraphic = FlxGraphic.fromBitmapData(bitmap, false, key);
 		graph.persist = true;
 		graph.destroyOnNoUse = false;
-
-		if (resizeFactor != 1)
-			resizedFactors.set(key, resizeFactor);
-		else
-			resizedFactors.remove(key);
 
 		currentTrackedAssets.set(key, graph);
 		localTrackedAssets.push(key);

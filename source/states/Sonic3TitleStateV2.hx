@@ -57,6 +57,20 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 	var segaIntro:FlxSprite;
 
+	// ---- Logo drop (tweak these numbers to change the animation) ----
+	// Positions are in game pixels; the screen is 320x224.
+	static inline var LOGO_APEX_Y:Float = -27;            // highest point, reached at the end of the entrance
+	static inline var LOGO_REST_Y:Float = -3;             // where the logo comes to rest
+	static inline var LOGO_GRAVITY:Float = 0.21875;       // pixels per frame squared, like a 60 Hz console
+	static inline var LOGO_BOUNCE_DAMPING:Float = 0.45;   // speed kept after each bounce (0 = no bounce)
+	static inline var LOGO_MIN_BOUNCE_SPEED:Float = 0.5;  // below this speed the logo stops bouncing
+	static inline var LOGO_STEP:Float = 1 / 60;           // the drop is simulated in 60 Hz steps
+
+	var logoFalling:Bool = false;
+	var logoY:Float = 0;
+	var logoVelocity:Float = 0;
+	var logoStepTimer:Float = 0;
+
 	override public function create():Void
 	{
 		super.create();
@@ -686,12 +700,18 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 	function logoIntro():Void
 	{
+		// The logo flies up from below the screen and slows down until it reaches its highest point.
 		FlxTween.tween(
 			title,
-			{y: 10},
+			{y: LOGO_APEX_Y},
 			0.39,
 			{
 				ease: FlxEase.quadOut,
+				onUpdate: function(tween:FlxTween)
+				{
+					// Move in whole pixels, like the original hardware.
+					title.y = Math.round(title.y);
+				},
 				onComplete: function(tween:FlxTween)
 				{
 					logoDrop();
@@ -702,50 +722,35 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 	function logoDrop():Void
 	{
-		FlxTween.tween(
-			title,
-			{y: 12},
-			0.12,
-			{
-				ease: FlxEase.quadIn,
-				onComplete: function(tween:FlxTween)
-				{
-					logoBounce();
-				}
-			}
-		);
+		// From here the logo falls with gravity, hits its resting place and bounces a couple of times.
+		// The movement itself is done by stepLogoDrop(), called from update() in 60 Hz steps.
+		logoY = title.y;
+		logoVelocity = 0;
+		logoStepTimer = 0;
+		logoFalling = true;
 	}
 
-	function logoBounce():Void
+	function stepLogoDrop():Void
 	{
-		FlxTween.tween(
-			title,
-			{y: 18},
-			0.13,
-			{
-				ease: FlxEase.quadOut,
-				onComplete: function(tween:FlxTween)
-				{
-					logoSettle();
-				}
-			}
-		);
-	}
+		logoVelocity += LOGO_GRAVITY;
+		logoY += logoVelocity;
 
-	function logoSettle():Void
-	{
-		FlxTween.tween(
-			title,
-			{y: -3},
-			0.15,
+		if (logoY >= LOGO_REST_Y)
+		{
+			logoY = LOGO_REST_Y;
+			logoVelocity = -logoVelocity * LOGO_BOUNCE_DAMPING;
+
+			if (-logoVelocity < LOGO_MIN_BOUNCE_SPEED)
 			{
-				ease: FlxEase.quadInOut,
-				onComplete: function(tween:FlxTween)
-				{
-					showMenu();
-				}
+				// Too slow to bounce again: the logo is at rest.
+				logoFalling = false;
+				title.y = LOGO_REST_Y;
+				showMenu();
+				return;
 			}
-		);
+		}
+
+		title.y = Math.round(logoY);
 	}
 
 	function showMenu():Void
@@ -908,6 +913,18 @@ class Sonic3TitleStateV2 extends MusicBeatState
 	override public function update(elapsed:Float):Void
 	{
 		super.update(elapsed);
+
+		// Logo drop: simulated in fixed 60 Hz steps so it looks the same at any frame rate.
+		if (logoFalling)
+		{
+			logoStepTimer += elapsed;
+
+			while (logoFalling && logoStepTimer >= LOGO_STEP)
+			{
+				logoStepTimer -= LOGO_STEP;
+				stepLogoDrop();
+			}
+		}
 
 		#if android
 		MobileControls.update();

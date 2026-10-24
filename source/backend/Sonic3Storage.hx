@@ -17,8 +17,8 @@ import lime.system.JNI;
  *
  * Usage (call once at startup, before the game reads any mod files):
  *
- *   Sonic3Storage.ensureFolders();
- *   Sonic3Storage.copyBundledMods(); // optional
+ *   Sonic3Storage.ensureFolders(true);
+ *   Sonic3Storage.syncBundledMods(); // copies the mods bundled in the APK when needed
  *
  * Notes:
  * - Writing to /storage/emulated/0 needs the storage permission
@@ -73,7 +73,8 @@ class Sonic3Storage
 
 	/**
 	 * Opens the system screen (Android 11+) or dialog (Android 6-10) where the
-	 * user grants storage access. The user has to relaunch the game afterwards.
+	 * user grants storage access. Poll hasPermission() afterwards (PermissionState
+	 * does it), so the game can continue without being relaunched.
 	 */
 	public static function requestPermission():Void
 	{
@@ -211,6 +212,12 @@ class Sonic3Storage
 		}
 
 		writeCopyReport(listed, copied, problems);
+
+		// New files were written: forget the folder listings cached by the case-insensitive lookup in Paths.
+		#if MODS_ALLOWED
+		Paths.clearDirectoryCache();
+		#end
+
 		trace('Sonic3Storage: copied ' + copied + ' of ' + listed + ' bundled file(s) into ' + getModsFolder());
 		return copied;
 		#else

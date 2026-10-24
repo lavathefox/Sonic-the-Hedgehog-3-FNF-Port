@@ -3,9 +3,11 @@ package backend;
 import flixel.FlxG;
 import flixel.FlxCamera;
 import flixel.FlxSprite;
+import flixel.graphics.FlxGraphic;
 import flixel.tweens.FlxEase;
 import flixel.tweens.FlxTween;
 import flixel.util.FlxColor;
+import flixel.util.FlxSpriteUtil;
 import backend.ClientPrefs;
 import mobile.HitBox;
 import objects.Hitbox;
@@ -84,12 +86,26 @@ class MobileControls
 	static var fadeTimer:Float = 0;
 	static var fadeDuration:Float = 0.45;
 
+	// Images used by the controls (keys for Paths.image / Paths.getSparrowAtlas).
+	static inline var ARROWS_IMAGE:String = 'mobileControls/controlsArrows';
+	static inline var BUTTON_A_IMAGE:String = 'mobileControls/buttomA';
+	static inline var BUTTON_B_IMAGE:String = 'mobileControls/buttomB';
+	static final PAUSE_IMAGES:Array<String> = [
+		'mobile/pauseButton',
+		'mobile/pausebutton',
+		'mobile/PauseButton'
+	];
+
+	// False while the pause button is showing the drawn fallback icon instead of the real image.
+	static var pauseImageLoaded:Bool = false;
+
 	public static function create():Void
 	{
 		#if android
 		if (initialized)
 		{
 			ensureCamera();
+			ensureGraphics();
 			setVisible(visible);
 			return;
 		}
@@ -145,6 +161,48 @@ class MobileControls
 		if (gameplayHitbox != null) gameplayHitbox.cameras = [mobileCamera];
 	}
 
+	/**
+	 * Keeps a graphic out of Paths' memory cleanup. These sprites live in static variables,
+	 * longer than any single state, so Paths must never treat their images as unused.
+	 */
+	static function protect(graphic:FlxGraphic):Void
+	{
+		if (graphic != null && graphic.key != null)
+			Paths.excludeAsset(graphic.key);
+	}
+
+	/** False when the sprite has no image, or when its image was destroyed (the sprite then shows the Flixel placeholder cube). */
+	static function graphicUsable(sprite:FlxSprite):Bool
+	{
+		return sprite != null && sprite.graphic != null && sprite.graphic.bitmap != null;
+	}
+
+	/** Loads the images of any control whose image is missing or was destroyed. Safe to call as often as needed. */
+	static function ensureGraphics():Void
+	{
+		if (arrows != null && !graphicUsable(arrows))
+		{
+			loadArrowsGraphic();
+			arrows.updateHitbox();
+		}
+
+		if (buttonA != null && !graphicUsable(buttonA))
+		{
+			loadButtonGraphic(buttonA, BUTTON_A_IMAGE);
+			buttonA.updateHitbox();
+		}
+
+		if (buttonB != null && !graphicUsable(buttonB))
+		{
+			loadButtonGraphic(buttonB, BUTTON_B_IMAGE);
+			buttonB.updateHitbox();
+		}
+
+		// Also retries when the real pause image was not available the first time.
+		if (pauseButton != null && (!pauseImageLoaded || !graphicUsable(pauseButton)))
+			loadPauseGraphic();
+	}
+
 	static function createGameplayHitbox():Void
 	{
 		Hitbox.style = 'Gradient';
@@ -155,11 +213,10 @@ class MobileControls
 		gameplayHitbox.cameras = [mobileCamera];
 	}
 
-	static function createArrows():Void
+	static function loadArrowsGraphic():Void
 	{
-		arrows = new FlxSprite(arrowX, arrowY);
-
-		arrows.frames = Paths.getSparrowAtlas('mobileControls/controlsArrows');
+		arrows.frames = Paths.getSparrowAtlas(ARROWS_IMAGE);
+		protect(arrows.graphic);
 
 		arrows.animation.addByPrefix('idle', 'idle', 24, false);
 		arrows.animation.addByPrefix('leftClick', 'leftClick', 24, false);
@@ -168,6 +225,27 @@ class MobileControls
 		arrows.animation.addByPrefix('upClick', 'upClick', 24, false);
 
 		arrows.animation.play('idle');
+	}
+
+	static function loadButtonGraphic(button:FlxSprite, image:String):Void
+	{
+		var graphic:FlxGraphic = Paths.image(image);
+
+		if (graphic == null)
+		{
+			trace('MOBILE CONTROLS ERROR: ' + image + ' could not be loaded.');
+			return;
+		}
+
+		button.loadGraphic(graphic);
+		protect(graphic);
+	}
+
+	static function createArrows():Void
+	{
+		arrows = new FlxSprite(arrowX, arrowY);
+
+		loadArrowsGraphic();
 
 		arrows.antialiasing = false;
 		arrows.scale.set(arrowScale, arrowScale);
@@ -181,7 +259,7 @@ class MobileControls
 	{
 		buttonA = new FlxSprite(buttonAX, buttonAY);
 
-		buttonA.loadGraphic(Paths.image('mobileControls/buttomA'));
+		loadButtonGraphic(buttonA, BUTTON_A_IMAGE);
 
 		buttonA.antialiasing = false;
 		buttonA.scale.set(buttonScale, buttonScale);
@@ -192,7 +270,7 @@ class MobileControls
 
 		buttonB = new FlxSprite(buttonBX, buttonBY);
 
-		buttonB.loadGraphic(Paths.image('mobileControls/buttomB'));
+		loadButtonGraphic(buttonB, BUTTON_B_IMAGE);
 
 		buttonB.antialiasing = false;
 		buttonB.scale.set(buttonScale, buttonScale);
@@ -216,49 +294,63 @@ class MobileControls
 		applyMobileOptions();
 	}
 
-	static function createPauseButton():Void
+	/**
+	 * Loads the pause icon (the common filename spellings are tried). If no image can be loaded,
+	 * a simple pause icon is drawn in code, so the button never shows the Flixel placeholder cube.
+	 */
+	static function loadPauseGraphic():Void
 	{
-		pauseButton = new FlxSprite(FlxG.width - 80, 24);
+		var pauseGraphic:FlxGraphic = null;
 
-		// Load the pause icon from the active mod first. Paths.image resolves
-		// mod assets, but an unresolved image can leave Flixel's placeholder graphic.
-		var pauseGraphic:flixel.graphics.FlxGraphic = null;
-		var pausePaths:Array<String> = [
-			'mobile/pauseButton',
-			'mobile/pausebutton',
-			'mobile/PauseButton'
-		];
-
-		for (imagePath in pausePaths)
+		for (imagePath in PAUSE_IMAGES)
 		{
 			try
 			{
-				pauseGraphic = Paths.image(imagePath);
-				if (pauseGraphic != null && pauseGraphic.bitmap != null)
+				var candidate:FlxGraphic = Paths.image(imagePath);
+
+				if (candidate != null && candidate.bitmap != null)
+				{
+					pauseGraphic = candidate;
 					break;
-				pauseGraphic = null;
+				}
 			}
-			catch (e:Dynamic)
-			{
-				pauseGraphic = null;
-			}
+			catch (e:Dynamic) {}
 		}
 
-		if (pauseGraphic != null && pauseGraphic.bitmap != null)
+		if (pauseGraphic != null)
 		{
 			pauseButton.loadGraphic(pauseGraphic);
+			protect(pauseGraphic);
+			pauseImageLoaded = true;
 		}
 		else
 		{
 			trace('MOBILE PAUSE BUTTON ERROR: images/mobile/pauseButton.png was not found or could not be loaded.');
-			Paths.reportAssetProblem('IMAGE', 'mobile/pauseButton', 'pause button image missing or unreadable; checked common filename casing');
-			pauseButton.makeGraphic(56, 56, FlxColor.TRANSPARENT);
-			pauseButton.visible = false;
+			Paths.reportAssetProblem('IMAGE', 'mobile/pauseButton', 'pause button image missing or unreadable; a drawn icon is used instead');
+			drawFallbackPauseIcon();
+			pauseImageLoaded = false;
 		}
 
 		pauseButton.setGraphicSize(56, 56);
 		pauseButton.updateHitbox();
 		pauseButton.antialiasing = false;
+	}
+
+	/** A rounded dark square with two white bars. */
+	static function drawFallbackPauseIcon():Void
+	{
+		pauseButton.makeGraphic(56, 56, FlxColor.TRANSPARENT, true);
+		FlxSpriteUtil.drawRoundRect(pauseButton, 0, 0, 56, 56, 12, 12, 0xAA000000);
+		FlxSpriteUtil.drawRect(pauseButton, 18, 14, 8, 28, FlxColor.WHITE);
+		FlxSpriteUtil.drawRect(pauseButton, 32, 14, 8, 28, FlxColor.WHITE);
+	}
+
+	static function createPauseButton():Void
+	{
+		pauseButton = new FlxSprite(FlxG.width - 80, 24);
+
+		loadPauseGraphic();
+
 		pauseButton.scrollFactor.set();
 		pauseButton.cameras = [mobileCamera];
 		applyMobileOptions();
@@ -274,6 +366,9 @@ class MobileControls
 
 		if (state == null || !initialized)
 			return;
+
+		// The images may have been cleaned from memory since the controls were created.
+		ensureGraphics();
 
 		if (currentState == state)
 		{
@@ -649,7 +744,9 @@ class MobileControls
 		var showHitbox:Bool = ClientPrefs.data.mobileShowHitbox && Std.isOfType(currentState, states.PlayState) && visible;
 		for (box in [hitboxArrows, hitboxA, hitboxB])
 			if (box != null) box.visible = showHitbox && visible;
-		var showPause:Bool = Std.isOfType(currentState, states.PlayState) && visible;
+
+		// SHOW PAUSE BUTTON (mobilePauseButton) was saved by the options menu but never read here.
+		var showPause:Bool = ClientPrefs.data.mobilePauseButton && Std.isOfType(currentState, states.PlayState) && visible;
 		if (pauseButton != null) pauseButton.visible = showPause;
 		#end
 	}

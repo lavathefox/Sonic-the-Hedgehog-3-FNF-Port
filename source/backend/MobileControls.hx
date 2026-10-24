@@ -613,7 +613,7 @@ class MobileControls
 		var showHitbox:Bool = ClientPrefs.data.mobileShowHitbox && Std.isOfType(currentState, states.PlayState) && visible;
 		for (box in [hitboxArrows, hitboxA, hitboxB])
 			if (box != null) box.visible = showHitbox && visible;
-		var showPause:Bool = ClientPrefs.data.mobilePauseButton && Std.isOfType(currentState, states.PlayState) && visible;
+		var showPause:Bool = Std.isOfType(currentState, states.PlayState) && visible;
 		if (pauseButton != null) pauseButton.visible = showPause;
 		#end
 	}

@@ -18,6 +18,7 @@ class DeviceUtil
 
 	static var vibrateMethod:Dynamic = null;
 	static var keepScreenMethod:Dynamic = null;
+	static var brightnessMethod:Dynamic = null;
 	static var unavailable:Bool = false;
 	#end
 
@@ -48,6 +49,28 @@ class DeviceUtil
 	{
 		#if android
 		vibrate(AndroidOptions.vibrationMs());
+		#end
+	}
+
+	/** Sets the screen brightness from 0 to 1. A negative value gives control back to the phone (automatic). */
+	public static function setBrightness(value:Float):Void
+	{
+		#if android
+		if (unavailable)
+			return;
+
+		try
+		{
+			if (brightnessMethod == null)
+				brightnessMethod = JNI.createStaticMethod(HELPER, 'setBrightness', '(F)V');
+
+			brightnessMethod(value);
+		}
+		catch (e:Dynamic)
+		{
+			unavailable = true;
+			trace('DeviceUtil: brightness is not available -> ' + e);
+		}
 		#end
 	}
 

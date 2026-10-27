@@ -328,3 +328,82 @@ jobs:
           path: export/**/*.apk
           if-no-files-found: error
           retention-days: 14
+
+  # Sends one Discord message after both builds finish (success or failure).
+  # Skipped when the run is cancelled (for example by a newer push).
+  notify-discord:
+    name: Notify Discord
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-android]
+    if: ${{ always() && !cancelled() }}
+
+    steps:
+      - name: Send Discord message
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          WINDOWS_RESULT: ${{ needs.build-windows.result }}
+          ANDROID_RESULT: ${{ needs.build-android.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          ACTOR: ${{ github.actor }}
+          BRANCH: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
+        run: |
+          if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
+            echo "::warning::DISCORD_WEBHOOK_URL secret is not set; skipping notification."
+            exit 0
+          fi
+
+          if [ "$WINDOWS_RESULT" = "success" ] && [ "$ANDROID_RESULT" = "success" ]; then
+            TITLE="Build finished successfully"
+            COLOR=3066993
+            DESCRIPTION="The Windows zip and the Android APK are ready. Open the run page and scroll down to the Artifacts section to download them."
+          else
+            TITLE="Build failed"
+            COLOR=15158332
+            DESCRIPTION="At least one build failed. Open the run page to see the logs."
+          fi
+
+          status_label() {
+            if [ "$1" = "success" ]; then echo "Success"; else echo "Failed ($1)"; fi
+          }
+
+          WINDOWS_LABEL=$(status_label "$WINDOWS_RESULT")
+          ANDROID_LABEL=$(status_label "$ANDROID_RESULT")
+
+          SHORT_SHA="${SHA:0:7}"
+          FIRST_LINE=$(printf '%s' "$COMMIT_MESSAGE" | head -n 1)
+          if [ -z "$FIRST_LINE" ]; then
+            FIRST_LINE="Manual run"
+          fi
+
+          jq -n \
+            --arg title "$TITLE" \
+            --arg description "$DESCRIPTION" \
+            --arg url "$RUN_URL" \
+            --argjson color "$COLOR" \
+            --arg windows "$WINDOWS_LABEL" \
+            --arg android "$ANDROID_LABEL" \
+            --arg author "$ACTOR" \
+            --arg branch "$BRANCH" \
+            --arg commit "$SHORT_SHA: $FIRST_LINE" \
+            '{
+              embeds: [{
+                title: $title,
+                description: $description,
+                url: $url,
+                color: $color,
+                fields: [
+                  { name: "Windows", value: $windows, inline: true },
+                  { name: "Android", value: $android, inline: true },
+                  { name: "Branch", value: $branch, inline: true },
+                  { name: "Author", value: $author, inline: true },
+                  { name: "Commit", value: $commit }
+                ]
+              }]
+            }' > payload.json
+
+          curl -sS --fail-with-body \
+            -H "Content-Type: application/json" \
+            -d @payload.json \
+            "$DISCORD_WEBHOOK_URL"

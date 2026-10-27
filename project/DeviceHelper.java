@@ -72,4 +72,36 @@ public class DeviceHelper
 			}
 		});
 	}
+
+	/** Sets this window's brightness (0.05 to 1). A negative value gives control back to the system. */
+	public static void setBrightness(final float brightness)
+	{
+		final Activity activity = Extension.mainActivity;
+
+		if (activity == null)
+			return;
+
+		activity.runOnUiThread(new Runnable()
+		{
+			@Override
+			public void run()
+			{
+				try
+				{
+					WindowManager.LayoutParams params = activity.getWindow().getAttributes();
+
+					if (brightness < 0)
+						params.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE;
+					else
+						params.screenBrightness = Math.min(1f, Math.max(0.05f, brightness));
+
+					activity.getWindow().setAttributes(params);
+				}
+				catch (Throwable t)
+				{
+					android.util.Log.e("DeviceHelper", "Could not change brightness", t);
+				}
+			}
+		});
+	}
 }

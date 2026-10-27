@@ -12,6 +12,15 @@ import states.TitleState;
   public var sonicHUDStyle:String = 'DEFAULT';
   public var mobileShowHitbox:Bool = false;
   public var mobilePauseButton:Bool = true;
+  public var mobileTouchCursor:Bool = false;
+  public var mobileControlsOpacity:Int = 3; // position in AndroidOptions.OPACITY_VALUES
+  public var mobileVibration:Int = 0; // 0 = off, 1 = light, 2 = strong
+  public var mobileKeepScreenOn:Bool = true;
+  public var mobileLaneStyle:Int = 0; // 0 = gradient, 1 = solid, 2 = outline
+  public var mobileLaneOpacity:Int = 1; // position in AndroidOptions.LANE_OPACITY_VALUES
+  public var mobileControlsSize:Int = 1; // 0 = small, 1 = medium, 2 = large
+  public var mobileLeftHanded:Bool = false;
+  public var mobileBrightness:Int = 0; // 0 = automatic
 	public var downScroll:Bool = false;
 	public var middleScroll:Bool = false;
 	public var opponentStrums:Bool = true;

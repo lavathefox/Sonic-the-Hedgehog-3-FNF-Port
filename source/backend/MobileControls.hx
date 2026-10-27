@@ -11,6 +11,9 @@ import flixel.util.FlxSpriteUtil;
 import backend.ClientPrefs;
 import mobile.HitBox;
 import objects.Hitbox;
+import mobile.AndroidOptions;
+import mobile.DeviceUtil;
+import mobile.TouchCursor;
 
 class MobileControls
 {
@@ -48,6 +51,7 @@ class MobileControls
 	public static var hitboxA:HitBox;
 	public static var hitboxB:HitBox;
 	public static var pauseJustPressed:Bool = false;
+	public static var touchCursor:TouchCursor;
 
 	static var mobileCamera:FlxCamera;
 
@@ -86,6 +90,9 @@ class MobileControls
 	static var fadeTimer:Float = 0;
 	static var fadeDuration:Float = 0.45;
 
+	// Multiplies the alpha of the arrows and the A/B buttons (the CONTROLS OPACITY option).
+	static var controlsOpacity:Float = 1;
+
 	// Images used by the controls (keys for Paths.image / Paths.getSparrowAtlas).
 	static inline var ARROWS_IMAGE:String = 'mobileControls/controlsArrows';
 	static inline var BUTTON_A_IMAGE:String = 'mobileControls/buttomA';
@@ -113,12 +120,17 @@ class MobileControls
 		initialized = true;
 		clearPressed();
 
+		// The saved mobile options must be read before anything uses them.
+		AndroidOptions.loadSaved();
+
 		createCamera();
 		createGameplayHitbox();
 		createArrows();
 		createButtons();
 		createHitboxes();
 		createPauseButton();
+		createTouchCursor();
+		AndroidOptions.apply();
 
 		setVisible(visible);
 		#else
@@ -159,6 +171,7 @@ class MobileControls
 		if (hitboxB != null) hitboxB.cameras = [mobileCamera];
 		if (pauseButton != null) pauseButton.cameras = [mobileCamera];
 		if (gameplayHitbox != null) gameplayHitbox.cameras = [mobileCamera];
+		if (touchCursor != null) touchCursor.cameras = [mobileCamera];
 	}
 
 	/**
@@ -203,14 +216,32 @@ class MobileControls
 			loadPauseGraphic();
 	}
 
+	// Lane options (style, opacity) the current gameplay hitbox was built with.
+	static var laneSignature:String = '';
+
 	static function createGameplayHitbox():Void
 	{
-		Hitbox.style = 'Gradient';
-		Hitbox.opacity = 0.35;
+		AndroidOptions.applyLaneSettings();
 		Hitbox.invisible = false;
 		Hitbox.ignoreTop = 72;
 		gameplayHitbox = new Hitbox();
 		gameplayHitbox.cameras = [mobileCamera];
+		laneSignature = AndroidOptions.laneSignature();
+	}
+
+	/** Builds the gameplay hitbox again when the lane options changed since it was created. */
+	static function refreshGameplayHitbox():Void
+	{
+		if (gameplayHitbox != null && laneSignature == AndroidOptions.laneSignature())
+			return;
+
+		if (gameplayHitbox != null)
+		{
+			gameplayHitbox.destroy();
+			gameplayHitbox = null;
+		}
+
+		createGameplayHitbox();
 	}
 
 	static function loadArrowsGraphic():Void
@@ -356,6 +387,31 @@ class MobileControls
 		applyMobileOptions();
 	}
 
+	static function createTouchCursor():Void
+	{
+		touchCursor = new TouchCursor();
+		touchCursor.cameras = [mobileCamera];
+	}
+
+	/** One vibration pulse when a control or a hitbox lane was just touched (VIBRATION option). */
+	static function vibrateOnPress():Void
+	{
+		if (AndroidOptions.vibrationMs() <= 0)
+			return;
+
+		var pressed:Bool = upJustPressed || downJustPressed || leftJustPressed || rightJustPressed
+			|| aJustPressed || bJustPressed || pauseJustPressed;
+
+		for (lane in 0...Hitbox.LANES)
+		{
+			if (Hitbox.justPressed(lane))
+				pressed = true;
+		}
+
+		if (pressed)
+			DeviceUtil.tap();
+	}
+
 	#end
 
 	public static function addToState(state:Dynamic):Void
@@ -381,6 +437,9 @@ class MobileControls
 
 		currentState = state;
 
+		if (Std.isOfType(state, states.PlayState))
+			refreshGameplayHitbox();
+
 		if (Std.isOfType(state, states.PlayState) && gameplayHitbox != null && !state.members.contains(gameplayHitbox))
 			state.add(gameplayHitbox);
 
@@ -399,6 +458,8 @@ class MobileControls
 		{
 			if (!state.members.contains(pauseButton)) state.add(pauseButton);
 		}
+
+		if (touchCursor != null && !state.members.contains(touchCursor)) state.add(touchCursor);
 
 		setVisible(visible);
 		applyMobileOptions();
@@ -425,6 +486,7 @@ class MobileControls
 		if (hitboxA != null && state.members.contains(hitboxA)) state.remove(hitboxA, false);
 		if (hitboxB != null && state.members.contains(hitboxB)) state.remove(hitboxB, false);
 		if (pauseButton != null && state.members.contains(pauseButton)) state.remove(pauseButton, false);
+		if (touchCursor != null && state.members.contains(touchCursor)) state.remove(touchCursor, false);
 
 		if (currentState == state)
 			currentState = null;
@@ -435,6 +497,10 @@ class MobileControls
 	{
 		#if android
 		resetJustPressed();
+
+		// The touch cursor works even when the controls are disabled.
+		if (touchCursor != null)
+			touchCursor.refresh();
 
 		if (!enabled)
 		{
@@ -490,6 +556,8 @@ class MobileControls
 		previousB = bPressed;
 		previousPause = touchPause;
 
+		vibrateOnPress();
+
 		updateAnimation();
 
 		if (fadeTimer > 0)
@@ -500,13 +568,13 @@ class MobileControls
 			var alpha:Float = FlxEase.quadOut(progress);
 
 			if (arrows != null)
-				arrows.alpha = alpha;
+				arrows.alpha = alpha * controlsOpacity;
 
 			if (buttonA != null)
-				buttonA.alpha = alpha;
+				buttonA.alpha = alpha * controlsOpacity;
 
 			if (buttonB != null)
-				buttonB.alpha = alpha;
+				buttonB.alpha = alpha * controlsOpacity;
 		}
 		#end
 	}
@@ -728,13 +796,25 @@ class MobileControls
 	{
 		#if android
 		if (arrows != null)
-			arrows.alpha = value;
+			arrows.alpha = value * controlsOpacity;
 
 		if (buttonA != null)
-			buttonA.alpha = value;
+			buttonA.alpha = value * controlsOpacity;
 
 		if (buttonB != null)
-			buttonB.alpha = value;
+			buttonB.alpha = value * controlsOpacity;
+		#end
+	}
+
+	/** CONTROLS OPACITY option: how visible the arrows and the A/B buttons are (0.1 to 1). */
+	public static function setControlsOpacity(value:Float):Void
+	{
+		controlsOpacity = Math.max(0.1, Math.min(1, value));
+
+		#if android
+		// While the fade-in runs, update() already uses the new value; otherwise apply it now.
+		if (fadeTimer <= 0)
+			setAlpha(1);
 		#end
 	}
 
@@ -869,6 +949,12 @@ class MobileControls
 		{
 			gameplayHitbox.destroy();
 			gameplayHitbox = null;
+		}
+
+		if (touchCursor != null)
+		{
+			touchCursor.destroy();
+			touchCursor = null;
 		}
 
 		if (mobileCamera != null)

@@ -70,6 +70,8 @@
 	<!-- Java helper used by Sonic3Storage (permission check and request through JNI) -->
 	<template path="project/StorageHelper.java" rename="app/src/main/java/me/funkin/sonic3/StorageHelper.java" if="android"/>
 
+	<template path="project/DeviceHelper.java" rename="app/src/main/java/me/funkin/sonic3/DeviceHelper.java" if="android"/>
+
 	<!-- Custom manifest: keep it commented out until the app starts correctly without it. -->
 	<!-- <template path="project/AndroidManifest.xml" rename="app/src/main/AndroidManifest.xml" if="android"/> -->
 

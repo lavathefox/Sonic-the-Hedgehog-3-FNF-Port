@@ -10,26 +10,49 @@ import backend.MobileControls;
 import backend.MusicBeatSubstate;
 import backend.Paths;
 
+import mobile.AndroidOptions;
+import mobile.DeviceUtil;
+
+/** One line of the menu: its name, how to read its value as text, and how to change it. */
+typedef MobileOptionEntry =
+{
+	var label:String;
+	var getValue:Void->String;
+	var change:Int->Void; // +1 = next value, -1 = previous value
+}
+
 class SonicMobileOptionsSubstate extends MusicBeatSubstate
 {
+	// The list shows this many options at once and scrolls when there are more.
+	static inline var VISIBLE_ROWS:Int = 4;
+
+	var entries:Array<MobileOptionEntry> = [];
 	var selected:Int = 0;
+	var firstRow:Int = 0;
 	var canSelect:Bool = true;
 	var labels:Array<Array<FlxSprite>> = [];
 	var values:Array<Array<FlxSprite>> = [];
 	var titleSprites:Array<FlxSprite> = [];
 	var selectedArrow:FlxSprite;
+	var moreUp:FlxSprite;
+	var moreDown:FlxSprite;
 	var optionsCamera:FlxCamera;
+	var letterWidths:Map<String, Float> = new Map();
 
 	var optionY:Float = 270;
-	var optionSpacing:Float = 100;
+	var optionSpacing:Float = 90;
 	var labelX:Float = 180;
 	var valueX:Float = 690;
+	var valueWidth:Float = 200;
 	var letterScale:Float = 2;
 	var letterSpacing:Float = 8;
 
 	override public function create():Void
 	{
 		super.create();
+
+		// Reads the saved options before the menu shows them.
+		AndroidOptions.loadSaved();
 
 		optionsCamera = new FlxCamera();
 		optionsCamera.bgColor.alpha = 0;
@@ -56,13 +79,109 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		selectedArrow.cameras = [optionsCamera];
 		add(selectedArrow);
 
-		createOption('SHOW HITBOX', 0);
-		createOption('SHOW PAUSE BUTTON', 1);
-		updateValues();
+		buildEntries();
+
+		for (i in 0...entries.length)
+			createOption(i);
+
+		moreUp = createMoreArrow(-90);
+		moreDown = createMoreArrow(90);
+
+		layoutRows();
 
 		MobileControls.create();
 		MobileControls.update();
 	}
+
+	// ---- The options ----
+
+	function buildEntries():Void
+	{
+		entries = [
+			boolEntry('SHOW HITBOX',
+				function() return ClientPrefs.data.mobileShowHitbox,
+				function(value:Bool) { ClientPrefs.data.mobileShowHitbox = value; }),
+
+			boolEntry('SHOW PAUSE BUTTON',
+				function() return ClientPrefs.data.mobilePauseButton,
+				function(value:Bool) { ClientPrefs.data.mobilePauseButton = value; }),
+
+			// Draws a ring where each finger touches the screen.
+			boolEntry('TOUCH CURSOR',
+				function() return ClientPrefs.data.mobileTouchCursor,
+				function(value:Bool) { ClientPrefs.data.mobileTouchCursor = value; }),
+
+			// How visible the arrows and the A/B buttons are.
+			listEntry('CONTROLS OPACITY', AndroidOptions.OPACITY_NAMES,
+				function() return ClientPrefs.data.mobileControlsOpacity,
+				function(value:Int) { ClientPrefs.data.mobileControlsOpacity = value; }),
+
+			// A short vibration when a control or a lane is touched.
+			listEntry('VIBRATION', AndroidOptions.VIBRATION_NAMES,
+				function() return ClientPrefs.data.mobileVibration,
+				function(value:Int)
+				{
+					ClientPrefs.data.mobileVibration = value;
+					DeviceUtil.tap(); // lets the player feel the new strength right away
+				}),
+
+			// Stops the screen from turning off while the game is open.
+			boolEntry('KEEP SCREEN ON',
+				function() return ClientPrefs.data.mobileKeepScreenOn,
+				function(value:Bool) { ClientPrefs.data.mobileKeepScreenOn = value; }),
+
+			// Look of the touch lanes used during songs (applies on the next song).
+			listEntry('LANE STYLE', AndroidOptions.LANE_STYLE_NAMES,
+				function() return ClientPrefs.data.mobileLaneStyle,
+				function(value:Int) { ClientPrefs.data.mobileLaneStyle = value; }),
+
+			// How bright a lane flashes when it is touched (applies on the next song).
+			listEntry('LANE OPACITY', AndroidOptions.LANE_OPACITY_NAMES,
+				function() return ClientPrefs.data.mobileLaneOpacity,
+				function(value:Int) { ClientPrefs.data.mobileLaneOpacity = value; }),
+
+			// Size of the on-screen arrows and A/B buttons.
+			listEntry('CONTROLS SIZE', AndroidOptions.CONTROLS_SIZE_NAMES,
+				function() return ClientPrefs.data.mobileControlsSize,
+				function(value:Int) { ClientPrefs.data.mobileControlsSize = value; }),
+
+			// Swaps the sides: arrows on the right, A/B buttons on the left.
+			boolEntry('LEFT HANDED',
+				function() return ClientPrefs.data.mobileLeftHanded,
+				function(value:Bool) { ClientPrefs.data.mobileLeftHanded = value; }),
+
+			// Screen brightness while the game is open. AUTO = the phone decides.
+			listEntry('BRIGHTNESS', AndroidOptions.BRIGHTNESS_NAMES,
+				function() return ClientPrefs.data.mobileBrightness,
+				function(value:Int) { ClientPrefs.data.mobileBrightness = value; })
+		];
+	}
+
+	/** An ON/OFF option. */
+	function boolEntry(label:String, getter:Void->Bool, setter:Bool->Void):MobileOptionEntry
+	{
+		return {
+			label: label,
+			getValue: function():String return getter() ? 'ON' : 'OFF',
+			change: function(direction:Int):Void setter(!getter())
+		};
+	}
+
+	/** An option that cycles through a list of names. The saved value is the position in the list. */
+	function listEntry(label:String, names:Array<String>, getter:Void->Int, setter:Int->Void):MobileOptionEntry
+	{
+		return {
+			label: label,
+			getValue: function():String return names[AndroidOptions.clampIndex(getter(), names.length)],
+			change: function(direction:Int):Void
+			{
+				var next:Int = (AndroidOptions.clampIndex(getter(), names.length) + direction + names.length) % names.length;
+				setter(next);
+			}
+		};
+	}
+
+	// ---- Text drawn with the HUD letters (letters and spaces only) ----
 
 	function getLetterPath(char:String):String
 	{
@@ -76,12 +195,23 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 
 	function getLetterWidth(char:String, scale:Float):Float
 	{
+		var key:String = char.toUpperCase() + '|' + scale;
+		var cached:Null<Float> = letterWidths.get(key);
+
+		if (cached != null)
+			return cached;
+
 		var letter:FlxSprite = new FlxSprite();
 		letter.loadGraphic(Paths.image(getLetterPath(char)));
 		letter.antialiasing = false;
 		letter.scale.set(scale, scale);
 		letter.updateHitbox();
-		return letter.width;
+
+		var width:Float = letter.width;
+		letter.destroy();
+
+		letterWidths.set(key, width);
+		return width;
 	}
 
 	function getTextWidth(text:String, ?scale:Float = -1):Float
@@ -151,15 +281,25 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		sprites.resize(0);
 	}
 
-	function createOption(label:String, index:Int):Void
-	{
-		var y:Float = optionY + index * optionSpacing;
-		var labelSprites:Array<FlxSprite> = [];
-		var valueSprites:Array<FlxSprite> = [];
+	// ---- Rows, scrolling and selection ----
 
-		createTextSprites(label, labelSprites, labelX, y);
+	function rowY(index:Int):Float
+	{
+		return optionY + (index - firstRow) * optionSpacing;
+	}
+
+	function isRowVisible(index:Int):Bool
+	{
+		return index >= firstRow && index < firstRow + VISIBLE_ROWS;
+	}
+
+	function createOption(index:Int):Void
+	{
+		var labelSprites:Array<FlxSprite> = [];
+
+		createTextSprites(entries[index].label, labelSprites, labelX, rowY(index));
 		labels[index] = labelSprites;
-		values[index] = valueSprites;
+		values[index] = [];
 		refreshValue(index);
 	}
 
@@ -170,21 +310,38 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 
 		destroyTextSprites(values[index]);
 
-		var value:String = '';
-		if (index == 0)
-			value = ClientPrefs.data.mobileShowHitbox ? 'ON' : 'OFF';
-		else
-			value = ClientPrefs.data.mobilePauseButton ? 'ON' : 'OFF';
+		var value:String = entries[index].getValue();
+		var startX:Float = valueX + (valueWidth - getTextWidth(value)) / 2;
+		createTextSprites(value, values[index], startX, rowY(index));
 
-		var startX:Float = valueX + (150 - getTextWidth(value)) / 2;
-		createTextSprites(value, values[index], startX, optionY + index * optionSpacing);
+		for (sprite in values[index])
+			sprite.visible = isRowVisible(index);
 	}
 
-	function updateValues():Void
+	/** Places every row according to the scroll position and shows only the visible ones. */
+	function layoutRows():Void
 	{
-		refreshValue(0);
-		refreshValue(1);
-		selectedArrow.y = optionY + selected * optionSpacing;
+		for (i in 0...entries.length)
+		{
+			var y:Float = rowY(i);
+			var visibleRow:Bool = isRowVisible(i);
+
+			for (sprite in labels[i])
+			{
+				sprite.y = y;
+				sprite.visible = visibleRow;
+			}
+
+			for (sprite in values[i])
+			{
+				sprite.y = y;
+				sprite.visible = visibleRow;
+			}
+		}
+
+		selectedArrow.y = rowY(selected);
+		moreUp.visible = firstRow > 0;
+		moreDown.visible = firstRow + VISIBLE_ROWS < entries.length;
 		updateSelectionAlpha();
 	}
 
@@ -203,23 +360,51 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		}
 	}
 
-	function changeSelection(change:Int):Void
+	/** Small arrows above and below the list, shown when there are more options out of view. */
+	function createMoreArrow(angle:Float):FlxSprite
 	{
-		selected = (selected + change + 2) % 2;
-		FlxG.sound.play(Paths.sound('dataselectswitch'));
-		updateValues();
+		var arrow:FlxSprite = new FlxSprite(0, 0);
+		arrow.loadGraphic(Paths.image('pauseMenuEXE/selectedArrow'));
+		arrow.antialiasing = false;
+		arrow.scale.set(2, 2);
+		arrow.updateHitbox();
+		arrow.angle = angle;
+		arrow.scrollFactor.set();
+		arrow.cameras = [optionsCamera];
+		arrow.screenCenter(X);
+		arrow.y = angle < 0 ? optionY - 55 : optionY + VISIBLE_ROWS * optionSpacing - 25;
+		add(arrow);
+		return arrow;
 	}
 
-	function toggleOption():Void
+	function changeSelection(change:Int):Void
 	{
-		if (selected == 0)
-			ClientPrefs.data.mobileShowHitbox = !ClientPrefs.data.mobileShowHitbox;
-		else
-			ClientPrefs.data.mobilePauseButton = !ClientPrefs.data.mobilePauseButton;
+		selected = (selected + change + entries.length) % entries.length;
+
+		// Scroll the list so the selected row is always on screen.
+		if (selected < firstRow)
+			firstRow = selected;
+		else if (selected >= firstRow + VISIBLE_ROWS)
+			firstRow = selected - VISIBLE_ROWS + 1;
+
+		FlxG.sound.play(Paths.sound('dataselectswitch'));
+		layoutRows();
+	}
+
+	function changeValue(direction:Int):Void
+	{
+		var entry:MobileOptionEntry = entries[selected];
+
+		if (entry == null)
+			return;
+
+		entry.change(direction);
 
 		ClientPrefs.saveSettings();
-		MobileControls.applyMobileOptions();
-		updateValues();
+		AndroidOptions.apply();
+
+		refreshValue(selected);
+		updateSelectionAlpha();
 		FlxG.sound.play(Paths.sound('confirmMenu'));
 	}
 
@@ -231,13 +416,22 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		if (!canSelect)
 			return;
 
-		if (FlxG.keys.justPressed.UP || FlxG.keys.justPressed.W || MobileControls.upJustPressed)
+		var up:Bool = FlxG.keys.justPressed.UP || FlxG.keys.justPressed.W || MobileControls.upJustPressed;
+		var down:Bool = FlxG.keys.justPressed.DOWN || FlxG.keys.justPressed.S || MobileControls.downJustPressed;
+		var left:Bool = FlxG.keys.justPressed.LEFT || FlxG.keys.justPressed.A || MobileControls.leftJustPressed;
+		var right:Bool = FlxG.keys.justPressed.RIGHT || FlxG.keys.justPressed.D || MobileControls.rightJustPressed;
+		var confirm:Bool = FlxG.keys.justPressed.ENTER || FlxG.keys.justPressed.SPACE || FlxG.keys.justPressed.Z || MobileControls.aJustPressed;
+		var back:Bool = FlxG.keys.justPressed.ESCAPE || FlxG.keys.justPressed.BACKSPACE || MobileControls.bJustPressed;
+
+		if (up)
 			changeSelection(-1);
-		else if (FlxG.keys.justPressed.DOWN || FlxG.keys.justPressed.S || MobileControls.downJustPressed)
+		else if (down)
 			changeSelection(1);
-		else if (FlxG.keys.justPressed.ENTER || FlxG.keys.justPressed.SPACE || FlxG.keys.justPressed.Z || MobileControls.aJustPressed)
-			toggleOption();
-		else if (FlxG.keys.justPressed.ESCAPE || FlxG.keys.justPressed.BACKSPACE || MobileControls.bJustPressed)
+		else if (left)
+			changeValue(-1);
+		else if (right || confirm)
+			changeValue(1);
+		else if (back)
 			closeMobileOptions();
 	}
 
@@ -271,6 +465,8 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		for (sprites in values)
 			destroyTextSprites(sprites);
 		destroyTextSprites(titleSprites);
+
+		letterWidths.clear();
 
 		if (optionsCamera != null)
 		{

@@ -223,7 +223,8 @@ class MobileControls
 	{
 		AndroidOptions.applyLaneSettings();
 		Hitbox.invisible = false;
-		Hitbox.ignoreTop = 72;
+		// No dead strip at the top: only the pause button area is excluded (see isReservedTouch).
+		Hitbox.ignoreTop = 0;
 		gameplayHitbox = new Hitbox();
 		gameplayHitbox.cameras = [mobileCamera];
 		laneSignature = AndroidOptions.laneSignature();
@@ -599,6 +600,20 @@ class MobileControls
 			pointY <= sprite.y + sprite.height;
 	}
 
+	/** The pause button's area, a bit bigger than the icon so a thumb does not miss it or hit a lane by mistake. */
+	static function isPointInsidePause(pointX:Float, pointY:Float):Bool
+	{
+		if (pauseButton == null || !pauseButton.visible)
+			return false;
+
+		var padding:Float = 12;
+
+		return pointX >= pauseButton.x - padding &&
+			pointX <= pauseButton.x + pauseButton.width + padding &&
+			pointY >= pauseButton.y - padding &&
+			pointY <= pauseButton.y + pauseButton.height + padding;
+	}
+
 	static function checkArrowTouch(touch:Dynamic):Void
 	{
 		if (arrows == null || !arrows.visible || mobileCamera == null)
@@ -665,7 +680,7 @@ class MobileControls
 		}
 
 		if (buttonB != null && buttonB.visible && hitboxB != null && hitboxB.containsPoint(pointX, pointY)) touchB = true;
-		if (pauseButton != null && pauseButton.visible && isPointInside(pointX, pointY, pauseButton)) touchPause = true;
+		if (isPointInsidePause(pointX, pointY)) touchPause = true;
 	}
 
 	public static function isReservedTouch(touch:Dynamic):Bool
@@ -684,7 +699,7 @@ class MobileControls
 			return true;
 		if (buttonB != null && buttonB.visible && hitboxB != null && hitboxB.containsPoint(x, y))
 			return true;
-		if (pauseButton != null && pauseButton.visible && isPointInside(x, y, pauseButton))
+		if (isPointInsidePause(x, y))
 			return true;
 		#end
 		return false;
@@ -761,14 +776,18 @@ class MobileControls
 		visible = value;
 
 		#if android
+		// During a song only the touch lanes (gameplay hitbox) are used: the arrows and the
+		// A/B buttons are hidden, which also means they no longer take touches there.
+		var showControls:Bool = value && !Std.isOfType(currentState, states.PlayState);
+
 		if (arrows != null)
-			arrows.visible = value;
+			arrows.visible = showControls;
 
 		if (buttonA != null)
-			buttonA.visible = value;
+			buttonA.visible = showControls;
 
 		if (buttonB != null)
-			buttonB.visible = value;
+			buttonB.visible = showControls;
 
 		applyMobileOptions();
 		if (value)
@@ -821,9 +840,15 @@ class MobileControls
 	public static function applyMobileOptions():Void
 	{
 		#if android
-		var showHitbox:Bool = ClientPrefs.data.mobileShowHitbox && Std.isOfType(currentState, states.PlayState) && visible;
+		var inSong:Bool = Std.isOfType(currentState, states.PlayState);
+		var showAreas:Bool = ClientPrefs.data.mobileShowHitbox && visible;
+
+		// SHOW HITBOX shows the touch areas: outside songs the boxes of the arrows and A/B buttons...
 		for (box in [hitboxArrows, hitboxA, hitboxB])
-			if (box != null) box.visible = showHitbox && visible;
+			if (box != null) box.visible = showAreas && !inSong;
+
+		// ...and during songs the touch lanes stay faintly visible.
+		Hitbox.showIdle = showAreas && inSong;
 
 		// SHOW PAUSE BUTTON (mobilePauseButton) was saved by the options menu but never read here.
 		var showPause:Bool = ClientPrefs.data.mobilePauseButton && Std.isOfType(currentState, states.PlayState) && visible;

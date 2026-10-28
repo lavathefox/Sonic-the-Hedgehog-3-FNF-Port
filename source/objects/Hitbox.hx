@@ -41,10 +41,16 @@ class Hitbox extends FlxSpriteGroup
 	/** Hide the lanes but keep the touch input working. */
 	public static var invisible:Bool = false;
 
-	/** Touches that start above this Y (game pixels) are ignored, e.g. to keep a pause button free. */
+	/** Keep the lanes faintly visible even when nobody is touching them (the SHOW HITBOX option). Can change at any time. */
+	public static var showIdle:Bool = false;
+
+	/** Touches that start above this Y (game pixels) are ignored. 0 = the whole screen works; the pause button area is excluded separately. */
 	public static var ignoreTop:Float = 0;
 
 	static inline var FADE_OUT_SPEED:Float = 8;
+
+	/** How visible an untouched lane is while showIdle is on. */
+	static inline var IDLE_ALPHA:Float = 0.18;
 
 	static var held:Array<Bool> = [for (i in 0...LANES) false];
 	static var previous:Array<Bool> = [for (i in 0...LANES) false];
@@ -68,6 +74,28 @@ class Hitbox extends FlxSpriteGroup
 		return lane >= 0 && lane < LANES && !held[lane] && previous[lane];
 	}
 
+	// The touch area is centered on the screen. Touches and drawing both use these four
+	// functions, so what you see is exactly where you can touch.
+	static function areaWidth():Float
+	{
+		return FlxG.width * hitboxScale;
+	}
+
+	static function areaHeight():Float
+	{
+		return FlxG.height * hitboxScale;
+	}
+
+	static function areaLeft():Float
+	{
+		return (FlxG.width - areaWidth()) * 0.5;
+	}
+
+	static function areaTop():Float
+	{
+		return (FlxG.height - areaHeight()) * 0.5;
+	}
+
 	/** Reads the current touches and works out which lanes are being held. */
 	static function pollTouches():Void
 	{
@@ -78,37 +106,33 @@ class Hitbox extends FlxSpriteGroup
 		}
 
 		#if FLX_TOUCH
-		// Scale the complete touch area around the center of the screen.
-		var areaWidth:Float = FlxG.width * hitboxScale;
-		var areaHeight:Float = FlxG.height * hitboxScale;
-		var areaX:Float = (FlxG.width - areaWidth) * 0.4;
-		var areaY:Float = (FlxG.height - areaHeight) * 0.4;
-		var leftBoundary:Float = areaX + areaWidth * 0.45;
-		var downBoundary:Float = areaX + areaWidth * 0.55;
-		var upBoundary:Float = areaX + areaWidth * 0.57;
+		// Same area the lanes are drawn in (see areaLeft / areaTop / areaWidth / areaHeight).
+		var left:Float = areaLeft();
+		var top:Float = areaTop();
+		var width:Float = areaWidth();
+		var height:Float = areaHeight();
 
 		for (touch in FlxG.touches.list)
 		{
 			if (!touch.pressed || touch.screenY < ignoreTop)
 				continue;
 
-			if (touch.screenX < areaX || touch.screenX >= areaX + areaWidth || touch.screenY < areaY || touch.screenY >= areaY + areaHeight)
+			if (touch.screenX < left || touch.screenX >= left + width || touch.screenY < top || touch.screenY >= top + height)
 				continue;
 
 			#if android
+			// The pause button keeps its own area, so a touch there never counts as a lane.
 			if (MobileControls.isReservedTouch(touch))
 				continue;
 			#end
 
-			var lane:Int;
-			if (touch.screenX < leftBoundary)
+			// The four lanes have the same width.
+			var lane:Int = Std.int((touch.screenX - left) / width * LANES);
+
+			if (lane < 0)
 				lane = 0;
-			else if (touch.screenX < downBoundary)
-				lane = 1;
-			else if (touch.screenX < upBoundary)
-				lane = 2;
-			else
-				lane = 3;
+			else if (lane >= LANES)
+				lane = LANES - 1;
 
 			held[lane] = true;
 		}
@@ -127,24 +151,20 @@ class Hitbox extends FlxSpriteGroup
 			previous[i] = false;
 		}
 
-		var areaWidth:Int = Std.int(FlxG.width * hitboxScale);
-		var areaHeight:Int = Std.int(FlxG.height * hitboxScale);
-		var areaX:Int = Std.int((FlxG.width - areaWidth) * 0.5);
-		var areaY:Int = Std.int((FlxG.height - areaHeight) * 0.5);
-		var boundaries:Array<Int> = [
-			areaX,
-			areaX + Std.int(areaWidth * 0.45),
-			areaX + Std.int(areaWidth * 0.55),
-			areaX + Std.int(areaWidth * 0.57),
-			areaX + areaWidth
-		];
+		var left:Float = areaLeft();
+		var top:Int = Std.int(areaTop());
+		var width:Float = areaWidth();
+		var height:Int = Std.int(areaHeight());
 
 		for (i in 0...LANES)
 		{
-			var laneX:Int = boundaries[i];
-			var laneWidth:Int = boundaries[i + 1] - laneX;
-			var lane:FlxSprite = new FlxSprite(laneX, areaY);
-			lane.loadGraphic(createLaneBitmap(style, laneWidth, areaHeight), false, 0, 0, true);
+			// Four lanes with the same width (the edges are rounded so there is no gap between them).
+			var laneX:Int = Std.int(left + width * i / LANES);
+			var nextX:Int = Std.int(left + width * (i + 1) / LANES);
+			var laneWidth:Int = nextX - laneX;
+
+			var lane:FlxSprite = new FlxSprite(laneX, top);
+			lane.loadGraphic(createLaneBitmap(style, laneWidth, height), false, 0, 0, true);
 			lane.color = laneColor(i);
 			lane.alpha = 0;
 			lane.antialiasing = ClientPrefs.data.antialiasing;
@@ -199,18 +219,25 @@ class Hitbox extends FlxSpriteGroup
 		pollTouches();
 		super.update(elapsed);
 
+		// An untouched lane fades down to "idle": invisible, or faintly visible when showIdle is on.
+		var idle:Float = showIdle ? IDLE_ALPHA : 0;
+
 		for (i in 0...lanes.length)
 		{
 			if (held[i])
 			{
 				lanes[i].alpha = opacity;
 			}
-			else if (lanes[i].alpha > 0)
+			else if (lanes[i].alpha > idle)
 			{
-				lanes[i].alpha -= lanes[i].alpha * Math.min(1, elapsed * FADE_OUT_SPEED);
+				lanes[i].alpha -= (lanes[i].alpha - idle) * Math.min(1, elapsed * FADE_OUT_SPEED);
 
-				if (lanes[i].alpha < 0.01)
-					lanes[i].alpha = 0;
+				if (lanes[i].alpha - idle < 0.01)
+					lanes[i].alpha = idle;
+			}
+			else
+			{
+				lanes[i].alpha = idle;
 			}
 		}
 	}

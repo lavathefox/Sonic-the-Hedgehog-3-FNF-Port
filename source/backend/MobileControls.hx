@@ -228,8 +228,8 @@ class MobileControls
 
 		// Where the touch lanes start and end horizontally, in game pixels (the game is 959 wide).
 		// 0 = the screen edge. Example: marginLeft = 120 starts the lanes 120 pixels from the left edge.
-		Hitbox.marginLeft = -20;
-		Hitbox.marginRight = -10;
+		Hitbox.marginLeft = 100;
+		Hitbox.marginRight = 90;
 		gameplayHitbox = new Hitbox();
 		gameplayHitbox.cameras = [mobileCamera];
 		laneSignature = AndroidOptions.laneSignature();

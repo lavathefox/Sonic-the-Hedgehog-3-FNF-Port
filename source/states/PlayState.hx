@@ -2614,13 +2614,14 @@ class PlayState extends MusicBeatState
 			Highscore.saveScore(Song.loadedSongName, songScore, storyDifficulty, percent);
 			#end
 			playbackRate = 1;
-							 
-            #if !html5
+
+			#if !html5
 			if (chartingMode)
 			{
 				openChartEditor();
 				return false;
 			}
+			#end
 
 			if (isStoryMode)
 			{

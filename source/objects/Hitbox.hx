@@ -35,6 +35,16 @@ class Hitbox extends FlxSpriteGroup
 	/** Overall hitbox size multiplier. 1.0 fills the screen; lower values shrink it. */
 	public static var hitboxScale:Float = 1.0;
 
+	/**
+	 * Gap, in game pixels, between the left edge of the touch area and where the lanes start.
+	 * 0 = the lanes start at the screen edge. Can be negative to start before the edge (the lanes
+	 * still take touches there, but are only drawn inside the game view).
+	 */
+	public static var marginLeft:Float = 0;
+
+	/** Same as marginLeft, for the right side: where the lanes end, counted from the right screen edge. */
+	public static var marginRight:Float = 0;
+
 	/** Lane opacity while a finger is on it (0 to 1). */
 	public static var opacity:Float = 0.95;
 
@@ -48,6 +58,9 @@ class Hitbox extends FlxSpriteGroup
 	public static var ignoreTop:Float = 0;
 
 	static inline var FADE_OUT_SPEED:Float = 8;
+
+	/** The touch area never gets narrower than this, so the four lanes always exist. */
+	static inline var MIN_AREA_WIDTH:Float = 80;
 
 	/** How visible an untouched lane is while showIdle is on. */
 	static inline var IDLE_ALPHA:Float = 0.18;
@@ -74,11 +87,12 @@ class Hitbox extends FlxSpriteGroup
 		return lane >= 0 && lane < LANES && !held[lane] && previous[lane];
 	}
 
-	// The touch area is centered on the screen. Touches and drawing both use these four
-	// functions, so what you see is exactly where you can touch.
+	// The touch area is centered on the screen unless marginLeft / marginRight move its sides.
+	// Touches and drawing both use these four functions, so what you see is exactly where you can touch.
 	static function areaWidth():Float
 	{
-		return FlxG.width * hitboxScale;
+		// The screen width (scaled by hitboxScale) minus the two side margins.
+		return Math.max(MIN_AREA_WIDTH, FlxG.width * hitboxScale - marginLeft - marginRight);
 	}
 
 	static function areaHeight():Float
@@ -88,7 +102,8 @@ class Hitbox extends FlxSpriteGroup
 
 	static function areaLeft():Float
 	{
-		return (FlxG.width - areaWidth()) * 0.02;
+		// Where the (scaled) area would start when centered, moved inwards by marginLeft.
+		return (FlxG.width - FlxG.width * hitboxScale) * 0.5 + marginLeft;
 	}
 
 	static function areaTop():Float

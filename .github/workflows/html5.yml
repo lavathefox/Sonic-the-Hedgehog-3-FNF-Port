@@ -1,0 +1,108 @@
+name: Build HTML5
+
+# Manual only: open the Actions tab, pick "Build HTML5" and press "Run workflow".
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: html5-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-html5:
+    name: Build HTML5
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Haxe
+        uses: krdlab/setup-haxe@v2
+        with:
+          haxe-version: 4.3.4
+
+      - name: Cache Haxe libraries
+        id: haxelib-cache
+        uses: actions/cache@v4
+        with:
+          path: .haxelib
+          key: haxelib-html5-${{ hashFiles('.github/workflows/html5.yml') }}
+
+      - name: Set up Haxelib
+        shell: bash
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.haxelib"
+          haxelib setup "$GITHUB_WORKSPACE/.haxelib"
+
+      - name: Install Haxe dependencies
+        if: steps.haxelib-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          haxelib_retry() {
+            local attempt=1
+            echo "Installing: haxelib $*"
+            while [ "$attempt" -le 3 ]; do
+              if timeout 8m haxelib "$@"; then
+                return 0
+              fi
+              echo "::warning::haxelib $* failed (attempt $attempt/3)."
+              if [ "$attempt" -lt 3 ]; then sleep 5; fi
+              attempt=$((attempt + 1))
+            done
+            echo "::error::haxelib $* failed after 3 attempts."
+            return 1
+          }
+          haxelib_retry install lime 8.1.2 --always
+          haxelib_retry install openfl 9.3.3 --always
+          haxelib_retry install flixel 5.6.1 --always
+          haxelib_retry install flixel-addons 3.2.2 --always
+          haxelib_retry install flixel-tools 1.5.1 --always
+          haxelib_retry install hscript-iris 1.1.3 --always
+          haxelib_retry install tjson 1.4.0 --always
+          haxelib_retry set lime 8.1.2
+          haxelib_retry set openfl 9.3.3
+          haxelib_retry git flxanimate https://github.com/Dot-Stuff/flxanimate 768740a56b26aa0c072720e0d1236b94afe68e3e
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Stage mod assets and convert audio
+        run: bash setup/html5_stage.sh
+
+      - name: Build HTML5
+        run: haxelib run lime build html5 -release
+
+      - name: Upload build (zip)
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sonic3-FNF-Port-HTML5
+          path: export/release/html5/bin/
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload site for GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: export/release/html5/bin/
+
+  # Needs Settings > Pages > Source = "GitHub Actions" (one time). If that is not set up yet this job
+  # fails, but the build above still succeeds and its zip can be downloaded from the run page.
+  deploy-pages:
+    name: Deploy to GitHub Pages
+    needs: build-html5
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

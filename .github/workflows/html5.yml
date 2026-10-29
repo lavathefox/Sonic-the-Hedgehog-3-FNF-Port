@@ -1,8 +1,15 @@
 name: Build HTML5
 
 # Manual only: open the Actions tab, pick "Build HTML5" and press "Run workflow".
+# "deploy" publishes the result on GitHub Pages; leave it off while you are still fixing build errors,
+# it saves about a minute.
 on:
   workflow_dispatch:
+    inputs:
+      deploy:
+        description: Publish on GitHub Pages
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,6 +22,7 @@ jobs:
   build-html5:
     name: Build HTML5
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout
@@ -25,12 +33,13 @@ jobs:
         with:
           haxe-version: 4.3.4
 
+      # Libraries are only downloaded on the first run. Change "v1" to "v2" in the key when you change the version list below.
       - name: Cache Haxe libraries
         id: haxelib-cache
         uses: actions/cache@v4
         with:
           path: .haxelib
-          key: haxelib-html5-${{ hashFiles('.github/workflows/html5.yml') }}
+          key: haxelib-html5-v1
 
       - name: Set up Haxelib
         shell: bash
@@ -68,11 +77,28 @@ jobs:
           haxelib_retry set openfl 9.3.3
           haxelib_retry git flxanimate https://github.com/Dot-Stuff/flxanimate 768740a56b26aa0c072720e0d1236b94afe68e3e
 
-      - name: Install ffmpeg
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      # The .mp3 files are cached, so ffmpeg is only needed when a .ogg is new or changed.
+      - name: Cache converted audio
+        id: audio-cache
+        uses: actions/cache@v4
+        with:
+          path: .audio_cache
+          key: audio-html5-${{ hashFiles('**/*.ogg', 'setup/html5_stage.sh') }}
+
+      - name: Set up ffmpeg
+        if: steps.audio-cache.outputs.cache-hit != 'true'
+        uses: FedericoCarboni/setup-ffmpeg@v3
 
       - name: Stage mod assets and convert audio
         run: bash setup/html5_stage.sh
+
+      # Copies the HTML5 replacements (source_html5/) over the originals in source/. This only changes the
+      # temporary checkout of this run, nothing is committed back.
+      - name: Apply HTML5 overrides
+        run: |
+          test -d source_html5 || { echo "::error::source_html5/ is missing from the repository"; exit 1; }
+          cp -a source_html5/. source/
+          echo "Overrides applied:"; (cd source_html5 && find . -type f)
 
       - name: Build HTML5
         run: haxelib run lime build html5 -release
@@ -84,16 +110,18 @@ jobs:
           path: export/release/html5/bin/
           if-no-files-found: error
           retention-days: 14
+          compression-level: 0
 
       - name: Upload site for GitHub Pages
+        if: inputs.deploy
         uses: actions/upload-pages-artifact@v3
         with:
           path: export/release/html5/bin/
 
-  # Needs Settings > Pages > Source = "GitHub Actions" (one time). If that is not set up yet this job
-  # fails, but the build above still succeeds and its zip can be downloaded from the run page.
+  # Needs Settings > Pages > Source = "GitHub Actions" (one time).
   deploy-pages:
     name: Deploy to GitHub Pages
+    if: inputs.deploy
     needs: build-html5
     runs-on: ubuntu-latest
     permissions:

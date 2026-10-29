@@ -29,8 +29,6 @@ import cutscenes.DialogueBoxPsych;
 
 import states.StoryMenuState;
 import states.FreeplayState;
-import states.editors.ChartingState;
-import states.editors.CharacterEditorState;
 
 import substates.PauseSubState;
 import substates.SonicPauseSubStateTest;
@@ -38,6 +36,11 @@ import substates.GameOverSubstate;
 
 #if !flash
 import openfl.filters.ShaderFilter;
+#end
+	
+#if !html5
+import states.editors.ChartingState;
+import states.editors.CharacterEditorState;
 #end
 
 import shaders.ErrorHandledShader;
@@ -2105,6 +2108,7 @@ class PlayState extends MusicBeatState
 
 	function openChartEditor()
 	{
+		#if !html5
 		canResync = false;
 		FlxG.camera.followLerp = 0;
 		persistentUpdate = false;
@@ -2124,10 +2128,12 @@ class PlayState extends MusicBeatState
 		#end
 
 		MusicBeatState.switchState(new ChartingState());
+		#end
 	}
 
 	function openCharacterEditor()
 	{
+		#if !html5
 		canResync = false;
 		FlxG.camera.followLerp = 0;
 		persistentUpdate = false;
@@ -2607,7 +2613,8 @@ class PlayState extends MusicBeatState
 			Highscore.saveScore(Song.loadedSongName, songScore, storyDifficulty, percent);
 			#end
 			playbackRate = 1;
-
+							 
+            #if !html5
 			if (chartingMode)
 			{
 				openChartEditor();

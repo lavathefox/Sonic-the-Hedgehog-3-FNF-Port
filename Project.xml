@@ -83,10 +83,14 @@
 
 	<classpath name="source" />
 
+	<!-- HTML5 only: files in source_html5 replace the class with the same name in source (the last classpath wins).
+		Used for classes that need threads or the file system, which browsers don't have. -->
+	<classpath name="source_html5" if="html5" />
+
 	<!-- __________________________ Game Assets & Etc. __________________________ -->
 	
-	<!-- Turn on Crash Handler -->
-	<define name="CRASH_HANDLER" if="release" />
+	<!-- Turn on Crash Handler (it writes files to disk, so it can't be used in the browser) -->
+	<define name="CRASH_HANDLER" if="release" unless="html5" />
 
 	<!-- Assets -->
 	<assets path="assets/fonts" />
@@ -114,6 +118,15 @@
 		<assets path="assets/base_game" rename="assets" exclude="*.mp3"  unless="web"/>
 		<haxelib name="grig.audio" if="BASE_GAME_FILES"/>
 		<haxelib name="funkin.vis" if="BASE_GAME_FILES"/>
+	</section>
+
+	<!-- HTML5: browsers have no mods folder, so setup/html5_stage.sh copies the mod into html5_stage/
+		using the layout of a normal (non-mods) assets folder, and that folder is bundled here.
+		Run the script before building: bash setup/html5_stage.sh -->
+	<section if="html5">
+		<assets path="html5_stage/shared" rename="assets/shared" exclude="*.ogg" />
+		<assets path="html5_stage/songs"  rename="assets/songs"  exclude="*.ogg" />
+		<assets path="html5_stage/fonts"  rename="assets/fonts"  exclude="*.ogg" />
 	</section>
 
 	<define name="CHECK_FOR_UPDATES" if="desktop officialBuild"/>

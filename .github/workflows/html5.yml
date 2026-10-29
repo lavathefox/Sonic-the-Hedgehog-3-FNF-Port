@@ -85,9 +85,11 @@ jobs:
           path: .audio_cache
           key: audio-html5-${{ hashFiles('**/*.ogg', 'setup/html5_stage.sh') }}
 
-      - name: Set up ffmpeg
+      - name: Install ffmpeg
         if: steps.audio-cache.outputs.cache-hit != 'true'
-        uses: FedericoCarboni/setup-ffmpeg@v3
+        run: |
+          command -v ffmpeg >/dev/null 2>&1 || sudo apt-get install -y --no-install-recommends ffmpeg \
+            || { sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg; }
 
       - name: Stage mod assets and convert audio
         run: bash setup/html5_stage.sh

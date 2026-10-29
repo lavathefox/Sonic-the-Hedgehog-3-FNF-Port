@@ -2148,6 +2148,7 @@ class PlayState extends MusicBeatState
 
 		#if DISCORD_ALLOWED DiscordClient.resetClientID(); #end
 		MusicBeatState.switchState(new CharacterEditorState(SONG.player2));
+		#end
 	}
 
 	public var isDead:Bool = false; //Don't mess with this on Lua!!!

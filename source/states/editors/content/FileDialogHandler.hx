@@ -6,7 +6,10 @@ import openfl.events.IOErrorEvent;
 import flash.net.FileFilter;
 
 import haxe.Exception;
+import haxe.io.Path;
+#if sys
 import sys.io.File;
+#end
 import lime.ui.*;
 
 import flixel.FlxBasic;
@@ -89,8 +92,10 @@ class FileDialogHandler extends FlxBasic
 	public var completed:Bool = true;
 	function onSaveComplete(_)
 	{
+		#if desktop
 		@:privateAccess
 		this.path = _fileRef._trackSavedPath;
+		#end
 		this.completed = true;
 		trace('Saved file to: $path');
 
@@ -103,7 +108,12 @@ class FileDialogHandler extends FlxBasic
 	{
 		@:privateAccess
 		this.path = _fileRef.__path;
+		#if sys
 		this.data = File.getContent(this.path);
+		#else
+		// No sys.io.File on web targets (HTML5); file contents can't be read synchronously here.
+		this.data = (_fileRef.data != null) ? _fileRef.data.toString() : null;
+		#end
 		this.completed = true;
 		trace('Loaded file from: $path');
 
@@ -177,6 +187,7 @@ class FileDialogHandler extends FlxBasic
 //Only way I could find to keep the path after saving a file
 class FileReferenceCustom extends FileReference
 {
+	#if desktop
 	@:allow(backend.FileDialogHandler)
 	var _trackSavedPath:String;
 	override function saveFileDialog_onSelect(path:String):Void
@@ -184,6 +195,7 @@ class FileReferenceCustom extends FileReference
 		_trackSavedPath = path;
 		super.saveFileDialog_onSelect(path);
 	}
+	#end
 	
 	public function browseEx(browseType:FileDialogType = OPEN, ?defaultName:String, ?title:String = null, ?typeFilter:Array<FileFilter> = null):Bool
 	{

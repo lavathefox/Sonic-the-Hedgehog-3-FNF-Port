@@ -88,7 +88,7 @@ class Hitbox extends FlxSpriteGroup
 
 	static function areaLeft():Float
 	{
-		return (FlxG.width - areaWidth()) * 0.46;
+		return (FlxG.width - areaWidth()) * 0.6;
 	}
 
 	static function areaTop():Float

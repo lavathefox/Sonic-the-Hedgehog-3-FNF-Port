@@ -18,7 +18,11 @@ import backend.Achievements;
 import sys.*;
 import sys.io.*;
 #elseif js
-import js.html.*;
+// NOTE: don't use `import js.html.*;` here. It makes `Option`, `File` and `FileSystem`
+// resolve to browser classes (js.html.Option, js.html.File...) and breaks the build.
+// These are small stand-ins (source_html5/backend/web) that read from the bundled assets.
+import backend.web.File;
+import backend.web.FileSystem;
 #end
 
 import backend.Paths;

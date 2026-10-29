@@ -51,7 +51,6 @@ class MobileControls
 	public static var hitboxA:HitBox;
 	public static var hitboxB:HitBox;
 	public static var pauseJustPressed:Bool = false;
-	public static var touchCursor:TouchCursor;
 
 	static var mobileCamera:FlxCamera;
 
@@ -129,8 +128,10 @@ class MobileControls
 		createButtons();
 		createHitboxes();
 		createPauseButton();
-		createTouchCursor();
 		AndroidOptions.apply();
+
+		// The touch cursor covers the whole game, on every screen (not only the ones with controls).
+		TouchCursor.install();
 
 		setVisible(visible);
 		#else
@@ -171,7 +172,6 @@ class MobileControls
 		if (hitboxB != null) hitboxB.cameras = [mobileCamera];
 		if (pauseButton != null) pauseButton.cameras = [mobileCamera];
 		if (gameplayHitbox != null) gameplayHitbox.cameras = [mobileCamera];
-		if (touchCursor != null) touchCursor.cameras = [mobileCamera];
 	}
 
 	/**
@@ -225,6 +225,11 @@ class MobileControls
 		Hitbox.invisible = false;
 		// No dead strip at the top: only the pause button area is excluded (see isReservedTouch).
 		Hitbox.ignoreTop = 0;
+
+		// Where the touch lanes start and end horizontally, in game pixels (the game is 959 wide).
+		// 0 = the screen edge. Example: marginLeft = 120 starts the lanes 120 pixels from the left edge.
+		Hitbox.marginLeft = -20;
+		Hitbox.marginRight = -10;
 		gameplayHitbox = new Hitbox();
 		gameplayHitbox.cameras = [mobileCamera];
 		laneSignature = AndroidOptions.laneSignature();
@@ -388,12 +393,6 @@ class MobileControls
 		applyMobileOptions();
 	}
 
-	static function createTouchCursor():Void
-	{
-		touchCursor = new TouchCursor();
-		touchCursor.cameras = [mobileCamera];
-	}
-
 	/** One vibration pulse when a control or a hitbox lane was just touched (VIBRATION option). */
 	static function vibrateOnPress():Void
 	{
@@ -460,8 +459,6 @@ class MobileControls
 			if (!state.members.contains(pauseButton)) state.add(pauseButton);
 		}
 
-		if (touchCursor != null && !state.members.contains(touchCursor)) state.add(touchCursor);
-
 		setVisible(visible);
 		applyMobileOptions();
 		#end
@@ -487,7 +484,6 @@ class MobileControls
 		if (hitboxA != null && state.members.contains(hitboxA)) state.remove(hitboxA, false);
 		if (hitboxB != null && state.members.contains(hitboxB)) state.remove(hitboxB, false);
 		if (pauseButton != null && state.members.contains(pauseButton)) state.remove(pauseButton, false);
-		if (touchCursor != null && state.members.contains(touchCursor)) state.remove(touchCursor, false);
 
 		if (currentState == state)
 			currentState = null;
@@ -498,10 +494,6 @@ class MobileControls
 	{
 		#if android
 		resetJustPressed();
-
-		// The touch cursor works even when the controls are disabled.
-		if (touchCursor != null)
-			touchCursor.refresh();
 
 		if (!enabled)
 		{
@@ -974,12 +966,6 @@ class MobileControls
 		{
 			gameplayHitbox.destroy();
 			gameplayHitbox = null;
-		}
-
-		if (touchCursor != null)
-		{
-			touchCursor.destroy();
-			touchCursor = null;
 		}
 
 		if (mobileCamera != null)

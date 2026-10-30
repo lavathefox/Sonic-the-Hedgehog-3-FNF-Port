@@ -1,0 +1,185 @@
+{
+	"camera_boyfriend": [
+		-800,
+		-400
+	],
+	"_editorMeta": {
+		"boyfriend": "BoyfriendGenesisFlip",
+		"gf": "gf",
+		"dad": "majin"
+	},
+	"preload": {
+		"images/stage_light": 2,
+		"images/stagecurtains": 2,
+		"images/stagefront": 3,
+		"images/stageback": 3
+	},
+	"girlfriend": [
+		29,
+		476
+	],
+	"stageUI": "",
+	"boyfriend": [
+		652,
+		11
+	],
+	"defaultZoom": 0.45,
+	"objects": [
+		{
+			"x": 21,
+			"y": -1573,
+			"scale": [
+				10,
+				10
+			],
+			"image": "majinBg/majin-back2",
+			"flipX": false,
+			"filters": 3,
+			"color": "FFFFFF",
+			"angle": 0,
+			"name": "sprite6",
+			"firstAnimation": "idle",
+			"antialiasing": true,
+			"flipY": false,
+			"scroll": [
+				1,
+				1
+			],
+			"alpha": 1,
+			"animations": [
+				{
+					"offsets": null,
+					"indices": [],
+					"fps": 12,
+					"anim": "idle",
+					"loop": true,
+					"name": ""
+				}
+			],
+			"type": "animatedSprite"
+		},
+		{
+			"x": -1278,
+			"y": -1668,
+			"scale": [
+				10,
+				10
+			],
+			"image": "majinBg/majin-back2",
+			"flipX": false,
+			"filters": 3,
+			"color": "FFFFFF",
+			"angle": 0,
+			"name": "sprite5",
+			"firstAnimation": "idle",
+			"antialiasing": true,
+			"flipY": false,
+			"scroll": [
+				1,
+				1
+			],
+			"alpha": 1,
+			"animations": [
+				{
+					"offsets": null,
+					"indices": [],
+					"fps": 12,
+					"anim": "idle",
+					"loop": true,
+					"name": ""
+				}
+			],
+			"type": "animatedSprite"
+		},
+		{
+			"x": -1280,
+			"y": -1138,
+			"scale": [
+				10,
+				10
+			],
+			"image": "majinBg/bg3",
+			"flipX": false,
+			"filters": 3,
+			"color": "FFFFFF",
+			"angle": 0,
+			"name": "sprite3",
+			"antialiasing": true,
+			"flipY": false,
+			"scroll": [
+				1,
+				1
+			],
+			"alpha": 1,
+			"type": "sprite"
+		},
+		{
+			"x": -1255,
+			"y": -1225,
+			"scale": [
+				10,
+				10
+			],
+			"image": "majinBg/bg2",
+			"flipX": false,
+			"filters": 3,
+			"color": "FFFFFF",
+			"angle": 0,
+			"name": "sprite2",
+			"antialiasing": true,
+			"flipY": false,
+			"scroll": [
+				1,
+				1
+			],
+			"alpha": 1,
+			"type": "sprite"
+		},
+		{
+			"type": "gf"
+		},
+		{
+			"x": -2996,
+			"y": -2264,
+			"scale": [
+				10,
+				10
+			],
+			"image": "majinBg/floor",
+			"flipX": false,
+			"filters": 3,
+			"color": "FFFFFF",
+			"angle": 0,
+			"name": "sprite1",
+			"antialiasing": true,
+			"flipY": false,
+			"scroll": [
+				1,
+				1
+			],
+			"alpha": 1,
+			"type": "sprite"
+		},
+		{
+			"type": "dad"
+		},
+		{
+			"type": "boyfriend"
+		}
+	],
+	"camera_girlfriend": [
+		0,
+		-300
+	],
+	"camera_speed": 1,
+	"directory": "week1",
+	"opponent": [
+		-487,
+		26
+	],
+	"camera_opponent": [
+		-150,
+		-400
+	],
+	"hide_girlfriend": false
+}

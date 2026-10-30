@@ -11,6 +11,7 @@ on:
       - 'docs/**'
       - 'art/**'
       - '.github/workflows/claude.yml'
+      - '.github/workflows/html5.yml'
   pull_request:
     branches:
       - main
@@ -55,7 +56,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: build-${{ github.workflow }}-${{ github.ref }}
+  group: build-${{ github.ref }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 env:
@@ -65,95 +66,29 @@ env:
   ANDROID_BUILD_TOOLS: 31.0.0
   APP_NAME: Sonic3-FNF-Port
   HXCPP_COMPILE_CACHE: ${{ github.workspace }}/.hxcpp_cache
+  GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=4
+  BUILD_TYPE: ${{ inputs.build_type || 'release' }}
+  ANDROID_ABIS: ${{ inputs.android_abis || 'arm64' }}
 
 defaults:
   run:
     shell: bash
 
 jobs:
-  prepare:
-    name: Prepare
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      matrix: ${{ steps.matrix.outputs.matrix }}
-      version: ${{ steps.info.outputs.version }}
-      short_sha: ${{ steps.info.outputs.short_sha }}
-      build_type: ${{ steps.info.outputs.build_type }}
-      android_abis: ${{ steps.info.outputs.android_abis }}
-      is_release: ${{ steps.info.outputs.is_release }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          sparse-checkout: Project.xml
-          sparse-checkout-cone-mode: false
-
-      - name: Read build info
-        id: info
-        env:
-          INPUT_BUILD_TYPE: ${{ inputs.build_type }}
-          INPUT_ABIS: ${{ inputs.android_abis }}
-        run: |
-          set -euo pipefail
-          version=$(sed -n 's/.*<app[^>]*version="\([^"]*\)".*/\1/p' Project.xml | head -n 1)
-          [ -n "$version" ] || version="0.0.0"
-
-          is_release=false
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            is_release=true
-            version="${GITHUB_REF_NAME#v}"
-          fi
-
-          {
-            echo "version=$version"
-            echo "short_sha=${GITHUB_SHA:0:7}"
-            echo "build_type=${INPUT_BUILD_TYPE:-release}"
-            echo "android_abis=${INPUT_ABIS:-arm64}"
-            echo "is_release=$is_release"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build target matrix
-        id: matrix
-        env:
-          INPUT_TARGETS: ${{ inputs.targets }}
-        run: |
-          set -euo pipefail
-          case "${INPUT_TARGETS:-default}" in
-            all) list="windows android linux" ;;
-            default) list="windows android" ;;
-            *) list="$INPUT_TARGETS" ;;
-          esac
-
-          matrix=$(for target in $list; do
-            case "$target" in
-              windows) os="windows-latest" ;;
-              android) os="ubuntu-latest" ;;
-              linux) os="ubuntu-22.04" ;;
-              *) echo "::error::Unknown target $target" >&2; exit 1 ;;
-            esac
-            jq -nc --arg target "$target" --arg os "$os" '{target: $target, os: $os}'
-          done | jq -sc '{include: .}')
-
-          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
-          echo "Targets: $list"
-
   build:
     name: Build ${{ matrix.target }}
-    needs: prepare
-    runs-on: ${{ matrix.os }}
+    runs-on: ${{ matrix.target == 'windows' && 'windows-latest' || matrix.target == 'linux' && 'ubuntu-22.04' || 'ubuntu-latest' }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+      matrix:
+        target: ${{ fromJSON(inputs.targets == 'all' && '["windows","android","linux"]' || contains(fromJSON('["windows","android","linux"]'), inputs.targets) && format('["{0}"]', inputs.targets) || '["windows","android"]') }}
+
+    outputs:
+      version: ${{ steps.info.outputs.version }}
 
     env:
       TARGET: ${{ matrix.target }}
-      BUILD_TYPE: ${{ needs.prepare.outputs.build_type }}
-      VERSION: ${{ needs.prepare.outputs.version }}
-      SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
-      ANDROID_ABIS: ${{ needs.prepare.outputs.android_abis }}
       ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
       ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
       ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
@@ -163,20 +98,40 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Read build info
+        id: info
+        timeout-minutes: 1
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/.*<app[^>]*version="\([^"]*\)".*/\1/p' Project.xml | head -n 1)
+          [ -n "$version" ] || version="0.0.0"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          {
+            echo "VERSION=$version"
+            echo "SHORT_SHA=${GITHUB_SHA:0:7}"
+          } >> "$GITHUB_ENV"
+          echo "Target: $TARGET | Version: $version | Type: $BUILD_TYPE"
+
       - name: Set up Haxe
         uses: krdlab/setup-haxe@v2
+        timeout-minutes: 5
         with:
           haxe-version: ${{ env.HAXE_VERSION }}
 
       - name: Install Linux packages
         if: matrix.target == 'linux'
+        timeout-minutes: 10
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libvlc-dev libvlccore-dev vlc-bin libgl1-mesa-dev libasound2-dev
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq libvlc-dev libvlccore-dev vlc-bin libgl1-mesa-dev libasound2-dev
 
       - name: Set up Java
         if: matrix.target == 'android'
         uses: actions/setup-java@v6
+        timeout-minutes: 5
         with:
           distribution: temurin
           java-version: '17'
@@ -184,6 +139,7 @@ jobs:
       - name: Set up Android SDK
         if: matrix.target == 'android'
         uses: android-actions/setup-android@v4
+        timeout-minutes: 10
         with:
           packages: platform-tools
 
@@ -196,6 +152,7 @@ jobs:
         if: matrix.target == 'android'
         id: android-cache
         uses: actions/cache@v4
+        timeout-minutes: 10
         with:
           path: |
             ${{ steps.sdk.outputs.root }}/ndk/${{ env.NDK_VERSION }}
@@ -208,11 +165,14 @@ jobs:
         timeout-minutes: 50
         run: |
           set -euo pipefail
+          exec < /dev/null
           sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           if [ ! -x "$sdkmanager" ]; then
             echo "::error::sdkmanager not found at $sdkmanager"
             exit 1
           fi
+
+          yes | "$sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" --licenses > /dev/null || true
 
           install_package() {
             local package="$1" check="$2" attempt=1
@@ -255,6 +215,7 @@ jobs:
       - name: Cache Gradle
         if: matrix.target == 'android'
         uses: actions/cache@v4
+        timeout-minutes: 10
         with:
           path: |
             ~/.gradle/caches
@@ -266,6 +227,7 @@ jobs:
       - name: Cache Haxe libraries
         id: haxelib-cache
         uses: actions/cache@v4
+        timeout-minutes: 10
         with:
           path: .haxelib
           key: haxelib-${{ matrix.target }}-${{ env.HAXE_VERSION }}-${{ hashFiles('.github/workflows/build.yml') }}
@@ -273,6 +235,7 @@ jobs:
       - name: Restore compiled objects
         if: inputs.clean_cache != true
         uses: actions/cache/restore@v4
+        timeout-minutes: 10
         with:
           path: .hxcpp_cache
           key: hxcpp-${{ matrix.target }}-${{ env.BUILD_TYPE }}-${{ env.ANDROID_ABIS }}-${{ github.sha }}
@@ -281,19 +244,23 @@ jobs:
             hxcpp-${{ matrix.target }}-${{ env.BUILD_TYPE }}-
 
       - name: Set up Haxelib
+        timeout-minutes: 2
         run: |
+          exec < /dev/null
           mkdir -p "$GITHUB_WORKSPACE/.haxelib"
           haxelib setup "$GITHUB_WORKSPACE/.haxelib"
 
       - name: Install Haxe dependencies
         if: steps.haxelib-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 40
         run: |
           set -euo pipefail
+          exec < /dev/null
           lib() {
             local attempt=1
             while [ "$attempt" -le 3 ]; do
               echo "::group::haxelib $* ($attempt/3)"
-              if timeout 8m haxelib "$@"; then
+              if timeout 8m haxelib --always "$@"; then
                 echo "::endgroup::"
                 return 0
               fi
@@ -306,17 +273,17 @@ jobs:
             return 1
           }
 
-          lib install hxcpp 4.3.2 --always
-          lib install lime 8.1.2 --always
-          lib install openfl 9.3.3 --always
-          lib install flixel 5.6.1 --always
-          lib install flixel-addons 3.2.2 --always
-          lib install flixel-tools 1.5.1 --always
-          lib install hscript-iris 1.1.3 --always
-          lib install tjson 1.4.0 --always
-          lib install hxvlc 2.0.1 --skip-dependencies --always
+          lib install hxcpp 4.3.2
+          lib install lime 8.1.2
+          lib install openfl 9.3.3
+          lib install flixel 5.6.1
+          lib install flixel-addons 3.2.2
+          lib install flixel-tools 1.5.1
+          lib install hscript-iris 1.1.3
+          lib install tjson 1.4.0
+          lib install hxvlc 2.0.1 --skip-dependencies
           if [ "$TARGET" != "android" ]; then
-            lib install hxdiscord_rpc 1.2.4 --always
+            lib install hxdiscord_rpc 1.2.4
           fi
           lib set hxcpp 4.3.2
           lib set lime 8.1.2
@@ -327,10 +294,12 @@ jobs:
           lib git grig.audio https://gitlab.com/haxe-grig/grig.audio.git cbf91e2180fd2e374924fe74844086aab7891666
 
       - name: Show installed libraries
-        run: haxelib list
+        timeout-minutes: 1
+        run: haxelib list < /dev/null
 
       - name: Configure Android project
         if: matrix.target == 'android'
+        timeout-minutes: 2
         run: |
           set -euo pipefail
           signing=false
@@ -379,8 +348,10 @@ jobs:
 
       - name: Configure Lime for Android
         if: matrix.target == 'android'
+        timeout-minutes: 5
         run: |
           set -euo pipefail
+          exec < /dev/null
           haxelib run lime config ANDROID_SDK "$ANDROID_SDK_ROOT"
           haxelib run lime config ANDROID_NDK_ROOT "$ANDROID_NDK_ROOT"
           haxelib run lime config JAVA_HOME "$JAVA_HOME"
@@ -388,8 +359,10 @@ jobs:
 
       - name: Build
         id: build
+        timeout-minutes: 90
         run: |
           set -euo pipefail
+          exec < /dev/null
           start=$(date +%s)
           haxelib run lime build "$TARGET" "-$BUILD_TYPE"
           echo "seconds=$(( $(date +%s) - start ))" >> "$GITHUB_OUTPUT"
@@ -397,12 +370,14 @@ jobs:
       - name: Save compiled objects
         if: always() && !cancelled()
         uses: actions/cache/save@v4
+        timeout-minutes: 10
         with:
           path: .hxcpp_cache
           key: hxcpp-${{ matrix.target }}-${{ env.BUILD_TYPE }}-${{ env.ANDROID_ABIS }}-${{ github.sha }}-${{ github.run_attempt }}
 
       - name: Package
         id: package
+        timeout-minutes: 10
         run: |
           set -euo pipefail
           mkdir -p dist
@@ -430,9 +405,8 @@ jobs:
           esac
 
           file=$(ls dist | head -n 1)
-          size=$(du -h "dist/$file" | cut -f1)
           echo "file=$file" >> "$GITHUB_OUTPUT"
-          echo "size=$size" >> "$GITHUB_OUTPUT"
+          echo "size=$(du -h "dist/$file" | cut -f1)" >> "$GITHUB_OUTPUT"
 
       - name: Write summary
         if: always() && !cancelled()
@@ -446,32 +420,33 @@ jobs:
             echo ""
             echo "| | |"
             echo "|---|---|"
-            echo "| Version | $VERSION ($SHORT_SHA) |"
+            echo "| Version | ${VERSION:-?} (${SHORT_SHA:-?}) |"
             echo "| Type | $BUILD_TYPE |"
-            [ "$TARGET" = "android" ] && echo "| ABIs | $ANDROID_ABIS |"
+            if [ "$TARGET" = "android" ]; then echo "| ABIs | $ANDROID_ABIS |"; fi
             if [ -n "${FILE:-}" ]; then
               echo "| File | \`$FILE\` |"
               echo "| Size | $SIZE |"
             else
               echo "| Result | Failed |"
             fi
-            [ -n "${SECONDS_TAKEN:-}" ] && echo "| Build time | $((SECONDS_TAKEN / 60))m $((SECONDS_TAKEN % 60))s |"
+            if [ -n "${SECONDS_TAKEN:-}" ]; then echo "| Build time | $((SECONDS_TAKEN / 60))m $((SECONDS_TAKEN % 60))s |"; fi
             echo ""
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload build
         uses: actions/upload-artifact@v4
+        timeout-minutes: 15
         with:
           name: ${{ env.APP_NAME }}-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
           compression-level: ${{ matrix.target == 'android' && '0' || '6' }}
-          retention-days: ${{ needs.prepare.outputs.is_release == 'true' && 90 || 14 }}
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 90 || 14 }}
 
   release:
     name: Publish release
-    needs: [prepare, build]
-    if: needs.prepare.outputs.is_release == 'true' && needs.build.result == 'success'
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v') && needs.build.result == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -494,15 +469,15 @@ jobs:
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          name: ${{ env.APP_NAME }} ${{ needs.prepare.outputs.version }}
+          name: ${{ env.APP_NAME }} ${{ needs.build.outputs.version }}
           files: dist/*
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
 
   notify-discord:
     name: Notify Discord
-    needs: [prepare, build, release]
-    if: always() && !cancelled() && github.event_name != 'pull_request' && needs.prepare.result == 'success'
+    needs: [build, release]
+    if: always() && !cancelled() && github.event_name != 'pull_request' && needs.build.result != 'skipped'
     runs-on: ubuntu-latest
     timeout-minutes: 5
 
@@ -513,9 +488,7 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           BUILD_RESULT: ${{ needs.build.result }}
           RELEASE_RESULT: ${{ needs.release.result }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-          BUILD_TYPE: ${{ needs.prepare.outputs.build_type }}
-          IS_RELEASE: ${{ needs.prepare.outputs.is_release }}
+          VERSION: ${{ needs.build.outputs.version }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
@@ -530,17 +503,18 @@ jobs:
           fi
 
           jobs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs" \
-            --jq '[.jobs[] | select(.name | startswith("Build ")) | {name: (.name | sub("^Build "; "")), conclusion: (.conclusion // "unknown"), started: .started_at, completed: .completed_at}]')
+            --jq '[.jobs[] | select(.name | startswith("Build ")) | {name: (.name | sub("^Build "; "")), conclusion: (.conclusion // "unknown"), started: .started_at, completed: .completed_at}]' \
+            || echo '[]')
 
           fields=$(echo "$jobs" | jq -c '[.[] | {
             name: (.name | ascii_upcase[0:1] + .[1:]),
             value: ((if .conclusion == "success" then "Success" else "Failed (" + .conclusion + ")" end)
-              + (if .started and .completed then " in " + (((.completed | fromdate) - (.started | fromdate)) / 60 | floor | tostring) + " min" else "" end)),
+              + (if .started and .completed then " in " + ((((.completed | fromdate) - (.started | fromdate)) / 60) | floor | tostring) + " min" else "" end)),
             inline: true
           }]')
 
           if [ "$BUILD_RESULT" = "success" ]; then
-            if [ "$IS_RELEASE" = "true" ] && [ "$RELEASE_RESULT" = "success" ]; then
+            if [ "$RELEASE_RESULT" = "success" ]; then
               title="Release $VERSION published"
               description="The builds are attached to the GitHub release."
               url="$RELEASE_URL"
@@ -567,7 +541,7 @@ jobs:
             --arg url "$url" \
             --argjson color "$color" \
             --argjson builds "$fields" \
-            --arg version "$VERSION ($BUILD_TYPE)" \
+            --arg version "${VERSION:-?} ($BUILD_TYPE)" \
             --arg ref "$REF_NAME" \
             --arg author "$ACTOR" \
             --arg commit "${GITHUB_SHA:0:7}: $first_line" \
@@ -589,7 +563,7 @@ jobs:
               }]
             }' > payload.json
 
-          curl -sS --fail-with-body --retry 3 --retry-delay 2 \
+          curl -sS --fail-with-body --retry 3 --retry-delay 2 --max-time 30 \
             -H "Content-Type: application/json" \
             -d @payload.json \
             "$DISCORD_WEBHOOK_URL"

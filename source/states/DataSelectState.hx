@@ -55,8 +55,8 @@ class DataSelectState extends MusicBeatState
 	var mobileStep:Int = 0;
 
 	// arrow_Down: +20 on x from the save portrait (adjust Y if needed)
-	var arrowDownX:Float = 20;
-	var arrowDownY:Float = -15;
+	var arrowDownX:Float = 60;
+	var arrowDownY:Float = 75;
 
 	// Distance (in game pixels) BF falls when jumping out of the save
 	var bfJumpHeight:Float = 20;

@@ -61,6 +61,7 @@ class DataSelectState extends MusicBeatState
 	var bfFallDistance:Float = 300;
 
 	var secretTimers:Array<FlxTimer> = [];
+	var secretFadeDone:Bool = false;
 	var secretCam:FlxCamera;
 	var cover:FlxSprite;
 	var arrowDown:FlxSprite;
@@ -371,10 +372,25 @@ class DataSelectState extends MusicBeatState
 		}));
 	}
 
-	/** Plays a BF animation; if onFinish is given, it runs when the animation ends. */
+	/**
+	 * Plays a BF animation; if onFinish is given, it runs when the animation ends.
+	 * If the animation does not exist in the atlas (wrong prefix in the XML), the sequence
+	 * does NOT stall: a warning is logged and onFinish runs after a short delay.
+	 */
 	function playBf(name:String, ?onFinish:Void->Void):Void
 	{
 		bfDataSelect.animation.finishCallback = null;
+
+		if (!bfDataSelect.animation.exists(name))
+		{
+			trace('Data Select: animation "' + name + '" not found in BFDataSelect (check the prefix in the XML)');
+
+			if (onFinish != null)
+				wait(0.5, onFinish);
+
+			return;
+		}
+
 		bfDataSelect.animation.play(name, true);
 
 		if (onFinish != null)
@@ -456,6 +472,7 @@ class DataSelectState extends MusicBeatState
 	{
 		// Lock all input during the sequence
 		secretActive = true;
+		secretFadeDone = false;
 		confirming = true;
 		isMoving = true;
 		doFlicker = false;
@@ -467,26 +484,70 @@ class DataSelectState extends MusicBeatState
 
 	function onSecretFadeOutDone():Void
 	{
-		// The screen is fully covered. I put a black cover on its own camera
-		// above everything, close the substate without a "flash" and continue the sequence.
-		arrow.visible = false;
+		// Runs only once, even if the transition calls the callback again.
+		if (secretFadeDone)
+			return;
 
-		secretCam = new FlxCamera();
-		secretCam.bgColor = FlxColor.TRANSPARENT;
-		FlxG.cameras.add(secretCam, false);
+		secretFadeDone = true;
+		SonicFadeTransition.finishCallback = null;
 
-		cover = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, FlxColor.BLACK);
-		cover.scrollFactor.set();
-		cover.cameras = [secretCam];
-		add(cover);
-
-		closeSubState();
-
-		// 2) 1s after the fade out: swap the BG, reveal the screen and BF does "looking"
-		wait(1, function()
+		// The screen is fully covered. Put a black cover on its own camera above
+		// everything, so closing the substate does not "flash" the screen.
+		try
 		{
-			bg.loadGraphic(Paths.image('dataselect/dataSelect_BGMajin'));
+			arrow.visible = false;
 
+			secretCam = new FlxCamera();
+			secretCam.bgColor = FlxColor.TRANSPARENT;
+			FlxG.cameras.add(secretCam, false);
+
+			cover = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, FlxColor.BLACK);
+			cover.scrollFactor.set();
+			cover.cameras = [secretCam];
+			add(cover);
+		}
+		catch (e:Dynamic)
+		{
+			trace('Data Select (secret cover): ' + e);
+		}
+
+		// The sequence is scheduled BEFORE closing the substate, so an error while
+		// closing it can never stop the rest of the sequence.
+		wait(1, revealSecret);
+
+		// Close the substate on the next frames (not from inside its own update).
+		wait(0.05, function()
+		{
+			try
+			{
+				if (subState != null)
+					closeSubState();
+			}
+			catch (e:Dynamic)
+			{
+				trace('Data Select (closeSubState): ' + e);
+			}
+		});
+	}
+
+	function revealSecret():Void
+	{
+		// 2) 1s after the fade out: swap the BG, reveal the screen and BF does "looking"
+		try
+		{
+			var majinBg = Paths.image('dataselect/dataSelect_BGMajin');
+			if (majinBg != null)
+				bg.loadGraphic(majinBg);
+			else
+				trace('Data Select: image dataselect/dataSelect_BGMajin not found');
+		}
+		catch (e:Dynamic)
+		{
+			trace('Data Select (BGMajin): ' + e);
+		}
+
+		if (cover != null)
+		{
 			FlxTween.tween(cover, {alpha: 0}, 0.5, {
 				ease: FlxEase.sineOut,
 				onComplete: function(_:FlxTween)
@@ -494,19 +555,19 @@ class DataSelectState extends MusicBeatState
 					cover.visible = false;
 				}
 			});
+		}
 
-			playBf('looking');
+		playBf('looking');
 
-			// 3) 1.8s later: confusedTransition -> (ends) -> confused
-			wait(1.8, function()
+		// 3) 1.8s later: confusedTransition -> (ends) -> confused
+		wait(1.8, function()
+		{
+			playBf('confusedTransition', function()
 			{
-				playBf('confusedTransition', function()
-				{
-					playBf('confused');
+				playBf('confused');
 
-					// 4) 2s later: arrow_Down fades in
-					wait(2, showArrowDown);
-				});
+				// 4) 2s later: arrow_Down fades in
+				wait(2, showArrowDown);
 			});
 		});
 	}
@@ -519,7 +580,11 @@ class DataSelectState extends MusicBeatState
 			portrait.x + arrowDownX,
 			portrait.y + arrowDownY
 		);
-		arrowDown.loadGraphic(Paths.image('dataselect/arrow_Down'));
+		var arrowDownGraphic = Paths.image('dataselect/arrow_Down');
+		if (arrowDownGraphic != null)
+			arrowDown.loadGraphic(arrowDownGraphic);
+		else
+			trace('Data Select: image dataselect/arrow_Down not found');
 		arrowDown.alpha = 0;
 		add(arrowDown);
 

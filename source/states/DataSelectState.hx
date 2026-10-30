@@ -200,6 +200,18 @@ class DataSelectState extends MusicBeatState
 		addBfAnim('landing', 12, false);
 		addBfAnim('falling', 12, true);
 
+		// If animations are missing, the atlas the game loaded is NOT the XML you edited.
+		if (bfMissingAnims.length > 0)
+		{
+			showError(
+				'BFDataSelect atlas is outdated or different!\n'
+				+ 'Frames loaded: ' + bfDataSelect.frames.frames.length + '\n'
+				+ 'Prefixes found: ' + [for (k in bfAtlasPrefixes.keys()) k].join(', ') + '\n'
+				+ 'Missing: ' + bfMissingAnims.join(', ')
+				+ inspectBfXmlFiles()
+			);
+		}
+
 		bfDataSelect.animation.play('idle', true);
 
 		add(bfDataSelect);
@@ -210,6 +222,62 @@ class DataSelectState extends MusicBeatState
 	 * case-insensitive match against the atlas (e.g. 'Looking' / 'LOOKING'), and logs the
 	 * prefixes that really exist in the XML when nothing matches.
 	 */
+	/**
+	 * Looks for every BFDataSelect.xml on disk (assets, mods, example_mods) and reports which
+	 * ones contain the new animations. Shows which copy is outdated. Desktop/Android file systems only.
+	 */
+	function inspectBfXmlFiles():String
+	{
+		#if sys
+		var report:String = '\nXML copies on disk:';
+
+		try
+		{
+			var candidates:Array<String> = [
+				'assets/images/dataselect/BFDataSelect.xml',
+				'assets/shared/images/dataselect/BFDataSelect.xml',
+				'mods/images/dataselect/BFDataSelect.xml',
+				'example_mods/images/dataselect/BFDataSelect.xml'
+			];
+
+			for (root in ['mods', 'example_mods'])
+			{
+				if (!FileSystem.exists(root) || !FileSystem.isDirectory(root))
+					continue;
+
+				for (dir in FileSystem.readDirectory(root))
+					candidates.push(root + '/' + dir + '/images/dataselect/BFDataSelect.xml');
+			}
+
+			var found:Int = 0;
+
+			for (path in candidates)
+			{
+				if (!FileSystem.exists(path))
+					continue;
+
+				found++;
+				var hasNew:Bool = File.getContent(path).indexOf('looking0000') >= 0;
+				report += '\n- ' + path + (hasNew ? '  [OK: has looking]' : '  [OUTDATED: no looking]');
+			}
+
+			if (found == 0)
+				report += '\n(none found in the tested paths; cwd = ' + Sys.getCwd() + ')';
+		}
+		catch (e:Dynamic)
+		{
+			report += '\n(error while scanning: ' + e + ')';
+		}
+
+		return report;
+		#else
+		return '';
+		#end
+	}
+
+	var bfMissingAnims:Array<String> = [];
+	var bfAtlasPrefixes:Map<String, Bool> = new Map();
+
 	function addBfAnim(name:String, fps:Int, loop:Bool):Void
 	{
 		var prefix:String = null;
@@ -229,12 +297,15 @@ class DataSelectState extends MusicBeatState
 			}
 
 			// Name without the trailing frame number, for the log
-			existing.set(~/[0-9]+$/.replace(f.name, ''), true);
+			var base:String = ~/[0-9]+$/.replace(f.name, '');
+			existing.set(base, true);
+			bfAtlasPrefixes.set(base, true);
 		}
 
 		if (prefix == null)
 		{
 			trace('Data Select: no frames for "' + name + '". Prefixes in the XML: ' + [for (k in existing.keys()) k].join(', '));
+			bfMissingAnims.push(name);
 			return;
 		}
 

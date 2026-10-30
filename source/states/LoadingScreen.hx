@@ -25,6 +25,7 @@ import backend.ClientPrefs;
  *   - loadingTravel   -> animated sprite ("loadIdle" animation) that travels along the bar
  *                        (needs loadingTravel.xml with the "loadIdle" prefix)
  *
+ * The HUD and the progress bar share the same x/y and the same scale (they sit on top of each other).
  * If a sprite is missing, a simple placeholder is used so the screen never crashes.
  *
  * Usage:
@@ -41,9 +42,15 @@ class LoadingScreen extends MusicBeatState
 	static inline var TRAVEL_ANIM:String = 'loadIdle';
 	static inline var TRAVEL_FPS:Int = 24;
 
-	// progress bar position (null = centered at the bottom)
-	static var PROGRESS_X:Null<Float> = null;
-	static var PROGRESS_Y:Null<Float> = null;
+	// scale applied to BOTH the HUD and the progress bar (1 = original size)
+	static inline var UI_SCALE:Float = 1.1;
+	// position of the HUD + progress bar, top-left corner (null = centered on the screen)
+	static var UI_X:Null<Float> = null;
+	static var UI_Y:Null<Float> = null;
+	// fine offset applied to both (moves the HUD and the bar together)
+	static var UI_OFFSET_X:Float = 0;
+	static var UI_OFFSET_Y:Float = 0;
+
 	// fine offset of the travelling sprite (relative to the top of the bar)
 	static var TRAVEL_OFFSET_X:Float = 0;
 	static var TRAVEL_OFFSET_Y:Float = -10;
@@ -128,22 +135,28 @@ class LoadingScreen extends MusicBeatState
 		bg.screenCenter();
 		add(bg);
 
-		// ---------- progress bar ----------
-		progress = new FlxSprite();
-		if (!loadImage(progress, FOLDER + 'loadingProgress'))
-			progress.makeGraphic(600, 24, 0xFFFFC800);
-		progress.antialiasing = aa;
-		progress.x = (PROGRESS_X != null) ? PROGRESS_X : (FlxG.width - progress.width) / 2;
-		progress.y = (PROGRESS_Y != null) ? PROGRESS_Y : FlxG.height - progress.height - 60;
-		applyBarClip(0);
-		add(progress);
-
-		// ---------- HUD (on top of the bar) ----------
+		// ---------- HUD + progress bar (same scale, same x/y) ----------
 		hud = new FlxSprite();
 		if (!loadImage(hud, FOLDER + 'loadingHUD'))
 			hud.makeGraphic(1, 1, FlxColor.TRANSPARENT);
 		hud.antialiasing = aa;
-		hud.screenCenter();
+		hud.scale.set(UI_SCALE, UI_SCALE);
+		hud.updateHitbox();
+
+		progress = new FlxSprite();
+		if (!loadImage(progress, FOLDER + 'loadingProgress'))
+			progress.makeGraphic(600, 24, 0xFFFFC800);
+		progress.antialiasing = aa;
+		progress.scale.set(UI_SCALE, UI_SCALE);
+		progress.updateHitbox();
+
+		// one shared position for both sprites
+		hud.x = ((UI_X != null) ? UI_X : (FlxG.width - hud.width) / 2) + UI_OFFSET_X;
+		hud.y = ((UI_Y != null) ? UI_Y : (FlxG.height - hud.height) / 2) + UI_OFFSET_Y;
+		progress.setPosition(hud.x, hud.y);
+
+		applyBarClip(0);
+		add(progress); // bar first, HUD on top of it
 		add(hud);
 
 		// ---------- animated sprite ----------
@@ -261,6 +274,7 @@ class LoadingScreen extends MusicBeatState
 	}
 
 	// only creates a new clip rect when the width really changed
+	// (clipRect uses the original frame size, so the scale does not affect it)
 	function applyBarClip(pct:Float):Void
 	{
 		var w:Float = progress.frameWidth * pct;

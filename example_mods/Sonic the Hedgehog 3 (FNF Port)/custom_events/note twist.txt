@@ -1,0 +1,3 @@
+Event by Deady Fr
+
+Put "twist" in value 1 to make the notes twist and leave it blank to stop the notes twisting

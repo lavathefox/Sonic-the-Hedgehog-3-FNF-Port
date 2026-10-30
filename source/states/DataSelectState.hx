@@ -60,7 +60,7 @@ class DataSelectState extends MusicBeatState
 	 * while the saves scroll underneath them, like in Sonic 3. The cursor only leaves this
 	 * position at the ends of the list, where there is nothing left to scroll.
 	 */
-	var cursorAnchor:Int = 0;
+	var cursorAnchor:Int = 1;
 
 	/** First visible slot index (target) and the animated scroll (in pixels). */
 	var scrollIndex:Int = 0;

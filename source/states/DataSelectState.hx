@@ -41,7 +41,7 @@ class DataSelectState extends MusicBeatState
 	var slotY:Float = 36;
 
 	/** Distance between the left edge of one slot and the next one (bigger = more room for otherSave). */
-	var slotSpacing:Float = 124;
+	var slotSpacing:Float = 121;
 
 	/** Width of the visible area where the slots are shown. Anything outside is clipped. */
 	var windowLeft:Float = 0;
@@ -99,14 +99,19 @@ class DataSelectState extends MusicBeatState
 
 	/** noSaveText offset, relative to the otherSave. Y is below it. Adjust to your image sizes. */
 	var noSaveTextX:Float = 0;
-	var noSaveTextY:Float = 60;
+	var noSaveTextY:Float = 120;
 
 	/** dataArrow offset, relative to the otherSave (0, 0 = exactly the same position). */
 	var otherArrowX:Float = 0;
 	var otherArrowY:Float = 0;
 
+	// BF on the real saves
 	var bfX:Float = 22;
 	var bfY:Float = 78;
+
+	/** Extra offset for BF when he is centered on the otherSave (fine tuning, 0 = exact center). */
+	var bfOtherOffsetX:Float = 0;
+	var bfOtherOffsetY:Float = 0;
 
 	// ---- Secret (FunIsInfinite) ----
 	var secretBuffer:String = '';
@@ -316,14 +321,34 @@ class DataSelectState extends MusicBeatState
 		return savePos[index][1] + (isOtherSave(index) ? otherArrowY : arrowY);
 	}
 
+	/**
+	 * Final X of BF for a slot. On the otherSave he is centered horizontally on it,
+	 * on the real saves he uses the normal bfX offset.
+	 */
+	function bfTargetX(index:Int):Float
+	{
+		if (isOtherSave(index))
+			return slotScreenX(index) + (saves[index].width - bfDataSelect.width) / 2 + bfOtherOffsetX;
+
+		return slotScreenX(index) + bfX;
+	}
+
+	/**
+	 * Final Y of BF for a slot. On the otherSave he is centered vertically on it
+	 * (taking its lift into account), on the real saves he uses the normal bfY offset.
+	 */
+	function bfTargetY(index:Int):Float
+	{
+		if (isOtherSave(index))
+			return savePos[index][1] - otherSaveLift + (saves[index].height - bfDataSelect.height) / 2 + bfOtherOffsetY;
+
+		return savePos[index][1] + bfY;
+	}
+
 	function createBfDataSelect():Void
 	{
-		var index:Int = selection - 1;
-
-		bfDataSelect = new FlxSprite(
-			slotScreenX(index) + bfX,
-			savePos[index][1] + bfY
-		);
+		// Final position is set in updateSelection(true), once the atlas size is known
+		bfDataSelect = new FlxSprite(0, 0);
 
 		bfDataSelect.frames = Paths.getSparrowAtlas(
 			'dataselect/BFDataSelect'
@@ -574,10 +599,12 @@ class DataSelectState extends MusicBeatState
 			}
 		);
 
+		// BF goes to the center of the otherSave, or back to the normal spot on the real saves
 		FlxTween.tween(
 			bfDataSelect,
 			{
-				x: slotScreenX(index) + bfX
+				x: bfTargetX(index),
+				y: bfTargetY(index)
 			},
 			moveTime,
 			{
@@ -649,8 +676,8 @@ class DataSelectState extends MusicBeatState
 			arrow.x = arrowTargetX(index);
 			arrow.y = arrowTargetY(index);
 
-			bfDataSelect.x = slotScreenX(index) + bfX;
-			bfDataSelect.y = savePos[index][1] + bfY;
+			bfDataSelect.x = bfTargetX(index);
+			bfDataSelect.y = bfTargetY(index);
 		}
 	}
 

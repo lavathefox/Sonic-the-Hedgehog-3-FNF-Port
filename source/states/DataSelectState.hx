@@ -191,7 +191,7 @@ class DataSelectState extends MusicBeatState
 		addBfAnim('yeah', 12, false);
 
 		// ---- Secret animations ----
-		addBfAnim('looking', 12, false);
+		addBfAnim('looking', 14, true);
 		addBfAnim('confusedTransition', 12, false);
 		addBfAnim('confused', 12, true);
 		addBfAnim('lookAt', 12, false);

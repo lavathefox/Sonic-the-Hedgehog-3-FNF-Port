@@ -1,0 +1,5 @@
+<?xml version='1.0' encoding='utf-8'?>
+<TextureAtlas imagePath="majin-back1.png">
+<SubTexture name="majin-back1 idle0000" x="0" y="185" width="392" height="184" frameX="-81" frameY="-62" frameWidth="512" frameHeight="362" />
+<SubTexture name="majin-back1 idle0001" x="0" y="0" width="392" height="185" frameX="-81" frameY="-62" frameWidth="512" frameHeight="362" />
+</TextureAtlas>

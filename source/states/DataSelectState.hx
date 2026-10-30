@@ -476,17 +476,18 @@ class DataSelectState extends MusicBeatState
 			return;
 		}
 
-		try
-		{
-			if (FlxG.sound.music != null)
-				FlxG.sound.music.stop();
+        try
+       {
+        if (FlxG.sound.music != null)
+        FlxG.sound.music.stop();
 
-			LoadingState.loadAndSwitchState(new PlayState(), true);
-		}
-		catch (e:Dynamic)
-		{
-			failToStart('Error while opening PlayState:\n' + e);
-		}
+        LoadingState.prepareToSong(); // <<< adicione
+        LoadingState.loadAndSwitchState(new PlayState(), true);
+      }
+      catch (e:Dynamic)
+     {
+        failToStart('Error while opening PlayState:\n' + e);
+       }
 	}
 
 	function failToStart(message:String):Void

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="loadingTravel.png">
+	<!-- Created using the Spritesheet and XML generator -->
+	<!-- https://uncertainprod.github.io/FNF-Spritesheet-XML-generator-Web -->
+	<SubTexture name="loadIdle0000" x="0" y="0" width="36" height="68" frameX="2" frameY="2" frameWidth="32" frameHeight="64"/>
+	<SubTexture name="loadIdle0001" x="76" y="0" width="20" height="68" frameX="-6" frameY="2" frameWidth="32" frameHeight="64"/>
+	<SubTexture name="loadIdle0002" x="96" y="0" width="20" height="68" frameX="-6" frameY="2" frameWidth="32" frameHeight="64"/>
+	<SubTexture name="loadIdle0003" x="36" y="0" width="20" height="68" frameX="-6" frameY="2" frameWidth="32" frameHeight="64"/>
+	<SubTexture name="loadIdle0004" x="56" y="0" width="20" height="68" frameX="-6" frameY="2" frameWidth="32" frameHeight="64"/>
+</TextureAtlas>

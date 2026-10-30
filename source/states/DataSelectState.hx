@@ -4,6 +4,7 @@ import flixel.FlxCamera;
 import flixel.FlxG;
 import flixel.FlxSprite;
 import flixel.input.keyboard.FlxKey;
+import flixel.math.FlxRect;
 import flixel.text.FlxText;
 import flixel.tweens.FlxTween;
 import flixel.tweens.FlxEase;
@@ -26,6 +27,38 @@ class DataSelectState extends MusicBeatState
 	static inline var SONG_ID:String = 'too-slow';
 	static inline var SECRET_SONG_ID:String = 'uncontrolled-infinity';
 	static inline var SECRET_SONG_DIFFICULTY:String = 'Hard';
+
+	// ---- Save slots (Sonic 3 style: 8 slots, 3 visible at a time) ----
+	static inline var TOTAL_SLOTS:Int = 8;
+	static inline var VISIBLE_SLOTS:Int = 3;
+
+	/** Position of the first slot (world pixels). */
+	var slotStartX:Float = 2;
+	var slotY:Float = 36;
+
+	/** Distance between the left edge of one slot and the next one. */
+	var slotSpacing:Float = 112;
+
+	/** Width of the visible area where the slots are shown. Anything outside is clipped. */
+	var windowLeft:Float = 0;
+	var windowRight:Float = 0;
+
+	/** Portrait image of each slot (change per slot if you have different images). */
+	var portraitImages:Array<String> = [
+		'aiz_savePortrait',
+		'aiz_savePortrait',
+		'aiz_savePortrait',
+		'aiz_savePortrait',
+		'aiz_savePortrait',
+		'aiz_savePortrait',
+		'aiz_savePortrait',
+		'aiz_savePortrait'
+	];
+
+	/** First visible slot index (target) and the animated scroll (in pixels). */
+	var scrollIndex:Int = 0;
+	var scrollX:Float = 0;
+	var scrollTween:FlxTween;
 
 	var selection:Int = 1;
 	var isMoving:Bool = false;
@@ -76,11 +109,8 @@ class DataSelectState extends MusicBeatState
 	var cover:FlxSprite;
 	var arrowDown:FlxSprite;
 
-	var savePos:Array<Array<Float>> = [
-		[2, 36],
-		[114, 36],
-		[226, 36]
-	];
+	/** Unscrolled (world) position of every slot. Filled in create(). */
+	var savePos:Array<Array<Float>> = [];
 
 	var bg:FlxSprite;
 	var text:FlxSprite;
@@ -94,6 +124,9 @@ class DataSelectState extends MusicBeatState
 	var errorCam:FlxCamera;
 	var errorText:FlxText;
 
+	var bfMissingAnims:Array<String> = [];
+	var bfAtlasPrefixes:Map<String, Bool> = new Map();
+
 	override public function create():Void
 	{
 		super.create();
@@ -102,6 +135,7 @@ class DataSelectState extends MusicBeatState
 		FlxG.camera.zoom = 3;
 		FlxG.camera.pixelPerfectRender = true;
 
+		// BG and text are added first and are NEVER touched by the scroll: they stay fixed.
 		bg = new FlxSprite(0, 0);
 		bg.loadGraphic(Paths.image('dataselect/dataSelect_BG'));
 		add(bg);
@@ -110,11 +144,20 @@ class DataSelectState extends MusicBeatState
 		text.loadGraphic(Paths.image('dataselect/dataSelectText'));
 		add(text);
 
+		// Slot positions + visible window
+		savePos = [];
+		for (i in 0...TOTAL_SLOTS)
+			savePos.push([slotStartX + i * slotSpacing, slotY]);
+
+		windowLeft = slotStartX - 2;
+		windowRight = slotStartX + VISIBLE_SLOTS * slotSpacing - 2;
+
 		createSaveSlots();
 		createArrow();
 		createBfDataSelect();
 
 		updateSelection(true);
+		layoutSlots();
 
 		#if android
 		MobileControls.create();
@@ -132,7 +175,7 @@ class DataSelectState extends MusicBeatState
 
 	function createSaveSlots():Void
 	{
-		for (i in 0...savePos.length)
+		for (i in 0...TOTAL_SLOTS)
 		{
 			var x:Float = savePos[i][0];
 			var y:Float = savePos[i][1];
@@ -148,7 +191,7 @@ class DataSelectState extends MusicBeatState
 			);
 
 			portrait.loadGraphic(
-				Paths.image('dataselect/aiz_savePortrait')
+				Paths.image('dataselect/' + portraitImages[i])
 			);
 
 			portrait.visible = false;
@@ -163,7 +206,7 @@ class DataSelectState extends MusicBeatState
 		var index:Int = selection - 1;
 
 		arrow = new FlxSprite(
-			savePos[index][0] + arrowX,
+			slotScreenX(index) + arrowX,
 			savePos[index][1] + arrowY
 		);
 
@@ -179,7 +222,7 @@ class DataSelectState extends MusicBeatState
 		var index:Int = selection - 1;
 
 		bfDataSelect = new FlxSprite(
-			savePos[index][0] + bfX,
+			slotScreenX(index) + bfX,
 			savePos[index][1] + bfY
 		);
 
@@ -217,11 +260,6 @@ class DataSelectState extends MusicBeatState
 		add(bfDataSelect);
 	}
 
-	/**
-	 * Registers an animation by prefix. If no frame starts with the exact name, it tries a
-	 * case-insensitive match against the atlas (e.g. 'Looking' / 'LOOKING'), and logs the
-	 * prefixes that really exist in the XML when nothing matches.
-	 */
 	/**
 	 * Looks for every BFDataSelect.xml on disk (assets, mods, example_mods) and reports which
 	 * ones contain the new animations. Shows which copy is outdated. Desktop/Android file systems only.
@@ -275,9 +313,11 @@ class DataSelectState extends MusicBeatState
 		#end
 	}
 
-	var bfMissingAnims:Array<String> = [];
-	var bfAtlasPrefixes:Map<String, Bool> = new Map();
-
+	/**
+	 * Registers an animation by prefix. If no frame starts with the exact name, it tries a
+	 * case-insensitive match against the atlas (e.g. 'Looking' / 'LOOKING'), and logs the
+	 * prefixes that really exist in the XML when nothing matches.
+	 */
 	function addBfAnim(name:String, fps:Int, loop:Bool):Void
 	{
 		var prefix:String = null;
@@ -312,16 +352,103 @@ class DataSelectState extends MusicBeatState
 		bfDataSelect.animation.addByPrefix(name, prefix, fps, loop);
 	}
 
+	// =====================================================================
+	//  Slot layout / scrolling
+	// =====================================================================
+
+	/** X on screen of a slot, using the TARGET scroll (where the scroll will end up). */
+	function slotScreenX(index:Int):Float
+	{
+		return savePos[index][0] - scrollIndex * slotSpacing;
+	}
+
+	/** Keeps the selected slot inside the visible window. Returns true if the list has to scroll. */
+	function updateScrollTarget():Bool
+	{
+		var index:Int = selection - 1;
+		var old:Int = scrollIndex;
+
+		if (index < scrollIndex)
+			scrollIndex = index;
+		else if (index > scrollIndex + VISIBLE_SLOTS - 1)
+			scrollIndex = index - (VISIBLE_SLOTS - 1);
+
+		return scrollIndex != old;
+	}
+
+	/** Slides the slots (only the slots: BG and text stay where they are). */
+	function scrollSlots():Void
+	{
+		if (scrollTween != null)
+			scrollTween.cancel();
+
+		scrollTween = FlxTween.num(
+			scrollX,
+			scrollIndex * slotSpacing,
+			moveTime,
+			{ease: FlxEase.quadOut},
+			function(value:Float)
+			{
+				scrollX = value;
+			}
+		);
+	}
+
+	/** Applies the scroll to every slot and clips whatever is outside the visible window. */
+	function layoutSlots():Void
+	{
+		for (i in 0...TOTAL_SLOTS)
+		{
+			var x:Float = savePos[i][0] - scrollX;
+
+			saves[i].x = x;
+			portraits[i].x = x + portraitX;
+
+			var saveInside:Bool = clipToWindow(saves[i]);
+			saves[i].visible = saveInside;
+
+			var portraitInside:Bool = clipToWindow(portraits[i]);
+			portraits[i].visible = (i == selection - 1) && portraitInside;
+		}
+	}
+
+	/** Crops a sprite to the visible window. Returns false if it is completely outside. */
+	function clipToWindow(s:FlxSprite):Bool
+	{
+		var left:Float = windowLeft - s.x;
+		var right:Float = windowRight - s.x;
+
+		if (left <= 0 && right >= s.frameWidth)
+		{
+			if (s.clipRect != null)
+				s.clipRect = null;
+			return true;
+		}
+
+		var clipLeft:Float = Math.max(0, left);
+		var clipWidth:Float = Math.min(s.frameWidth, right) - clipLeft;
+
+		if (clipWidth <= 0)
+			return false;
+
+		s.clipRect = new FlxRect(clipLeft, 0, clipWidth, s.frameHeight);
+		return true;
+	}
+
 	function moveCursor():Void
 	{
 		var index:Int = selection - 1;
 
 		isMoving = true;
 
+		// If the selection reached the edge of the window, the slots slide instead of the cursor.
+		if (updateScrollTarget())
+			scrollSlots();
+
 		FlxTween.tween(
 			arrow,
 			{
-				x: savePos[index][0] + arrowX
+				x: slotScreenX(index) + arrowX
 			},
 			moveTime,
 			{
@@ -332,7 +459,7 @@ class DataSelectState extends MusicBeatState
 		FlxTween.tween(
 			bfDataSelect,
 			{
-				x: savePos[index][0] + bfX
+				x: slotScreenX(index) + bfX
 			},
 			moveTime,
 			{
@@ -350,19 +477,10 @@ class DataSelectState extends MusicBeatState
 		);
 	}
 
-	function updatePortrait():Void
-	{
-		for (i in 0...portraits.length)
-		{
-			portraits[i].visible = (i == selection - 1);
-		}
-	}
-
 	function updateSelection(first:Bool):Void
 	{
-		for (i in 0...savePos.length)
+		for (i in 0...TOTAL_SLOTS)
 		{
-			var x:Float = savePos[i][0];
 			var y:Float = savePos[i][1];
 
 			if (i == selection - 1)
@@ -370,10 +488,7 @@ class DataSelectState extends MusicBeatState
 
 			if (first)
 			{
-				saves[i].x = x;
 				saves[i].y = y;
-
-				portraits[i].x = x + portraitX;
 				portraits[i].y = y + portraitY;
 			}
 			else
@@ -406,14 +521,12 @@ class DataSelectState extends MusicBeatState
 		{
 			var index:Int = selection - 1;
 
-			arrow.x = savePos[index][0] + arrowX;
+			arrow.x = slotScreenX(index) + arrowX;
 			arrow.y = savePos[index][1] + arrowY;
 
-			bfDataSelect.x = savePos[index][0] + bfX;
+			bfDataSelect.x = slotScreenX(index) + bfX;
 			bfDataSelect.y = savePos[index][1] + bfY;
 		}
-
-		updatePortrait();
 	}
 
 	function selectPrevious():Void
@@ -421,17 +534,12 @@ class DataSelectState extends MusicBeatState
 		if (isMoving || confirming)
 			return;
 
-		selection--;
+		if (selection <= 1)
+			return;
 
-		if (selection > 0)
-		{
-			moveCursor();
-			updateSelection(false);
-		}
-		else
-		{
-			selection = 1;
-		}
+		selection--;
+		moveCursor();
+		updateSelection(false);
 	}
 
 	function selectNext():Void
@@ -439,17 +547,12 @@ class DataSelectState extends MusicBeatState
 		if (isMoving || confirming)
 			return;
 
-		selection++;
+		if (selection >= TOTAL_SLOTS)
+			return;
 
-		if (selection <= savePos.length)
-		{
-			moveCursor();
-			updateSelection(false);
-		}
-		else
-		{
-			selection = savePos.length;
-		}
+		selection++;
+		moveCursor();
+		updateSelection(false);
 	}
 
 	function confirmSelection():Void
@@ -498,7 +601,7 @@ class DataSelectState extends MusicBeatState
 	/**
 	 * Plays a BF animation; if onFinish is given, it runs when the animation ends.
 	 * If the animation does not exist in the atlas (wrong prefix in the XML), the sequence
-	 * does NOT stall: a warning is logged and onFinish runs after a short delay.
+	 * does NOT stall: a warning is logged and onFinish runs right away.
 	 */
 	function playBf(name:String, ?onFinish:Void->Void):Void
 	{
@@ -942,6 +1045,9 @@ class DataSelectState extends MusicBeatState
 		MobileControls.update();
 		#end
 
+		// Keeps the slots in sync with the scroll tween (BG and text are not affected)
+		layoutSlots();
+
 		globalTimer++;
 
 		if (globalTimer >= 60)
@@ -982,6 +1088,12 @@ class DataSelectState extends MusicBeatState
 			if (t != null)
 				t.cancel();
 		secretTimers = [];
+
+		if (scrollTween != null)
+		{
+			scrollTween.cancel();
+			scrollTween = null;
+		}
 
 		#if android
 		if (MobileControls.isAttachedTo(this))

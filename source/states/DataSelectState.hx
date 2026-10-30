@@ -29,11 +29,14 @@ class DataSelectState extends MusicBeatState
 	static inline var SECRET_SONG_ID:String = 'uncontrolled-infinity';
 	static inline var SECRET_SONG_DIFFICULTY:String = 'Hard';
 
-	// ---- Slots (Sonic 3 style: "No Save" slot + 8 saves, 3 visible at a time) ----
+	// ---- Slots (Sonic 3 style: "No Save" + 8 saves + "Delete", 3 visible at a time) ----
 	static inline var SAVE_COUNT:Int = 8;
 
-	/** Slot 0 is the "otherSave" (No Save). Slots 1..SAVE_COUNT are the real saves. */
-	static inline var TOTAL_SLOTS:Int = SAVE_COUNT + 1;
+	/**
+	 * Slot 0 is the "otherSave" (No Save). Slots 1..SAVE_COUNT are the real saves.
+	 * The last slot is the "otherSave" used for Delete (with Eggman in the middle).
+	 */
+	static inline var TOTAL_SLOTS:Int = SAVE_COUNT + 2;
 	static inline var VISIBLE_SLOTS:Int = 3;
 
 	/** Position of the first slot (the otherSave), in world pixels. */
@@ -47,8 +50,20 @@ class DataSelectState extends MusicBeatState
 	var windowLeft:Float = 0;
 	var windowRight:Float = 0;
 
-	/** Portrait image of each real save (index 0 = first save, NOT the otherSave). */
-	var portraitImages:Array<String> = [
+	/** Portrait of a NEW (unused) save, shown when it is selected (index 0 = first save). */
+	var newPortraitImages:Array<String> = [
+		'newIcon',
+		'newIcon',
+		'newIcon',
+		'newIcon',
+		'newIcon',
+		'newIcon',
+		'newIcon',
+		'newIcon'
+	];
+
+	/** Portrait of a USED save, shown when it is selected (index 0 = first save). */
+	var usedPortraitImages:Array<String> = [
 		'aiz_savePortrait',
 		'aiz_savePortrait',
 		'aiz_savePortrait',
@@ -89,19 +104,22 @@ class DataSelectState extends MusicBeatState
 	var arrowX:Float = 5;
 	var arrowY:Float = -10;
 
-	// ---- otherSave (No Save) ----
-	/** Extra offset of the otherSave sprite (relative to the slot position). */
+	// ---- otherSave (No Save) and the Delete slot (both use the otherSave image) ----
+	/** Extra offset of the otherSave sprites (relative to the slot position). */
 	var otherSaveOffsetX:Float = 0;
 	var otherSaveOffsetY:Float = 0;
 
-	/** The otherSave does not lift when selected (the dataArrow takes its place). */
+	/** The otherSave slots do not lift when selected (the dataArrow takes their place). */
 	var otherSaveLift:Float = 0;
 
 	/** noSaveText offset, relative to the otherSave. Y is below it. Adjust to your image sizes. */
 	var noSaveTextX:Float = 14;
 	var noSaveTextY:Float = 90;
 
-	/** dataArrow offset, relative to the otherSave (0, 0 = exactly the same position). */
+	/** deleteText X offset, relative to the Delete slot. Its Y is the same as the noSaveText. */
+	var deleteTextX:Float = 14;
+
+	/** dataArrow offset, relative to the otherSave slots (0, 0 = exactly the same position). */
 	var otherArrowX:Float = 0;
 	var otherArrowY:Float = 0;
 
@@ -112,6 +130,30 @@ class DataSelectState extends MusicBeatState
 	/** Extra offset for BF when he is centered on the otherSave (fine tuning, 0 = exact center). */
 	var bfOtherOffsetX:Float = 0;
 	var bfOtherOffsetY:Float = 0;
+
+	// ---- Delete mode (Eggman) ----
+	/** Extra offset for Eggman when he is centered on the Delete slot (fine tuning). */
+	var eggCenterOffsetX:Float = 0;
+	var eggCenterOffsetY:Float = 0;
+
+	/** Extra offset for Eggman when he follows the cursor over a save (same spot as BF + this). */
+	var eggSaveOffsetX:Float = 0;
+	var eggSaveOffsetY:Float = 0;
+
+	/** Seconds between the end of one eggSelect and the start of the next one. */
+	var eggSelectDelay:Float = 0.4;
+
+	var eggman:FlxSprite;
+	var eggTimer:FlxTimer;
+
+	/** True after pressing ENTER on the Delete slot. */
+	var deleteMode:Bool = false;
+
+	/** True after pressing ENTER on a used save in delete mode (waiting for LEFT = delete / RIGHT = cancel). */
+	var deleteConfirm:Bool = false;
+
+	/** Which slots are used/created. Saved in FlxG.save, so it survives closing the game. */
+	var saveUsed:Array<Bool> = [];
 
 	// ---- Secret (FunIsInfinite) ----
 	var secretBuffer:String = '';
@@ -151,15 +193,20 @@ class DataSelectState extends MusicBeatState
 	var arrow:FlxSprite;
 	var bfDataSelect:FlxSprite;
 	var noSaveText:FlxSprite;
+	var deleteText:FlxSprite;
 
-	/** Arrow graphics: normal one (real saves) and the one used on the otherSave. */
+	/** Arrow graphics: normal one (real saves) and the one used on the otherSave slots. */
 	var arrowGraphic:FlxGraphic;
 	var otherArrowGraphic:FlxGraphic;
 	var arrowIsOther:Bool = false;
 
-	/** saves[0] is the otherSave sprite. portraits[0] is null (the otherSave has no portrait). */
+	/**
+	 * saves[0] is the otherSave sprite and saves[last] is the Delete slot sprite.
+	 * portraits and statics are null on those two slots (they have no portrait).
+	 */
 	var saves:Array<FlxSprite> = [];
 	var portraits:Array<FlxSprite> = [];
+	var statics:Array<FlxSprite> = [];
 
 	// On-screen error message (on Android the log is hard to read)
 	var errorCam:FlxCamera;
@@ -176,6 +223,8 @@ class DataSelectState extends MusicBeatState
 		FlxG.camera.zoom = 3;
 		FlxG.camera.pixelPerfectRender = true;
 
+		loadSaveData();
+
 		// BG and text are added first and are NEVER touched by the scroll: they stay fixed.
 		bg = new FlxSprite(0, 0);
 		bg.loadGraphic(Paths.image('dataselect/dataSelect_BG'));
@@ -189,8 +238,8 @@ class DataSelectState extends MusicBeatState
 		savePos = [];
 		for (i in 0...TOTAL_SLOTS)
 		{
-			var offX:Float = isOtherSave(i) ? otherSaveOffsetX : 0;
-			var offY:Float = isOtherSave(i) ? otherSaveOffsetY : 0;
+			var offX:Float = isSpecialSlot(i) ? otherSaveOffsetX : 0;
+			var offY:Float = isSpecialSlot(i) ? otherSaveOffsetY : 0;
 			savePos.push([slotStartX + i * slotSpacing + offX, slotY + offY]);
 		}
 
@@ -223,11 +272,79 @@ class DataSelectState extends MusicBeatState
 		);
 	}
 
+	// =====================================================================
+	//  Slot types
+	// =====================================================================
+
 	/** True if the slot index (0-based) is the "No Save" slot. */
 	inline function isOtherSave(index:Int):Bool
 	{
 		return index == 0;
 	}
+
+	/** True if the slot index (0-based) is the Delete slot (the last one). */
+	inline function isDeleteSlot(index:Int):Bool
+	{
+		return index == TOTAL_SLOTS - 1;
+	}
+
+	/** True for both otherSave-style slots (No Save and Delete). */
+	inline function isSpecialSlot(index:Int):Bool
+	{
+		return index == 0 || index == TOTAL_SLOTS - 1;
+	}
+
+	// =====================================================================
+	//  Save data (which slots are used)
+	// =====================================================================
+
+	function loadSaveData():Void
+	{
+		saveUsed = [for (i in 0...TOTAL_SLOTS) false];
+
+		var stored:Array<Bool> = FlxG.save.data.dataSelectUsedSlots;
+		if (stored != null)
+		{
+			for (i in 0...TOTAL_SLOTS)
+				if (i < stored.length && stored[i] == true)
+					saveUsed[i] = true;
+		}
+
+		// The otherSave slots are never real saves
+		saveUsed[0] = false;
+		saveUsed[TOTAL_SLOTS - 1] = false;
+	}
+
+	function storeSaveData():Void
+	{
+		FlxG.save.data.dataSelectUsedSlots = saveUsed.copy();
+		FlxG.save.flush();
+	}
+
+	/** Marks a real save as used/created. Ignores the otherSave slots. */
+	function markSlotUsed(index:Int):Void
+	{
+		if (index < 1 || index > SAVE_COUNT || saveUsed[index])
+			return;
+
+		saveUsed[index] = true;
+		storeSaveData();
+		refreshPortrait(index);
+	}
+
+	/** Loads the right portrait image for a save: newIcon if unused, aiz_savePortrait if used. */
+	function refreshPortrait(index:Int):Void
+	{
+		if (portraits[index] == null)
+			return;
+
+		var name:String = saveUsed[index] ? usedPortraitImages[index - 1] : newPortraitImages[index - 1];
+		portraits[index].loadGraphic(Paths.image('dataselect/' + name));
+	}
+
+	// =====================================================================
+	//  Creation
+	// =====================================================================
 
 	function createSaveSlots():Void
 	{
@@ -236,19 +353,32 @@ class DataSelectState extends MusicBeatState
 			var x:Float = savePos[i][0];
 			var y:Float = savePos[i][1];
 
-			if (isOtherSave(i))
+			if (isSpecialSlot(i))
 			{
-				// otherSave (No Save): no portrait, with the noSaveText below it
+				// otherSave-style slot: no portrait, no static
 				var other:FlxSprite = new FlxSprite(x, y);
 				other.loadGraphic(Paths.image('dataselect/otherSave'));
 				add(other);
 				saves.push(other);
 
 				portraits.push(null);
+				statics.push(null);
 
-				noSaveText = new FlxSprite(x + noSaveTextX, y + noSaveTextY);
-				noSaveText.loadGraphic(Paths.image('dataselect/noSaveText'));
-				add(noSaveText);
+				if (isOtherSave(i))
+				{
+					noSaveText = new FlxSprite(x + noSaveTextX, y + noSaveTextY);
+					noSaveText.loadGraphic(Paths.image('dataselect/noSaveText'));
+					add(noSaveText);
+				}
+				else
+				{
+					// Same Y as the noSaveText
+					deleteText = new FlxSprite(x + deleteTextX, savePos[0][1] + noSaveTextY);
+					deleteText.loadGraphic(Paths.image('dataselect/deleteText'));
+					add(deleteText);
+
+					createEggman();
+				}
 
 				continue;
 			}
@@ -263,15 +393,44 @@ class DataSelectState extends MusicBeatState
 				y + portraitY
 			);
 
-			portrait.loadGraphic(
-				Paths.image('dataselect/' + portraitImages[i - 1])
-			);
-
 			portrait.visible = false;
 
 			add(portrait);
 			portraits.push(portrait);
+			refreshPortrait(i);
+
+			// Static shown on used saves while they are NOT selected
+			var staticSprite:FlxSprite = new FlxSprite(
+				x + portraitX,
+				y + portraitY
+			);
+
+			staticSprite.frames = Paths.getSparrowAtlas('dataselect/dataStatic');
+
+			if (addAtlasAnim(staticSprite, 'idle', 12, true, 'dataStatic'))
+				staticSprite.animation.play('idle', true);
+
+			staticSprite.visible = false;
+
+			add(staticSprite);
+			statics.push(staticSprite);
 		}
+	}
+
+	function createEggman():Void
+	{
+		eggman = new FlxSprite(0, 0);
+
+		eggman.frames = Paths.getSparrowAtlas('dataselect/eggmanDataSelect');
+
+		addAtlasAnim(eggman, 'idle', 12, true, 'eggmanDataSelect');
+		addAtlasAnim(eggman, 'eggSelect', 12, false, 'eggmanDataSelect');
+		addAtlasAnim(eggman, 'eggDelete', 12, false, 'eggmanDataSelect');
+
+		if (eggman.animation.exists('idle'))
+			eggman.animation.play('idle', true);
+
+		add(eggman);
 	}
 
 	function createArrow():Void
@@ -287,7 +446,7 @@ class DataSelectState extends MusicBeatState
 			otherArrowGraphic = arrowGraphic;
 		}
 
-		arrowIsOther = isOtherSave(index);
+		arrowIsOther = isSpecialSlot(index);
 
 		arrow = new FlxSprite(
 			arrowTargetX(index),
@@ -299,10 +458,10 @@ class DataSelectState extends MusicBeatState
 		add(arrow);
 	}
 
-	/** Swaps the arrow image: dataArrow on the otherSave, dataselectarrow on the real saves. */
+	/** Swaps the arrow image: dataArrow on the otherSave slots, dataselectarrow on the real saves. */
 	function applyArrowGraphic(index:Int):Void
 	{
-		var wantOther:Bool = isOtherSave(index);
+		var wantOther:Bool = isSpecialSlot(index);
 
 		if (wantOther == arrowIsOther)
 			return;
@@ -313,36 +472,60 @@ class DataSelectState extends MusicBeatState
 
 	function arrowTargetX(index:Int):Float
 	{
-		return slotScreenX(index) + (isOtherSave(index) ? otherArrowX : arrowX);
+		return slotScreenX(index) + (isSpecialSlot(index) ? otherArrowX : arrowX);
 	}
 
 	function arrowTargetY(index:Int):Float
 	{
-		return savePos[index][1] + (isOtherSave(index) ? otherArrowY : arrowY);
+		return savePos[index][1] + (isSpecialSlot(index) ? otherArrowY : arrowY);
 	}
 
 	/**
-	 * Final X of BF for a slot. On the otherSave he is centered horizontally on it,
+	 * Final X of BF for a slot. On the otherSave slots he is centered horizontally on them,
 	 * on the real saves he uses the normal bfX offset.
 	 */
 	function bfTargetX(index:Int):Float
 	{
-		if (isOtherSave(index))
+		if (isSpecialSlot(index))
 			return slotScreenX(index) + (saves[index].width - bfDataSelect.width) / 2 + bfOtherOffsetX;
 
 		return slotScreenX(index) + bfX;
 	}
 
 	/**
-	 * Final Y of BF for a slot. On the otherSave he is centered vertically on it
-	 * (taking its lift into account), on the real saves he uses the normal bfY offset.
+	 * Final Y of BF for a slot. On the otherSave slots he is centered vertically on them
+	 * (taking their lift into account), on the real saves he uses the normal bfY offset.
 	 */
 	function bfTargetY(index:Int):Float
 	{
-		if (isOtherSave(index))
+		if (isSpecialSlot(index))
 			return savePos[index][1] - otherSaveLift + (saves[index].height - bfDataSelect.height) / 2 + bfOtherOffsetY;
 
 		return savePos[index][1] + bfY;
+	}
+
+	/** Final X of Eggman while he follows the cursor in delete mode. */
+	function eggTargetX(index:Int):Float
+	{
+		if (isSpecialSlot(index))
+			return slotScreenX(index) + (saves[index].width - eggman.width) / 2 + eggCenterOffsetX;
+
+		return slotScreenX(index) + bfX + eggSaveOffsetX;
+	}
+
+	/** Final Y of Eggman while he follows the cursor in delete mode. */
+	function eggTargetY(index:Int):Float
+	{
+		if (isSpecialSlot(index))
+			return savePos[index][1] - otherSaveLift + (saves[index].height - eggman.height) / 2 + eggCenterOffsetY;
+
+		return savePos[index][1] + bfY + eggSaveOffsetY;
+	}
+
+	/** BF is hidden while the cursor is on the Delete slot and during delete mode (Eggman takes his place). */
+	function updateBfVisibility():Void
+	{
+		bfDataSelect.visible = !(deleteMode || isDeleteSlot(selection - 1));
 	}
 
 	function createBfDataSelect():Void
@@ -438,17 +621,16 @@ class DataSelectState extends MusicBeatState
 	}
 
 	/**
-	 * Registers an animation by prefix. If no frame starts with the exact name, it tries a
-	 * case-insensitive match against the atlas (e.g. 'Looking' / 'LOOKING'), and logs the
-	 * prefixes that really exist in the XML when nothing matches.
+	 * Looks in a sprite's atlas for the prefix that matches `name` (exact match first, then
+	 * case-insensitive, e.g. 'Looking' / 'LOOKING'). Returns null if nothing matches.
+	 * `existing` is filled with the prefixes that really exist in the XML (for the logs).
 	 */
-	function addBfAnim(name:String, fps:Int, loop:Bool):Void
+	function findAtlasPrefix(spr:FlxSprite, name:String, existing:Map<String, Bool>):String
 	{
 		var prefix:String = null;
 		var lower:String = name.toLowerCase();
-		var existing:Map<String, Bool> = new Map();
 
-		for (f in bfDataSelect.frames.frames)
+		for (f in spr.frames.frames)
 		{
 			if (f.name == null)
 				continue;
@@ -463,8 +645,38 @@ class DataSelectState extends MusicBeatState
 			// Name without the trailing frame number, for the log
 			var base:String = ~/[0-9]+$/.replace(f.name, '');
 			existing.set(base, true);
-			bfAtlasPrefixes.set(base, true);
 		}
+
+		return prefix;
+	}
+
+	/**
+	 * Registers an animation by prefix on any sprite. Returns false (and logs the prefixes
+	 * that exist in the XML) when no frame matches.
+	 */
+	function addAtlasAnim(spr:FlxSprite, name:String, fps:Int, loop:Bool, label:String):Bool
+	{
+		var existing:Map<String, Bool> = new Map();
+		var prefix:String = findAtlasPrefix(spr, name, existing);
+
+		if (prefix == null)
+		{
+			trace('Data Select: no frames for "' + name + '" in ' + label + '. Prefixes in the XML: ' + [for (k in existing.keys()) k].join(', '));
+			return false;
+		}
+
+		spr.animation.addByPrefix(name, prefix, fps, loop);
+		return true;
+	}
+
+	/** Same as addAtlasAnim, but for BF: remembers the missing animations to show the error screen. */
+	function addBfAnim(name:String, fps:Int, loop:Bool):Void
+	{
+		var existing:Map<String, Bool> = new Map();
+		var prefix:String = findAtlasPrefix(bfDataSelect, name, existing);
+
+		for (k in existing.keys())
+			bfAtlasPrefixes.set(k, true);
 
 		if (prefix == null)
 		{
@@ -533,13 +745,19 @@ class DataSelectState extends MusicBeatState
 			var saveInside:Bool = clipToWindow(saves[i]);
 			saves[i].visible = saveInside;
 
-			// The otherSave has no portrait
+			// The otherSave slots have no portrait and no static
 			if (portraits[i] != null)
 			{
-				portraits[i].x = x + portraitX;
+				var selected:Bool = (i == selection - 1);
 
+				// Selected: portrait (newIcon or aiz_savePortrait). Not selected + used: static.
+				portraits[i].x = x + portraitX;
 				var portraitInside:Bool = clipToWindow(portraits[i]);
-				portraits[i].visible = (i == selection - 1) && portraitInside;
+				portraits[i].visible = selected && portraitInside;
+
+				statics[i].x = x + portraitX;
+				var staticInside:Bool = clipToWindow(statics[i]);
+				statics[i].visible = saveUsed[i] && !selected && staticInside;
 			}
 		}
 
@@ -548,6 +766,33 @@ class DataSelectState extends MusicBeatState
 		{
 			noSaveText.x = savePos[0][0] - scrollX + noSaveTextX;
 			noSaveText.visible = clipToWindow(noSaveText);
+		}
+
+		// The deleteText follows the Delete slot (last slot)
+		if (deleteText != null)
+		{
+			deleteText.x = savePos[TOTAL_SLOTS - 1][0] - scrollX + deleteTextX;
+			deleteText.visible = clipToWindow(deleteText);
+		}
+
+		// Eggman: in the middle of the Delete slot, unless he is following the cursor (delete mode)
+		if (eggman != null)
+		{
+			if (deleteMode)
+			{
+				if (eggman.clipRect != null)
+					eggman.clipRect = null;
+
+				eggman.visible = true;
+			}
+			else
+			{
+				var last:Int = TOTAL_SLOTS - 1;
+
+				eggman.x = saves[last].x + (saves[last].width - eggman.width) / 2 + eggCenterOffsetX;
+				eggman.y = saves[last].y + (saves[last].height - eggman.height) / 2 + eggCenterOffsetY;
+				eggman.visible = clipToWindow(eggman);
+			}
 		}
 	}
 
@@ -584,8 +829,10 @@ class DataSelectState extends MusicBeatState
 		if (updateScrollTarget())
 			scrollSlots();
 
-		// dataArrow on the otherSave, dataselectarrow on the real saves
+		// dataArrow on the otherSave slots, dataselectarrow on the real saves
 		applyArrowGraphic(index);
+
+		updateBfVisibility();
 
 		FlxTween.tween(
 			arrow,
@@ -598,6 +845,22 @@ class DataSelectState extends MusicBeatState
 				ease: FlxEase.quadOut
 			}
 		);
+
+		// Eggman follows the cursor in delete mode
+		if (deleteMode)
+		{
+			FlxTween.tween(
+				eggman,
+				{
+					x: eggTargetX(index),
+					y: eggTargetY(index)
+				},
+				moveTime,
+				{
+					ease: FlxEase.quadOut
+				}
+			);
+		}
 
 		// BF goes to the center of the otherSave, or back to the normal spot on the real saves
 		FlxTween.tween(
@@ -629,14 +892,17 @@ class DataSelectState extends MusicBeatState
 			var y:Float = savePos[i][1];
 
 			if (i == selection - 1)
-				y -= isOtherSave(i) ? otherSaveLift : saveLift;
+				y -= isSpecialSlot(i) ? otherSaveLift : saveLift;
 
 			if (first)
 			{
 				saves[i].y = y;
 
 				if (portraits[i] != null)
+				{
 					portraits[i].y = y + portraitY;
+					statics[i].y = y + portraitY;
+				}
 			}
 			else
 			{
@@ -663,6 +929,17 @@ class DataSelectState extends MusicBeatState
 							ease: FlxEase.quadOut
 						}
 					);
+
+					FlxTween.tween(
+						statics[i],
+						{
+							y: y + portraitY
+						},
+						moveTime,
+						{
+							ease: FlxEase.quadOut
+						}
+					);
 				}
 			}
 		}
@@ -678,6 +955,8 @@ class DataSelectState extends MusicBeatState
 
 			bfDataSelect.x = bfTargetX(index);
 			bfDataSelect.y = bfTargetY(index);
+
+			updateBfVisibility();
 		}
 	}
 
@@ -686,7 +965,10 @@ class DataSelectState extends MusicBeatState
 		if (isMoving || confirming)
 			return;
 
-		if (selection <= 1)
+		// In delete mode the cursor cannot go to the "No Save" slot
+		var minSelection:Int = deleteMode ? 2 : 1;
+
+		if (selection <= minSelection)
 			return;
 
 		selection--;
@@ -712,6 +994,22 @@ class DataSelectState extends MusicBeatState
 		if (confirming)
 			return;
 
+		var index:Int = selection - 1;
+
+		// ENTER on the Delete slot turns delete mode on/off
+		if (isDeleteSlot(index))
+		{
+			toggleDeleteMode();
+			return;
+		}
+
+		// In delete mode ENTER asks to delete the selected save (only if it is used)
+		if (deleteMode)
+		{
+			requestDelete(index);
+			return;
+		}
+
 		confirming = true;
 		isMoving = true;
 		doFlicker = false;
@@ -725,12 +1023,150 @@ class DataSelectState extends MusicBeatState
 		bfDataSelect.animation.play('yeah', true);
 
 		// For now the otherSave (No Save) starts the same song as the real saves.
-		// Check isOtherSave(selection - 1) here if it should do something different.
+		// Check isOtherSave(index) here if it should do something different.
 		bfDataSelect.animation.finishCallback = function(name:String)
 		{
 			if (name == 'yeah')
+			{
+				// A real save becomes used/created when the game starts from it
+				markSlotUsed(index);
 				startLevel(SONG_ID);
+			}
 		};
+	}
+
+	// =====================================================================
+	//  DELETE MODE (Eggman)
+	// =====================================================================
+
+	/** Plays an Eggman animation. If onFinish is given, it runs when the animation ends. */
+	function playEgg(name:String, ?onFinish:Void->Void):Void
+	{
+		eggman.animation.finishCallback = null;
+
+		if (!eggman.animation.exists(name))
+		{
+			trace('Data Select: animation "' + name + '" not found in eggmanDataSelect (check the prefix in the XML)');
+
+			showError('Missing Eggman animation: "' + name + '"');
+
+			if (onFinish != null)
+				onFinish();
+
+			return;
+		}
+
+		eggman.animation.play(name, true);
+		eggman.animation.curAnim.paused = false;
+
+		if (onFinish != null)
+		{
+			eggman.animation.finishCallback = function(finished:String)
+			{
+				if (finished != name)
+					return;
+
+				eggman.animation.finishCallback = null;
+				onFinish();
+			};
+		}
+	}
+
+	function cancelEggTimer():Void
+	{
+		if (eggTimer != null)
+		{
+			eggTimer.cancel();
+			eggTimer = null;
+		}
+
+		if (eggman != null)
+			eggman.animation.finishCallback = null;
+	}
+
+	/** eggSelect -> (ends) -> idle -> 0.4s -> eggSelect -> ... until delete mode ends or a save is asked to be deleted. */
+	function eggSelectCycle():Void
+	{
+		if (!deleteMode || deleteConfirm)
+			return;
+
+		playEgg('eggSelect', function()
+		{
+			if (!deleteMode || deleteConfirm)
+				return;
+
+			playEgg('idle');
+
+			eggTimer = new FlxTimer().start(eggSelectDelay, function(_:FlxTimer)
+			{
+				eggTimer = null;
+				eggSelectCycle();
+			});
+		});
+	}
+
+	function toggleDeleteMode():Void
+	{
+		FlxG.sound.play(
+			Paths.sound('confirmMenu')
+		);
+
+		deleteMode = !deleteMode;
+		deleteConfirm = false;
+
+		cancelEggTimer();
+		updateBfVisibility();
+
+		if (deleteMode)
+			eggSelectCycle();
+		else
+			playEgg('idle');
+	}
+
+	/** ENTER on a save in delete mode: only used saves can be deleted. Eggman plays eggDelete and waits for LEFT / RIGHT. */
+	function requestDelete(index:Int):Void
+	{
+		if (index < 1 || index > SAVE_COUNT || !saveUsed[index])
+			return;
+
+		deleteConfirm = true;
+		cancelEggTimer();
+
+		FlxG.sound.play(
+			Paths.sound('confirmMenu')
+		);
+
+		playEgg('eggDelete');
+	}
+
+	/** LEFT while waiting: deletes the save and Eggman goes back to the eggSelect loop. */
+	function acceptDelete():Void
+	{
+		var index:Int = selection - 1;
+
+		saveUsed[index] = false;
+		storeSaveData();
+		refreshPortrait(index);
+
+		deleteConfirm = false;
+
+		FlxG.sound.play(
+			Paths.sound('confirmMenu')
+		);
+
+		eggSelectCycle();
+	}
+
+	/** RIGHT while waiting: does NOT delete, Eggman goes back to the eggSelect loop where he is. */
+	function cancelDelete():Void
+	{
+		deleteConfirm = false;
+
+		FlxG.sound.play(
+			Paths.sound('dataselectswitch')
+		);
+
+		eggSelectCycle();
 	}
 
 	// =====================================================================
@@ -1213,8 +1649,8 @@ class DataSelectState extends MusicBeatState
 		if (doFlicker && globalTimer % 4 == 0)
 			arrow.visible = !arrow.visible;
 
-		// Secret code (only before confirming a save or starting the secret)
-		if (!confirming && !secretActive)
+		// Secret code (only before confirming a save or starting the secret, and never in delete mode / on the Delete slot)
+		if (!confirming && !secretActive && !deleteMode && !isDeleteSlot(selection - 1))
 		{
 			checkSecretCode();
 
@@ -1225,6 +1661,17 @@ class DataSelectState extends MusicBeatState
 
 		if (isMoving || confirming)
 			return;
+
+		// Waiting for the answer after eggDelete: LEFT = delete the save, RIGHT = do not delete
+		if (deleteConfirm)
+		{
+			if (FlxG.keys.justPressed.LEFT || MobileControls.leftJustPressed)
+				acceptDelete();
+			else if (FlxG.keys.justPressed.RIGHT || MobileControls.rightJustPressed)
+				cancelDelete();
+
+			return;
+		}
 
 		if (FlxG.keys.justPressed.LEFT || MobileControls.leftJustPressed)
 		{
@@ -1245,6 +1692,8 @@ class DataSelectState extends MusicBeatState
 			if (t != null)
 				t.cancel();
 		secretTimers = [];
+
+		cancelEggTimer();
 
 		if (scrollTween != null)
 		{

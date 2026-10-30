@@ -340,6 +340,7 @@ class LoadingScreen extends MusicBeatState
 			if (endTimer >= END_DELAY)
 			{
 				leaving = true;
+				MusicBeatState.skipLoading = true;
 				MusicBeatState.switchState(new PlayState());
 			}
 		}

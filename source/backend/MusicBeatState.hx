@@ -2,6 +2,7 @@ package backend;
 
 import flixel.FlxState;
 import backend.PsychCamera;
+import states.LoadingState;
 
 class MusicBeatState extends FlxState
 {
@@ -39,6 +40,17 @@ class MusicBeatState extends FlxState
 		FlxTransitionableState.skipNextTransOut = false;
 		timePassedOnState = 0;
 	}
+
+	public static var skipLoading:Bool = false;
+    public static function switchState(nextState:FlxState = null)
+  {
+    if (skipLoading)
+        skipLoading = false;
+    else if (nextState != null && nextState != FlxG.state && !(nextState is LoadingState))
+    {
+        LoadingState.loadAndSwitchState(nextState, false, true);
+        return;
+    }
 
 	public function initPsychCamera():PsychCamera
 	{

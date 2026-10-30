@@ -40,10 +40,10 @@ class Hitbox extends FlxSpriteGroup
 	 * 0 = the lanes start at the screen edge. Can be negative to start before the edge (the lanes
 	 * still take touches there, but are only drawn inside the game view).
 	 */
-	public static var marginLeft:Float = -20;
+	public static var marginLeft:Float = -50;
 
 	/** Same as marginLeft, for the right side: where the lanes end, counted from the right screen edge. */
-	public static var marginRight:Float = -20;
+	public static var marginRight:Float = -50;
 
 	/** Lane opacity while a finger is on it (0 to 1). */
 	public static var opacity:Float = 0.95;

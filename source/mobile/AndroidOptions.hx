@@ -5,38 +5,71 @@ import backend.ClientPrefs;
 import backend.MobileControls;
 import objects.Hitbox;
 
-/**
- * Settings that only exist on Android: touch cursor, controls opacity and size,
- * left-handed layout, touch lane look, vibration, keep screen on and brightness.
- *
- * The class compiles on every platform, but everything that does something is
- * guarded with "#if android", so it does nothing on PC.
- */
+typedef OptionChoice<T> =
+{
+	var name:String;
+	var value:T;
+}
+
 class AndroidOptions
 {
-	/** Names shown in the menu and the values they mean. Each pair of lists has the same order. */
-	public static final OPACITY_NAMES:Array<String> = ['LOW', 'MEDIUM', 'HIGH', 'FULL'];
-	public static final OPACITY_VALUES:Array<Float> = [0.4, 0.65, 0.85, 1.0];
+	static final OPACITY:Array<OptionChoice<Float>> = [
+		{name: 'LOW', value: 0.4},
+		{name: 'MEDIUM', value: 0.65},
+		{name: 'HIGH', value: 0.85},
+		{name: 'FULL', value: 1.0}
+	];
 
-	public static final VIBRATION_NAMES:Array<String> = ['OFF', 'LIGHT', 'STRONG'];
-	public static final VIBRATION_MS:Array<Int> = [0, 15, 35];
+	static final VIBRATION:Array<OptionChoice<Int>> = [
+		{name: 'OFF', value: 0},
+		{name: 'LIGHT', value: 15},
+		{name: 'STRONG', value: 35}
+	];
 
-	/** Look of the touch lanes used during songs. The values are the names Hitbox.style understands. */
-	public static final LANE_STYLE_NAMES:Array<String> = ['GRADIENT', 'SOLID', 'OUTLINE'];
-	public static final LANE_STYLE_VALUES:Array<String> = ['Gradient', 'Solid', 'Outline'];
+	static final LANE_STYLE:Array<OptionChoice<String>> = [
+		{name: 'GRADIENT', value: 'Gradient'},
+		{name: 'SOLID', value: 'Solid'},
+		{name: 'OUTLINE', value: 'Outline'}
+	];
 
-	public static final LANE_OPACITY_NAMES:Array<String> = ['LOW', 'MEDIUM', 'HIGH', 'MAX'];
-	public static final LANE_OPACITY_VALUES:Array<Float> = [0.2, 0.35, 0.55, 0.8];
+	static final LANE_OPACITY:Array<OptionChoice<Float>> = [
+		{name: 'LOW', value: 0.2},
+		{name: 'MEDIUM', value: 0.35},
+		{name: 'HIGH', value: 0.55},
+		{name: 'MAX', value: 0.8}
+	];
 
-	/** Scale of the on-screen arrows and A/B buttons (the default layout uses 3). */
-	public static final CONTROLS_SIZE_NAMES:Array<String> = ['SMALL', 'MEDIUM', 'LARGE'];
-	public static final CONTROLS_SIZE_VALUES:Array<Float> = [2, 3, 4];
+	static final CONTROLS_SIZE:Array<OptionChoice<Float>> = [
+		{name: 'SMALL', value: 2},
+		{name: 'MEDIUM', value: 3},
+		{name: 'LARGE', value: 4}
+	];
 
-	/** Screen brightness while the game is open. A negative value means "let the phone decide". */
-	public static final BRIGHTNESS_NAMES:Array<String> = ['AUTO', 'LOW', 'MEDIUM', 'HIGH'];
-	public static final BRIGHTNESS_VALUES:Array<Float> = [-1, 0.25, 0.55, 1.0];
+	static final BRIGHTNESS:Array<OptionChoice<Float>> = [
+		{name: 'AUTO', value: -1},
+		{name: 'LOW', value: 0.25},
+		{name: 'MEDIUM', value: 0.55},
+		{name: 'HIGH', value: 1.0}
+	];
 
-	/** Every option saved by the mobile options menu. */
+	public static final OPACITY_NAMES:Array<String> = namesOf(OPACITY);
+	public static final OPACITY_VALUES:Array<Float> = valuesOf(OPACITY);
+
+	public static final VIBRATION_NAMES:Array<String> = namesOf(VIBRATION);
+	public static final VIBRATION_MS:Array<Int> = valuesOf(VIBRATION);
+
+	public static final LANE_STYLE_NAMES:Array<String> = namesOf(LANE_STYLE);
+	public static final LANE_STYLE_VALUES:Array<String> = valuesOf(LANE_STYLE);
+
+	public static final LANE_OPACITY_NAMES:Array<String> = namesOf(LANE_OPACITY);
+	public static final LANE_OPACITY_VALUES:Array<Float> = valuesOf(LANE_OPACITY);
+
+	public static final CONTROLS_SIZE_NAMES:Array<String> = namesOf(CONTROLS_SIZE);
+	public static final CONTROLS_SIZE_VALUES:Array<Float> = valuesOf(CONTROLS_SIZE);
+
+	public static final BRIGHTNESS_NAMES:Array<String> = namesOf(BRIGHTNESS);
+	public static final BRIGHTNESS_VALUES:Array<Float> = valuesOf(BRIGHTNESS);
+
 	public static final SAVED_FIELDS:Array<String> = [
 		'mobileShowHitbox',
 		'mobilePauseButton',
@@ -51,7 +84,6 @@ class AndroidOptions
 		'mobileBrightness'
 	];
 
-	// The layout MobileControls starts with. Keep these in sync with its default positions.
 	static inline var DEFAULT_CONTROLS_SCALE:Float = 3;
 	static inline var ARROWS_X:Float = 80;
 	static inline var ARROWS_Y:Float = 500;
@@ -62,10 +94,19 @@ class AndroidOptions
 
 	static var loaded:Bool = false;
 
-	/** Keeps a saved number inside a list (0 to length - 1). */
+	static function namesOf<T>(list:Array<OptionChoice<T>>):Array<String>
+	{
+		return [for (choice in list) choice.name];
+	}
+
+	static function valuesOf<T>(list:Array<OptionChoice<T>>):Array<T>
+	{
+		return [for (choice in list) choice.value];
+	}
+
 	public static function clampIndex(value:Int, length:Int):Int
 	{
-		if (value < 0)
+		if (length <= 0 || value < 0)
 			return 0;
 
 		if (value >= length)
@@ -74,51 +115,108 @@ class AndroidOptions
 		return value;
 	}
 
-	/** Vibration pulse length for the current setting (0 = vibration off). */
-	public static function vibrationMs():Int
+	static inline function pick<T>(list:Array<T>, index:Int):T
 	{
-		return VIBRATION_MS[clampIndex(ClientPrefs.data.mobileVibration, VIBRATION_MS.length)];
+		return list[clampIndex(index, list.length)];
 	}
 
-	/**
-	 * Copies the saved mobile options into ClientPrefs.data.
-	 * This port's title screen does not call ClientPrefs.loadPrefs(), so without this
-	 * the options would go back to their defaults every time the game is opened.
-	 * Only the mobile options are loaded, so nothing else changes.
-	 */
+	public static function vibrationMs():Int
+	{
+		return pick(VIBRATION_MS, ClientPrefs.data.mobileVibration);
+	}
+
+	public static function controlsOpacity():Float
+	{
+		return pick(OPACITY_VALUES, ClientPrefs.data.mobileControlsOpacity);
+	}
+
+	public static function controlsScale():Float
+	{
+		return pick(CONTROLS_SIZE_VALUES, ClientPrefs.data.mobileControlsSize);
+	}
+
+	public static function brightness():Float
+	{
+		return pick(BRIGHTNESS_VALUES, ClientPrefs.data.mobileBrightness);
+	}
+
+	public static function laneStyle():String
+	{
+		return pick(LANE_STYLE_VALUES, ClientPrefs.data.mobileLaneStyle);
+	}
+
+	public static function laneOpacity():Float
+	{
+		return pick(LANE_OPACITY_VALUES, ClientPrefs.data.mobileLaneOpacity);
+	}
+
 	public static function loadSaved():Void
 	{
 		#if android
 		if (loaded)
 			return;
 
-		loaded = true;
-
-		if (FlxG.save == null || FlxG.save.data == null)
+		var save = FlxG.save;
+		if (save == null || save.data == null || !save.isBound)
 			return;
+
+		loaded = true;
 
 		for (key in SAVED_FIELDS)
 		{
-			if (Reflect.hasField(FlxG.save.data, key))
-				Reflect.setField(ClientPrefs.data, key, Reflect.field(FlxG.save.data, key));
+			if (!Reflect.hasField(save.data, key))
+				continue;
+
+			var value:Dynamic = convertSaved(Reflect.field(save.data, key), Reflect.field(ClientPrefs.data, key));
+			if (value != null)
+				Reflect.setField(ClientPrefs.data, key, value);
 		}
+
+		sanitize();
 		#end
 	}
 
-	/** Gives the touch lanes their style and opacity. They are read when the lanes are created. */
+	static function convertSaved(stored:Dynamic, current:Dynamic):Dynamic
+	{
+		if (stored == null)
+			return null;
+
+		if (Std.isOfType(current, Bool))
+			return Std.isOfType(stored, Bool) ? stored : null;
+
+		if (Std.isOfType(current, Int))
+			return Std.isOfType(stored, Float) ? Std.int(stored) : null;
+
+		return stored;
+	}
+
+	static function sanitize():Void
+	{
+		var data = ClientPrefs.data;
+		data.mobileControlsOpacity = clampIndex(data.mobileControlsOpacity, OPACITY.length);
+		data.mobileVibration = clampIndex(data.mobileVibration, VIBRATION.length);
+		data.mobileLaneStyle = clampIndex(data.mobileLaneStyle, LANE_STYLE.length);
+		data.mobileLaneOpacity = clampIndex(data.mobileLaneOpacity, LANE_OPACITY.length);
+		data.mobileControlsSize = clampIndex(data.mobileControlsSize, CONTROLS_SIZE.length);
+		data.mobileBrightness = clampIndex(data.mobileBrightness, BRIGHTNESS.length);
+	}
+
 	public static function applyLaneSettings():Void
 	{
-		Hitbox.style = LANE_STYLE_VALUES[clampIndex(ClientPrefs.data.mobileLaneStyle, LANE_STYLE_VALUES.length)];
-		Hitbox.opacity = LANE_OPACITY_VALUES[clampIndex(ClientPrefs.data.mobileLaneOpacity, LANE_OPACITY_VALUES.length)];
+		Hitbox.style = laneStyle();
+		Hitbox.opacity = laneOpacity();
 	}
 
-	/** Changes whenever a lane option changes, so MobileControls knows when to rebuild the lanes. */
 	public static function laneSignature():String
 	{
-		return Std.string(ClientPrefs.data.mobileLaneStyle) + '|' + Std.string(ClientPrefs.data.mobileLaneOpacity);
+		return laneStyle() + '|' + laneOpacity();
 	}
 
-	/** Sets the size of the arrows and A/B buttons and which side of the screen they are on. */
+	static inline function growth(size:Float, scale:Float):Float
+	{
+		return size * (DEFAULT_CONTROLS_SCALE - scale);
+	}
+
 	public static function applyControlsLayout():Void
 	{
 		#if android
@@ -129,46 +227,42 @@ class AndroidOptions
 		if (arrows == null || buttonA == null || buttonB == null)
 			return;
 
-		var scale:Float = CONTROLS_SIZE_VALUES[clampIndex(ClientPrefs.data.mobileControlsSize, CONTROLS_SIZE_VALUES.length)];
+		var scale:Float = controlsScale();
 		MobileControls.setScale(scale, scale);
 
-		// The bottom edges stay where they are at the default size, so bigger controls grow upwards.
-		var arrowsY:Float = ARROWS_Y + arrows.frameHeight * (DEFAULT_CONTROLS_SCALE - scale);
-		var buttonAY:Float = BUTTON_A_Y + buttonA.frameHeight * (DEFAULT_CONTROLS_SCALE - scale);
-		var buttonBY:Float = BUTTON_B_Y + buttonB.frameHeight * (DEFAULT_CONTROLS_SCALE - scale);
+		var arrowsY:Float = ARROWS_Y + growth(arrows.frameHeight, scale);
+		var buttonAY:Float = BUTTON_A_Y + growth(buttonA.frameHeight, scale);
+		var buttonBY:Float = BUTTON_B_Y + growth(buttonB.frameHeight, scale);
 
 		var arrowsX:Float;
 		var buttonAX:Float;
 		var buttonBX:Float;
 
-		if (!ClientPrefs.data.mobileLeftHanded)
+		if (ClientPrefs.data.mobileLeftHanded)
 		{
-			// Arrows keep their left edge; the buttons keep their right edge. Bigger controls grow towards the middle.
-			arrowsX = ARROWS_X;
-			buttonAX = BUTTON_A_X + buttonA.frameWidth * (DEFAULT_CONTROLS_SCALE - scale);
-			buttonBX = BUTTON_B_X + buttonB.frameWidth * (DEFAULT_CONTROLS_SCALE - scale);
-		}
-		else
-		{
-			// Mirror image: arrows on the right, buttons on the left.
 			arrowsX = FlxG.width - ARROWS_X - arrows.frameWidth * scale;
 			buttonAX = FlxG.width - BUTTON_A_X - buttonA.frameWidth * DEFAULT_CONTROLS_SCALE;
 			buttonBX = FlxG.width - BUTTON_B_X - buttonB.frameWidth * DEFAULT_CONTROLS_SCALE;
+		}
+		else
+		{
+			arrowsX = ARROWS_X;
+			buttonAX = BUTTON_A_X + growth(buttonA.frameWidth, scale);
+			buttonBX = BUTTON_B_X + growth(buttonB.frameWidth, scale);
 		}
 
 		MobileControls.setPosition(arrowsX, arrowsY, buttonAX, buttonAY, buttonBX, buttonBY);
 		#end
 	}
 
-	/** Puts the current options into effect. Call it after any of them changes. */
 	public static function apply():Void
 	{
 		#if android
 		applyLaneSettings();
 		applyControlsLayout();
-		MobileControls.setControlsOpacity(OPACITY_VALUES[clampIndex(ClientPrefs.data.mobileControlsOpacity, OPACITY_VALUES.length)]);
+		MobileControls.setControlsOpacity(controlsOpacity());
 		DeviceUtil.setKeepScreenOn(ClientPrefs.data.mobileKeepScreenOn);
-		DeviceUtil.setBrightness(BRIGHTNESS_VALUES[clampIndex(ClientPrefs.data.mobileBrightness, BRIGHTNESS_VALUES.length)]);
+		DeviceUtil.setBrightness(brightness());
 		MobileControls.applyMobileOptions();
 		#end
 	}

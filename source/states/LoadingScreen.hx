@@ -2,36 +2,20 @@ package states;
 
 import flixel.FlxG;
 import flixel.FlxSprite;
+import flixel.FlxState;
 import flixel.text.FlxText;
 import flixel.math.FlxMath;
 import flixel.math.FlxRect;
 import flixel.util.FlxColor;
 
-import haxe.Json;
-import openfl.utils.Assets;
-#if MODS_ALLOWED
-import sys.FileSystem;
-import sys.io.File;
-#end
-
 import backend.MusicBeatState;
 import backend.ClientPrefs;
-import backend.StageData;
-import objects.Character;
-
-/**
- * One step of the loading process.
- * weight = how "heavy" the step is (heavier steps move the bar more).
- */
-typedef LoadTask =
-{
-	var label:String;
-	var run:Void->Void;
-	var weight:Float;
-}
 
 /**
  * LoadingScreen (Psych Engine 1.0.4)
+ *
+ * Custom look for the song loading. The real loading work is still done by
+ * LoadingState (threads + cache), this state only shows its progress.
  *
  * Sprites in  mods/<your mod>/images/loadingSprites/  (or assets/shared/images/loadingSprites/)
  *   - loadingNORMAL   -> background for any song
@@ -43,10 +27,11 @@ typedef LoadTask =
  *
  * If a sprite is missing, a simple placeholder is used so the screen never crashes.
  *
- * Usage (instead of LoadingState.loadAndSwitchState(new PlayState())):
- *     // after PlayState.SONG = Song.loadFromJson(...)
- *     LoadingScreen.go();
+ * Usage:
+ *     LoadingState.prepareToSong();                       // starts the real preloading (optional)
+ *     LoadingState.loadAndSwitchState(new PlayState());   // redirects to this screen
  */
+@:access(states.LoadingState)
 class LoadingScreen extends MusicBeatState
 {
 	// ================= CONFIGURATION (adjust to your sprites) =================
@@ -68,7 +53,7 @@ class LoadingScreen extends MusicBeatState
 	// distance of the percentage text from the bottom of the bar
 	static inline var PERCENT_OFFSET_Y:Float = 10;
 
-	static inline var MIN_TIME_PER_TASK:Float = 0.05; // gives time to read the text
+	static inline var MIN_TIME:Float = 0.6; // minimum time when there is nothing to load
 	static inline var END_DELAY:Float = 0.5;
 	static inline var BAR_SPEED:Float = 10; // higher = the bar catches up faster
 	static inline var FADE_IN_TIME:Float = 0.25;
@@ -83,14 +68,11 @@ class LoadingScreen extends MusicBeatState
 	var percentText:FlxText;
 	var songText:FlxText;
 
-	var tasks:Array<LoadTask> = [];
-	var taskIndex:Int = 0;
-	var taskTimer:Float = 0;
-	var labelShown:Bool = false; // true = label already drawn, task runs on the next tick
+	var target:FlxState;
+	var stopMusic:Bool;
 
-	var totalWeight:Float = 0;
-	var doneWeight:Float = 0;
-	var errorCount:Int = 0;
+	var timer:Float = 0;
+	var minTime:Float = 0;
 
 	var targetPercent:Float = 0;
 	var shownPercent:Float = 0;
@@ -101,17 +83,34 @@ class LoadingScreen extends MusicBeatState
 
 	var songName:String;
 
-	public static function go():Void
+	public static function go(?target:FlxState, stopMusic:Bool = false):Void
 	{
+		if (target == null) target = new PlayState();
+
+		// same preparation that LoadingState.getNextState does
+		LoadingState._startPool();
+		LoadingState.loadNextDirectory();
+
 		MusicBeatState.skipLoading = true; // avoids MusicBeatState sending us back here (infinite loop)
-		MusicBeatState.switchState(new LoadingScreen());
+		MusicBeatState.switchState(new LoadingScreen(target, stopMusic));
+	}
+
+	function new(target:FlxState, stopMusic:Bool)
+	{
+		this.target = target;
+		this.stopMusic = stopMusic;
+		super();
 	}
 
 	override function create()
 	{
 		songName = Paths.formatToSongPath(PlayState.SONG != null ? PlayState.SONG.song : '');
 
-		if (FlxG.sound.music != null)
+		// nothing to load: show the screen for a short time anyway
+		if (LoadingState.loadMax <= 0 && LoadingState.initialThreadCompleted)
+			minTime = MIN_TIME;
+
+		if (stopMusic && FlxG.sound.music != null)
 			FlxG.sound.music.fadeOut(0.3, 0);
 
 		var aa:Bool = ClientPrefs.data.antialiasing;
@@ -175,8 +174,6 @@ class LoadingScreen extends MusicBeatState
 		add(statusText);
 		add(percentText);
 
-		buildTasks();
-
 		FlxG.camera.fade(FlxColor.BLACK, FADE_IN_TIME, true);
 		super.create();
 	}
@@ -203,151 +200,30 @@ class LoadingScreen extends MusicBeatState
 		return t;
 	}
 
-	function addTask(label:String, weight:Float, run:Void->Void):Void
-	{
-		tasks.push({label: label, run: run, weight: weight});
-		totalWeight += weight;
-	}
-
-	// reads characters/<name>.json (falls back to the default character, like Character.hx does)
-	// and loads every image listed in its "image" field (can be several, separated by commas)
-	function preloadCharacterImages(charName:String):Void
-	{
-		var path:String = Paths.getPath('characters/$charName.json', TEXT);
-		#if MODS_ALLOWED
-		if (!FileSystem.exists(path))
-		#else
-		if (!Assets.exists(path))
-		#end
-			path = Paths.getSharedPath('characters/' + Character.DEFAULT_CHARACTER + '.json');
-
-		#if MODS_ALLOWED
-		var json:Dynamic = Json.parse(File.getContent(path));
-		#else
-		var json:Dynamic = Json.parse(Assets.getText(path));
-		#end
-
-		if (json == null || json.image == null) return;
-
-		var images:Array<String> = cast(json.image, String).split(',');
-		for (img in images)
-			Paths.image(img);
-	}
-
-	// ====================== LIST OF THINGS TO LOAD ======================
-	function buildTasks():Void
-	{
-		var song = PlayState.SONG;
-		if (song == null)
-		{
-			addTask('Nothing to load', 1, function() {});
-			return;
-		}
-
-		// Notes
-		var skin:String = (song.arrowSkin != null && song.arrowSkin.length > 0) ? song.arrowSkin : 'noteSkins/NOTE_assets';
-		addTask('Loading notes (' + skin + ')', 1, function() { safe(function() { Paths.image(skin); }); });
-
-		var splash:String = (song.splashSkin != null && song.splashSkin.length > 0) ? song.splashSkin : 'noteSplashes/noteSplashes';
-		addTask('Loading splashes', 1, function() { safe(function() { Paths.image(splash); }); });
-
-		// Characters (player1 = BF, player2 = opponent, gfVersion = GF)
-		for (c in [song.player1, song.player2, song.gfVersion])
-		{
-			if (c == null || c.length < 1) continue;
-			var charName:String = c;
-			addTask('Loading character: ' + charName, 2, function() { safe(function() { preloadCharacterImages(charName); }); });
-		}
-
-		// Stage
-		if (song.stage != null && song.stage.length > 0)
-		{
-			var stageName:String = song.stage;
-			addTask('Loading stage: ' + stageName, 1, function() { safe(function() { StageData.getStageFile(stageName); }); });
-		}
-
-		// UI sounds
-		addTask('Loading sounds', 1, function()
-		{
-			safe(function()
-			{
-				Paths.sound('missnote1');
-				Paths.sound('missnote2');
-				Paths.sound('missnote3');
-			});
-		});
-
-		// Music (heavier steps, so the bar moves more here)
-		var sName:String = Paths.formatToSongPath(song.song);
-		addTask('Loading instrumental', 3, function() { safe(function() { Paths.inst(sName); }); });
-		if (song.needsVoices)
-		{
-			addTask('Loading vocals', 3, function()
-			{
-				safe(function()
-				{
-					Paths.voices(sName);
-					Paths.voices(sName, 'Player');
-					Paths.voices(sName, 'Opponent');
-				});
-			});
-		}
-
-		// Last step
-		addTask('Finishing up', 0.5, function() {});
-	}
-
-	// an error in one asset must not freeze the loading screen
-	function safe(f:Void->Void):Void
-	{
-		try
-		{
-			f();
-		}
-		catch (e:Dynamic)
-		{
-			errorCount++;
-			trace('[LoadingScreen] error #' + errorCount + ': ' + e);
-		}
-	}
-
 	// ============================== UPDATE ==============================
 	override function update(elapsed:Float)
 	{
 		super.update(elapsed);
 
-		// one task at a time (main thread keeps the animation running and avoids threaded texture issues)
 		if (!finished)
 		{
-			taskTimer += elapsed;
-			if (taskTimer >= MIN_TIME_PER_TASK)
-			{
-				if (taskIndex < tasks.length)
-				{
-					var t = tasks[taskIndex];
-					if (!labelShown)
-					{
-						// tick 1: show the label (it gets drawn this frame)
-						statusText.text = t.label + '...';
-						labelShown = true;
-					}
-					else
-					{
-						// tick 2: now run the task
-						t.run();
-						doneWeight += t.weight;
-						taskIndex++;
-						labelShown = false;
-						taskTimer = 0;
-						targetPercent = (totalWeight > 0) ? Math.min(doneWeight / totalWeight, 1) : 1;
-					}
-				}
+			timer += elapsed;
 
-				if (taskIndex >= tasks.length)
-				{
-					finished = true;
-					targetPercent = 1;
-				}
+			// must be called every frame: it also moves the finished bitmaps into the cache (main thread only)
+			var loadedAll:Bool = LoadingState.checkLoaded();
+
+			if (LoadingState.loadMax > 0)
+				targetPercent = Math.min(LoadingState.loaded / LoadingState.loadMax, 1);
+			else if (minTime > 0)
+				targetPercent = Math.min(timer / minTime, 1);
+
+			var task:String = LoadingState.currentTask;
+			statusText.text = (task != null && task.length > 0) ? 'Loading ' + task + '...' : 'Preparing...';
+
+			if (loadedAll && timer >= minTime)
+			{
+				finished = true;
+				targetPercent = 1;
 			}
 		}
 
@@ -366,10 +242,22 @@ class LoadingScreen extends MusicBeatState
 			if (endTimer >= END_DELAY)
 			{
 				leaving = true;
-				MusicBeatState.skipLoading = true; // go straight to PlayState (no loop)
-				MusicBeatState.switchState(new PlayState());
+				goToTarget();
 			}
 		}
+	}
+
+	// same ending as LoadingState.onLoad
+	function goToTarget():Void
+	{
+		LoadingState._loaded();
+
+		if (stopMusic && FlxG.sound.music != null)
+			FlxG.sound.music.stop();
+
+		FlxG.camera.visible = false;
+		MusicBeatState.skipLoading = true; // go straight to the target (no loop)
+		MusicBeatState.switchState(target);
 	}
 
 	// only creates a new clip rect when the width really changed

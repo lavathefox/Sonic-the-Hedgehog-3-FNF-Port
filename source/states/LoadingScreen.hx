@@ -7,6 +7,13 @@ import flixel.math.FlxMath;
 import flixel.math.FlxRect;
 import flixel.util.FlxColor;
 
+import haxe.Json;
+import openfl.utils.Assets;
+#if MODS_ALLOWED
+import sys.FileSystem;
+import sys.io.File;
+#end
+
 import backend.MusicBeatState;
 import backend.ClientPrefs;
 import backend.StageData;
@@ -96,6 +103,7 @@ class LoadingScreen extends MusicBeatState
 
 	public static function go():Void
 	{
+		MusicBeatState.skipLoading = true; // avoids MusicBeatState sending us back here (infinite loop)
 		MusicBeatState.switchState(new LoadingScreen());
 	}
 
@@ -201,6 +209,31 @@ class LoadingScreen extends MusicBeatState
 		totalWeight += weight;
 	}
 
+	// reads characters/<name>.json (falls back to the default character, like Character.hx does)
+	// and loads every image listed in its "image" field (can be several, separated by commas)
+	function preloadCharacterImages(charName:String):Void
+	{
+		var path:String = Paths.getPath('characters/$charName.json', TEXT);
+		#if MODS_ALLOWED
+		if (!FileSystem.exists(path))
+		#else
+		if (!Assets.exists(path))
+		#end
+			path = Paths.getSharedPath('characters/' + Character.DEFAULT_CHARACTER + '.json');
+
+		#if MODS_ALLOWED
+		var json:Dynamic = Json.parse(File.getContent(path));
+		#else
+		var json:Dynamic = Json.parse(Assets.getText(path));
+		#end
+
+		if (json == null || json.image == null) return;
+
+		var images:Array<String> = cast(json.image, String).split(',');
+		for (img in images)
+			Paths.image(img);
+	}
+
 	// ====================== LIST OF THINGS TO LOAD ======================
 	function buildTasks():Void
 	{
@@ -223,14 +256,7 @@ class LoadingScreen extends MusicBeatState
 		{
 			if (c == null || c.length < 1) continue;
 			var charName:String = c;
-			addTask('Loading character: ' + charName, 2, function()
-			{
-				safe(function()
-				{
-					var file = Character.getCharacterFile(charName);
-					if (file != null && file.image != null) Paths.image(file.image);
-				});
-			});
+			addTask('Loading character: ' + charName, 2, function() { safe(function() { preloadCharacterImages(charName); }); });
 		}
 
 		// Stage
@@ -340,7 +366,7 @@ class LoadingScreen extends MusicBeatState
 			if (endTimer >= END_DELAY)
 			{
 				leaving = true;
-				MusicBeatState.skipLoading = true;
+				MusicBeatState.skipLoading = true; // go straight to PlayState (no loop)
 				MusicBeatState.switchState(new PlayState());
 			}
 		}

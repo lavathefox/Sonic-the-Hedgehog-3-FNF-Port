@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="eggmanDataSelect.png">
+	<!-- Created using the Spritesheet and XML generator -->
+	<!-- https://uncertainprod.github.io/FNF-Spritesheet-XML-generator-Web -->
+	<SubTexture name="idle0000" x="0" y="76" width="51" height="76" frameX="1" frameY="2" frameWidth="48" frameHeight="72"/>
+	<SubTexture name="idle0001" x="102" y="0" width="51" height="76" frameX="1" frameY="2" frameWidth="48" frameHeight="72"/>
+	<SubTexture name="eggSelect0000" x="51" y="76" width="44" height="76" frameX="2" frameY="2" frameWidth="40" frameHeight="72"/>
+	<SubTexture name="eggSelect0001" x="153" y="0" width="44" height="76" frameX="2" frameY="2" frameWidth="40" frameHeight="72"/>
+	<SubTexture name="eggSelect0002" x="95" y="76" width="44" height="76" frameX="2" frameY="2" frameWidth="40" frameHeight="72"/>
+	<SubTexture name="eggSelect0003" x="153" y="76" width="44" height="76" frameX="2" frameY="2" frameWidth="40" frameHeight="72"/>
+	<SubTexture name="eggDelete0000" x="51" y="0" width="51" height="76" frameX="1" frameY="2" frameWidth="48" frameHeight="72"/>
+	<SubTexture name="eggDelete0001" x="0" y="0" width="51" height="76" frameX="1" frameY="2" frameWidth="48" frameHeight="72"/>
+</TextureAtlas>

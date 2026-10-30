@@ -41,7 +41,7 @@ class DataSelectState extends MusicBeatState
 	var slotY:Float = 36;
 
 	/** Distance between the left edge of one slot and the next one (bigger = more room for otherSave). */
-	var slotSpacing:Float = 118;
+	var slotSpacing:Float = 111;
 
 	/** Width of the visible area where the slots are shown. Anything outside is clipped. */
 	var windowLeft:Float = 0;
@@ -98,8 +98,8 @@ class DataSelectState extends MusicBeatState
 	var otherSaveLift:Float = 0;
 
 	/** noSaveText offset, relative to the otherSave. Y is below it. Adjust to your image sizes. */
-	var noSaveTextX:Float = 20;
-	var noSaveTextY:Float = 100;
+	var noSaveTextX:Float = 14;
+	var noSaveTextY:Float = 90;
 
 	/** dataArrow offset, relative to the otherSave (0, 0 = exactly the same position). */
 	var otherArrowX:Float = 0;

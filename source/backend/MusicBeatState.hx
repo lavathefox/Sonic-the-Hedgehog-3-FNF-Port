@@ -140,7 +140,7 @@ class MusicBeatState extends FlxState
 			skipLoading = false;
 		else if (nextState != null && (nextState is PlayState))
 		{
-			LoadingScreen.go();
+			LoadingScreen.go(nextState);
 			return;
 		}
 

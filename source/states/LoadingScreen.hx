@@ -6,13 +6,22 @@ import flixel.text.FlxText;
 import flixel.math.FlxMath;
 import flixel.math.FlxRect;
 import flixel.util.FlxColor;
-import flixel.tweens.FlxTween;
-import flixel.tweens.FlxEase;
 
 import backend.MusicBeatState;
 import backend.ClientPrefs;
 import backend.StageData;
 import objects.Character;
+
+/**
+ * One step of the loading process.
+ * weight = how "heavy" the step is (heavier steps move the bar more).
+ */
+typedef LoadTask =
+{
+	var label:String;
+	var run:Void->Void;
+	var weight:Float;
+}
 
 /**
  * LoadingScreen (Psych Engine 1.0.4)
@@ -24,6 +33,8 @@ import objects.Character;
  *   - loadingProgress -> progress bar (revealed according to the loaded %)
  *   - loadingTravel   -> animated sprite ("loadIdle" animation) that travels along the bar
  *                        (needs loadingTravel.xml with the "loadIdle" prefix)
+ *
+ * If a sprite is missing, a simple placeholder is used so the screen never crashes.
  *
  * Usage (instead of LoadingState.loadAndSwitchState(new PlayState())):
  *     // after PlayState.SONG = Song.loadFromJson(...)
@@ -52,6 +63,8 @@ class LoadingScreen extends MusicBeatState
 
 	static inline var MIN_TIME_PER_TASK:Float = 0.05; // gives time to read the text
 	static inline var END_DELAY:Float = 0.5;
+	static inline var BAR_SPEED:Float = 10; // higher = the bar catches up faster
+	static inline var FADE_IN_TIME:Float = 0.25;
 	// =========================================================================
 
 	var bg:FlxSprite;
@@ -63,12 +76,18 @@ class LoadingScreen extends MusicBeatState
 	var percentText:FlxText;
 	var songText:FlxText;
 
-	var tasks:Array<{label:String, run:Void->Void}> = [];
+	var tasks:Array<LoadTask> = [];
 	var taskIndex:Int = 0;
 	var taskTimer:Float = 0;
+	var labelShown:Bool = false; // true = label already drawn, task runs on the next tick
+
+	var totalWeight:Float = 0;
+	var doneWeight:Float = 0;
+	var errorCount:Int = 0;
 
 	var targetPercent:Float = 0;
 	var shownPercent:Float = 0;
+	var lastClipWidth:Float = -1;
 	var finished:Bool = false;
 	var leaving:Bool = false;
 	var endTimer:Float = 0;
@@ -91,23 +110,31 @@ class LoadingScreen extends MusicBeatState
 
 		// ---------- background ----------
 		var bgKey:String = (songName == CD_SONG) ? 'loadingCD' : 'loadingNORMAL';
-		bg = new FlxSprite().loadGraphic(Paths.image(FOLDER + bgKey));
+		bg = new FlxSprite();
+		if (!loadImage(bg, FOLDER + bgKey))
+			bg.makeGraphic(FlxG.width, FlxG.height, FlxColor.BLACK);
 		bg.antialiasing = aa;
-		bg.setGraphicSize(FlxG.width);
+		// scale so the image always covers the whole screen
+		var coverScale:Float = Math.max(FlxG.width / bg.frameWidth, FlxG.height / bg.frameHeight);
+		bg.scale.set(coverScale, coverScale);
 		bg.updateHitbox();
 		bg.screenCenter();
 		add(bg);
 
 		// ---------- progress bar ----------
-		progress = new FlxSprite().loadGraphic(Paths.image(FOLDER + 'loadingProgress'));
+		progress = new FlxSprite();
+		if (!loadImage(progress, FOLDER + 'loadingProgress'))
+			progress.makeGraphic(600, 24, 0xFFFFC800);
 		progress.antialiasing = aa;
 		progress.x = (PROGRESS_X != null) ? PROGRESS_X : (FlxG.width - progress.width) / 2;
 		progress.y = (PROGRESS_Y != null) ? PROGRESS_Y : FlxG.height - progress.height - 60;
-		progress.clipRect = new FlxRect(0, 0, 0, progress.frameHeight);
+		applyBarClip(0);
 		add(progress);
 
 		// ---------- HUD (on top of the bar) ----------
-		hud = new FlxSprite().loadGraphic(Paths.image(FOLDER + 'loadingHUD'));
+		hud = new FlxSprite();
+		if (!loadImage(hud, FOLDER + 'loadingHUD'))
+			hud.makeGraphic(1, 1, FlxColor.TRANSPARENT);
 		hud.antialiasing = aa;
 		hud.screenCenter();
 		add(hud);
@@ -121,10 +148,10 @@ class LoadingScreen extends MusicBeatState
 			travel.animation.addByPrefix(TRAVEL_ANIM, TRAVEL_ANIM, TRAVEL_FPS, true);
 			travel.animation.play(TRAVEL_ANIM);
 		}
-		else
+		else if (!loadImage(travel, travelKey))
 		{
-			// no atlas: use as a static image
-			travel.loadGraphic(Paths.image(travelKey));
+			// no atlas and no image: invisible placeholder
+			travel.makeGraphic(1, 1, FlxColor.TRANSPARENT);
 		}
 		travel.antialiasing = aa;
 		travel.updateHitbox();
@@ -141,7 +168,22 @@ class LoadingScreen extends MusicBeatState
 		add(percentText);
 
 		buildTasks();
+
+		FlxG.camera.fade(FlxColor.BLACK, FADE_IN_TIME, true);
 		super.create();
+	}
+
+	// loads an image into a sprite; returns false if the file does not exist
+	function loadImage(spr:FlxSprite, key:String):Bool
+	{
+		var graphic = Paths.image(key);
+		if (graphic == null)
+		{
+			trace('[LoadingScreen] missing image: ' + key);
+			return false;
+		}
+		spr.loadGraphic(graphic);
+		return true;
 	}
 
 	function makeText(x:Float, y:Float, w:Float, text:String, size:Int, align:FlxTextAlign):FlxText
@@ -153,72 +195,94 @@ class LoadingScreen extends MusicBeatState
 		return t;
 	}
 
+	function addTask(label:String, weight:Float, run:Void->Void):Void
+	{
+		tasks.push({label: label, run: run, weight: weight});
+		totalWeight += weight;
+	}
+
 	// ====================== LIST OF THINGS TO LOAD ======================
 	function buildTasks():Void
 	{
 		var song = PlayState.SONG;
 		if (song == null)
 		{
-			tasks.push({label: 'Nothing to load', run: function() {}});
+			addTask('Nothing to load', 1, function() {});
 			return;
 		}
 
 		// Notes
 		var skin:String = (song.arrowSkin != null && song.arrowSkin.length > 0) ? song.arrowSkin : 'noteSkins/NOTE_assets';
-		tasks.push({label: 'Loading notes (' + skin + ')', run: function() safe(function() Paths.image(skin))});
+		addTask('Loading notes (' + skin + ')', 1, function() { safe(function() { Paths.image(skin); }); });
 
 		var splash:String = (song.splashSkin != null && song.splashSkin.length > 0) ? song.splashSkin : 'noteSplashes/noteSplashes';
-		tasks.push({label: 'Loading splashes', run: function() safe(function() Paths.image(splash))});
+		addTask('Loading splashes', 1, function() { safe(function() { Paths.image(splash); }); });
 
 		// Characters (player1 = BF, player2 = opponent, gfVersion = GF)
 		for (c in [song.player1, song.player2, song.gfVersion])
 		{
 			if (c == null || c.length < 1) continue;
 			var charName:String = c;
-			tasks.push({label: 'Loading character: ' + charName, run: function() safe(function()
+			addTask('Loading character: ' + charName, 2, function()
 			{
-				var file = Character.getCharacterFile(charName);
-				if (file != null && file.image != null) Paths.image(file.image);
-			})});
+				safe(function()
+				{
+					var file = Character.getCharacterFile(charName);
+					if (file != null && file.image != null) Paths.image(file.image);
+				});
+			});
 		}
 
 		// Stage
 		if (song.stage != null && song.stage.length > 0)
 		{
 			var stageName:String = song.stage;
-			tasks.push({label: 'Loading stage: ' + stageName, run: function() safe(function() StageData.getStageFile(stageName))});
+			addTask('Loading stage: ' + stageName, 1, function() { safe(function() { StageData.getStageFile(stageName); }); });
 		}
 
 		// UI sounds
-		tasks.push({label: 'Loading sounds', run: function() safe(function()
+		addTask('Loading sounds', 1, function()
 		{
-			Paths.sound('missnote1');
-			Paths.sound('missnote2');
-			Paths.sound('missnote3');
-		})});
+			safe(function()
+			{
+				Paths.sound('missnote1');
+				Paths.sound('missnote2');
+				Paths.sound('missnote3');
+			});
+		});
 
-		// Music
+		// Music (heavier steps, so the bar moves more here)
 		var sName:String = Paths.formatToSongPath(song.song);
-		tasks.push({label: 'Loading instrumental', run: function() safe(function() Paths.inst(sName))});
+		addTask('Loading instrumental', 3, function() { safe(function() { Paths.inst(sName); }); });
 		if (song.needsVoices)
 		{
-			tasks.push({label: 'Loading vocals', run: function() safe(function()
+			addTask('Loading vocals', 3, function()
 			{
-				Paths.voices(sName);
-				Paths.voices(sName, 'Player');
-				Paths.voices(sName, 'Opponent');
-			})});
+				safe(function()
+				{
+					Paths.voices(sName);
+					Paths.voices(sName, 'Player');
+					Paths.voices(sName, 'Opponent');
+				});
+			});
 		}
 
 		// Last step
-		tasks.push({label: 'Finishing up', run: function() {}});
+		addTask('Finishing up', 0.5, function() {});
 	}
 
 	// an error in one asset must not freeze the loading screen
-	inline function safe(f:Void->Dynamic):Void
+	function safe(f:Void->Void):Void
 	{
-		try { f(); }
-		catch (e:Dynamic) { trace('[LoadingScreen] error: ' + e); }
+		try
+		{
+			f();
+		}
+		catch (e:Dynamic)
+		{
+			errorCount++;
+			trace('[LoadingScreen] error #' + errorCount + ': ' + e);
+		}
 	}
 
 	// ============================== UPDATE ==============================
@@ -232,15 +296,27 @@ class LoadingScreen extends MusicBeatState
 			taskTimer += elapsed;
 			if (taskTimer >= MIN_TIME_PER_TASK)
 			{
-				taskTimer = 0;
 				if (taskIndex < tasks.length)
 				{
 					var t = tasks[taskIndex];
-					statusText.text = t.label + '...';
-					t.run();
-					taskIndex++;
-					targetPercent = taskIndex / tasks.length;
+					if (!labelShown)
+					{
+						// tick 1: show the label (it gets drawn this frame)
+						statusText.text = t.label + '...';
+						labelShown = true;
+					}
+					else
+					{
+						// tick 2: now run the task
+						t.run();
+						doneWeight += t.weight;
+						taskIndex++;
+						labelShown = false;
+						taskTimer = 0;
+						targetPercent = (totalWeight > 0) ? Math.min(doneWeight / totalWeight, 1) : 1;
+					}
 				}
+
 				if (taskIndex >= tasks.length)
 				{
 					finished = true;
@@ -249,12 +325,11 @@ class LoadingScreen extends MusicBeatState
 			}
 		}
 
-		// smooth the bar
-		shownPercent = FlxMath.lerp(shownPercent, targetPercent, FlxMath.bound(elapsed * 10, 0, 1));
+		// smooth the bar (same speed on any frame rate)
+		shownPercent = FlxMath.lerp(shownPercent, targetPercent, 1 - Math.exp(-elapsed * BAR_SPEED));
 		if (Math.abs(shownPercent - targetPercent) < 0.002) shownPercent = targetPercent;
 
-		var w:Float = progress.frameWidth * shownPercent;
-		progress.clipRect = new FlxRect(0, 0, w, progress.frameHeight);
+		applyBarClip(shownPercent);
 		updateTravelPosition(shownPercent);
 		percentText.text = 'Loading... ' + Math.floor(shownPercent * 100) + '%';
 
@@ -268,6 +343,15 @@ class LoadingScreen extends MusicBeatState
 				MusicBeatState.switchState(new PlayState());
 			}
 		}
+	}
+
+	// only creates a new clip rect when the width really changed
+	function applyBarClip(pct:Float):Void
+	{
+		var w:Float = progress.frameWidth * pct;
+		if (w == lastClipWidth) return;
+		lastClipWidth = w;
+		progress.clipRect = new FlxRect(0, 0, w, progress.frameHeight);
 	}
 
 	function updateTravelPosition(pct:Float):Void

@@ -41,17 +41,6 @@ class MusicBeatState extends FlxState
 		timePassedOnState = 0;
 	}
 
-	public static var skipLoading:Bool = false;
-    public static function switchState(nextState:FlxState = null)
-  {
-    if (skipLoading)
-        skipLoading = false;
-    else if (nextState != null && nextState != FlxG.state && !(nextState is LoadingState))
-    {
-        LoadingState.loadAndSwitchState(nextState, false, true);
-        return;
-    }
-
 	public function initPsychCamera():PsychCamera
 	{
 		var camera = new PsychCamera();
@@ -143,7 +132,17 @@ class MusicBeatState extends FlxState
 		curStep = lastChange.stepTime + Math.floor(shit);
 	}
 
+	public static var skipLoading:Bool = false;
 	public static function switchState(nextState:FlxState = null) {
+		// send the next state through LoadingState first (unless loading is skipped)
+		if (skipLoading)
+			skipLoading = false;
+		else if (nextState != null && nextState != FlxG.state && !(nextState is LoadingState))
+		{
+			LoadingState.loadAndSwitchState(nextState, false, true);
+			return;
+		}
+
 		if(nextState == null) nextState = FlxG.state;
 		if(nextState == FlxG.state)
 		{

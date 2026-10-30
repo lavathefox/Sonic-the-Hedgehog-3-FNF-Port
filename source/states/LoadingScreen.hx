@@ -26,6 +26,7 @@ import backend.ClientPrefs;
  *                        (needs loadingTravel.xml with the "loadIdle" prefix)
  *
  * The HUD and the progress bar share the same x/y and the same scale (they sit on top of each other).
+ * The status text (left) and the percentage (right) share the same line, right below the bar.
  * If a sprite is missing, a simple placeholder is used so the screen never crashes.
  *
  * Usage:
@@ -57,8 +58,12 @@ class LoadingScreen extends MusicBeatState
 	// true = travel sprite moves along with the bar; false = stays still
 	static var TRAVEL_FOLLOWS_BAR:Bool = true;
 
-	// distance of the percentage text from the bottom of the bar
-	static inline var PERCENT_OFFSET_Y:Float = 10;
+	// text line (status on the left, percentage on the right), placed right below the bar
+	static inline var TEXT_SIZE:Int = 28;
+	static var TEXT_OFFSET_X:Float = 0; // moves the whole line horizontally
+	static var TEXT_OFFSET_Y:Float = 10; // distance from the bottom of the bar
+	static inline var STATUS_WIDTH_RATIO:Float = 0.75; // part of the bar width used by the status text
+	static inline var MAX_STATUS_CHARS:Int = 40; // longer task names are cut with "..."
 
 	static inline var MIN_TIME:Float = 0.6; // minimum time when there is nothing to load
 	static inline var END_DELAY:Float = 0.5;
@@ -180,9 +185,16 @@ class LoadingScreen extends MusicBeatState
 
 		// ---------- texts ----------
 		songText = makeText(0, 30, FlxG.width, 'Preparing: ' + (PlayState.SONG != null ? PlayState.SONG.song : '???'), 32, CENTER);
-		statusText = makeText(progress.x, progress.y - 40, progress.width, 'Starting...', 24, LEFT);
-		// big percentage, centered right below the bar
-		percentText = makeText(0, progress.y + progress.height + PERCENT_OFFSET_Y, FlxG.width, 'Loading... 0%', 40, CENTER);
+
+		// status (left) and percentage (right) on the SAME line, aligned with the edges of the bar
+		var lineX:Float = progress.x + TEXT_OFFSET_X;
+		var lineY:Float = progress.y + progress.height + TEXT_OFFSET_Y;
+		var statusW:Float = progress.width * STATUS_WIDTH_RATIO;
+		var percentW:Float = progress.width - statusW;
+
+		statusText = makeText(lineX, lineY, statusW, 'Starting...', TEXT_SIZE, LEFT);
+		percentText = makeText(lineX + statusW, lineY, percentW, '0%', TEXT_SIZE, RIGHT);
+
 		add(songText);
 		add(statusText);
 		add(percentText);
@@ -209,8 +221,17 @@ class LoadingScreen extends MusicBeatState
 		var t = new FlxText(x, y, w, text, size);
 		t.setFormat(Paths.font('vcr.ttf'), size, FlxColor.WHITE, align, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
 		t.borderSize = 2;
+		t.wordWrap = false; // never break the text into a second line
 		t.antialiasing = ClientPrefs.data.antialiasing;
 		return t;
+	}
+
+	// cuts long names so the status text never runs into the percentage
+	function fitStatus(s:String):String
+	{
+		if (s.length > MAX_STATUS_CHARS)
+			return s.substr(0, MAX_STATUS_CHARS - 3) + '...';
+		return s;
 	}
 
 	// ============================== UPDATE ==============================
@@ -231,7 +252,7 @@ class LoadingScreen extends MusicBeatState
 				targetPercent = Math.min(timer / minTime, 1);
 
 			var task:String = LoadingState.currentTask;
-			statusText.text = (task != null && task.length > 0) ? 'Loading ' + task + '...' : 'Preparing...';
+			statusText.text = (task != null && task.length > 0) ? fitStatus('Loading ' + task + '...') : 'Preparing...';
 
 			if (loadedAll && timer >= minTime)
 			{
@@ -246,7 +267,7 @@ class LoadingScreen extends MusicBeatState
 
 		applyBarClip(shownPercent);
 		updateTravelPosition(shownPercent);
-		percentText.text = 'Loading... ' + Math.floor(shownPercent * 100) + '%';
+		percentText.text = Math.floor(shownPercent * 100) + '%';
 
 		if (finished && shownPercent >= 1 && !leaving)
 		{

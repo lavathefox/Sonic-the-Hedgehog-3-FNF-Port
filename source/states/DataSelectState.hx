@@ -51,9 +51,6 @@ class DataSelectState extends MusicBeatState
 	var arrow:FlxSprite;
 	var bfDataSelect:FlxSprite;
 
-	var blueFade:FlxSprite;
-	var blackFade:FlxSprite;
-
 	var saves:Array<FlxSprite> = [];
 	var portraits:Array<FlxSprite> = [];
 
@@ -80,18 +77,6 @@ class DataSelectState extends MusicBeatState
 		createSaveSlots();
 		createArrow();
 		createBfDataSelect();
-
-		blueFade = new FlxSprite(0, 0);
-		blueFade.makeGraphic(FlxG.width, FlxG.height, FlxColor.fromRGB(0, 38, 255));
-		blueFade.scrollFactor.set(0, 0);
-		blueFade.alpha = 0;
-		add(blueFade);
-
-		blackFade = new FlxSprite(0, 0);
-		blackFade.makeGraphic(FlxG.width, FlxG.height, FlxColor.BLACK);
-		blackFade.scrollFactor.set(0, 0);
-		blackFade.alpha = 0;
-		add(blackFade);
 
 		updateSelection(true);
 
@@ -345,42 +330,8 @@ class DataSelectState extends MusicBeatState
 		bfDataSelect.animation.finishCallback = function(name:String)
 		{
 			if (name == 'yeah')
-				startFade();
+				startLevel();
 		};
-	}
-
-	function startFade():Void
-	{
-		blueFade.alpha = 0;
-		blackFade.alpha = 0;
-
-		FlxTween.tween(
-			blueFade,
-			{
-				alpha: 1
-			},
-			0.5,
-			{
-				ease: FlxEase.sineIn,
-				onComplete: function(tween:FlxTween)
-				{
-					FlxTween.tween(
-						blackFade,
-						{
-							alpha: 1
-						},
-						0.6,
-						{
-							ease: FlxEase.sineIn,
-							onComplete: function(tween:FlxTween)
-							{
-								startLevel();
-							}
-						}
-					);
-				}
-			}
-		);
 	}
 
 	/**
@@ -479,7 +430,7 @@ class DataSelectState extends MusicBeatState
         try
        {
         if (FlxG.sound.music != null)
-        FlxG.sound.music.stop();
+        FlxG.sound.music.fadeOut(0.4, 0);
 
         LoadingState.prepareToSong(); // <<< adicione
         LoadingState.loadAndSwitchState(new PlayState(), true);
@@ -496,8 +447,6 @@ class DataSelectState extends MusicBeatState
 		FlxG.log.error('Data Select: ' + message);
 
 		// Restore everything so the player can try again
-		blueFade.alpha = 0;
-		blackFade.alpha = 0;
 		bfDataSelect.animation.finishCallback = null;
 		bfDataSelect.animation.play('idle', true);
 		confirming = false;

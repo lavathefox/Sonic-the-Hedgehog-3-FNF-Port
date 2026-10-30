@@ -1,116 +1,163 @@
-name: Build Windows + Android
+name: Build
 
 on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'art/**'
+      - '.github/workflows/claude.yml'
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'art/**'
   workflow_dispatch:
+    inputs:
+      targets:
+        description: Platforms to build
+        type: choice
+        default: default
+        options:
+          - default
+          - windows
+          - android
+          - linux
+          - all
+      build_type:
+        description: Build type
+        type: choice
+        default: release
+        options:
+          - release
+          - debug
+      android_abis:
+        description: Android architectures
+        type: choice
+        default: arm64
+        options:
+          - arm64
+          - arm64+armv7
+          - all
+      clean_cache:
+        description: Ignore the compiled object cache
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  actions: read
 
-# Cancel an older run of the same branch when a new commit is pushed.
 concurrency:
-  group: build-${{ github.ref }}
-  cancel-in-progress: true
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
 
 env:
-  # hxcpp compile cache: compiled object files are reused between runs,
-  # so only the code that changed is rebuilt. This is the biggest speed-up.
+  HAXE_VERSION: 4.3.4
+  NDK_VERSION: 21.4.7075529
+  ANDROID_PLATFORM: android-31
+  ANDROID_BUILD_TOOLS: 31.0.0
+  APP_NAME: Sonic3-FNF-Port
   HXCPP_COMPILE_CACHE: ${{ github.workspace }}/.hxcpp_cache
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
-  build-windows:
-    name: Build Windows
-    runs-on: windows-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Haxe
-        uses: krdlab/setup-haxe@v2
-        with:
-          haxe-version: 4.3.4
-
-      # Keep this file at .github/workflows/build.yml: its hash is the cache key,
-      # so changing a library version below refreshes the cache automatically.
-      - name: Cache Haxe libraries
-        id: haxelib-cache
-        uses: actions/cache@v4
-        with:
-          path: .haxelib
-          key: haxelib-windows-${{ hashFiles('.github/workflows/build.yml') }}
-
-      - name: Cache hxcpp objects
-        uses: actions/cache@v4
-        with:
-          path: .hxcpp_cache
-          key: hxcpp-windows-${{ github.sha }}
-          restore-keys: |
-            hxcpp-windows-
-
-      - name: Set up Haxelib
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force "$env:GITHUB_WORKSPACE/.haxelib" | Out-Null
-          haxelib setup "$env:GITHUB_WORKSPACE/.haxelib"
-
-      - name: Install Haxe dependencies
-        if: steps.haxelib-cache.outputs.cache-hit != 'true'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          function Invoke-Haxelib {
-            param([string[]]$Arguments)
-            $label = $Arguments -join ' '
-            for ($attempt = 1; $attempt -le 3; $attempt++) {
-              Write-Host "::group::haxelib $label (attempt $attempt/3)"
-              & haxelib @Arguments
-              $exitCode = $LASTEXITCODE
-              Write-Host "::endgroup::"
-              if ($exitCode -eq 0) { return }
-              if ($attempt -lt 3) {
-                Write-Warning "haxelib $label failed with exit code $exitCode; retrying in 5 seconds."
-                Start-Sleep -Seconds 5
-              }
-            }
-            throw "haxelib $label failed after 3 attempts."
-          }
-          Invoke-Haxelib @('install', 'hxcpp', '4.3.2', '--always')
-          Invoke-Haxelib @('install', 'lime', '8.1.2', '--always')
-          Invoke-Haxelib @('install', 'openfl', '9.3.3', '--always')
-          Invoke-Haxelib @('install', 'flixel', '5.6.1', '--always')
-          Invoke-Haxelib @('install', 'flixel-addons', '3.2.2', '--always')
-          Invoke-Haxelib @('install', 'flixel-tools', '1.5.1', '--always')
-          Invoke-Haxelib @('install', 'hscript-iris', '1.1.3', '--always')
-          Invoke-Haxelib @('install', 'tjson', '1.4.0', '--always')
-          Invoke-Haxelib @('install', 'hxdiscord_rpc', '1.2.4', '--always')
-          Invoke-Haxelib @('install', 'hxvlc', '2.0.1', '--skip-dependencies', '--always')
-          Invoke-Haxelib @('set', 'hxcpp', '4.3.2')
-          Invoke-Haxelib @('set', 'lime', '8.1.2')
-          Invoke-Haxelib @('set', 'openfl', '9.3.3')
-          Invoke-Haxelib @('git', 'flxanimate', 'https://github.com/Dot-Stuff/flxanimate', '768740a56b26aa0c072720e0d1236b94afe68e3e')
-          Invoke-Haxelib @('git', 'linc_luajit', 'https://github.com/superpowers04/linc_luajit', '1906c4a96f6bb6df66562b3f24c62f4c5bba14a7')
-          Invoke-Haxelib @('git', 'funkin.vis', 'https://github.com/FunkinCrew/funkVis', '22b1ce089dd924f15cdc4632397ef3504d464e90')
-          Invoke-Haxelib @('git', 'grig.audio', 'https://gitlab.com/haxe-grig/grig.audio.git', 'cbf91e2180fd2e374924fe74844086aab7891666')
-
-      - name: Build Windows
-        shell: pwsh
-        run: haxelib run lime build windows -release
-
-      # GitHub packages the uploaded folder as a .zip when you download the artifact.
-      - name: Upload Windows build (zip)
-        uses: actions/upload-artifact@v4
-        with:
-          name: Sonic3-FNF-Port-Windows
-          path: export/release/windows/bin/
-          if-no-files-found: error
-          retention-days: 14
-
-  build-android:
-    name: Build Android APK
+  prepare:
+    name: Prepare
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+      version: ${{ steps.info.outputs.version }}
+      short_sha: ${{ steps.info.outputs.short_sha }}
+      build_type: ${{ steps.info.outputs.build_type }}
+      android_abis: ${{ steps.info.outputs.android_abis }}
+      is_release: ${{ steps.info.outputs.is_release }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: Project.xml
+          sparse-checkout-cone-mode: false
+
+      - name: Read build info
+        id: info
+        env:
+          INPUT_BUILD_TYPE: ${{ inputs.build_type }}
+          INPUT_ABIS: ${{ inputs.android_abis }}
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/.*<app[^>]*version="\([^"]*\)".*/\1/p' Project.xml | head -n 1)
+          [ -n "$version" ] || version="0.0.0"
+
+          is_release=false
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            is_release=true
+            version="${GITHUB_REF_NAME#v}"
+          fi
+
+          {
+            echo "version=$version"
+            echo "short_sha=${GITHUB_SHA:0:7}"
+            echo "build_type=${INPUT_BUILD_TYPE:-release}"
+            echo "android_abis=${INPUT_ABIS:-arm64}"
+            echo "is_release=$is_release"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build target matrix
+        id: matrix
+        env:
+          INPUT_TARGETS: ${{ inputs.targets }}
+        run: |
+          set -euo pipefail
+          case "${INPUT_TARGETS:-default}" in
+            all) list="windows android linux" ;;
+            default) list="windows android" ;;
+            *) list="$INPUT_TARGETS" ;;
+          esac
+
+          matrix=$(for target in $list; do
+            case "$target" in
+              windows) os="windows-latest" ;;
+              android) os="ubuntu-latest" ;;
+              linux) os="ubuntu-22.04" ;;
+              *) echo "::error::Unknown target $target" >&2; exit 1 ;;
+            esac
+            jq -nc --arg target "$target" --arg os "$os" '{target: $target, os: $os}'
+          done | jq -sc '{include: .}')
+
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "Targets: $list"
+
+  build:
+    name: Build ${{ matrix.target }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+
+    env:
+      TARGET: ${{ matrix.target }}
+      BUILD_TYPE: ${{ needs.prepare.outputs.build_type }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SHORT_SHA: ${{ needs.prepare.outputs.short_sha }}
+      ANDROID_ABIS: ${{ needs.prepare.outputs.android_abis }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -119,110 +166,94 @@ jobs:
       - name: Set up Haxe
         uses: krdlab/setup-haxe@v2
         with:
-          haxe-version: 4.3.4
+          haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Install Linux packages
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libvlc-dev libvlccore-dev vlc-bin libgl1-mesa-dev libasound2-dev
 
       - name: Set up Java
+        if: matrix.target == 'android'
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Android SDK
+        if: matrix.target == 'android'
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools'
+          packages: platform-tools
 
       - name: Locate Android SDK
+        if: matrix.target == 'android'
         id: sdk
-        shell: bash
         run: echo "root=$ANDROID_SDK_ROOT" >> "$GITHUB_OUTPUT"
 
-      # The NDK download is large and slow, so it is cached together with the platform and build tools.
       - name: Cache Android SDK and NDK
+        if: matrix.target == 'android'
         id: android-cache
         uses: actions/cache@v4
         with:
           path: |
-            ${{ steps.sdk.outputs.root }}/ndk/21.4.7075529
-            ${{ steps.sdk.outputs.root }}/platforms/android-31
-            ${{ steps.sdk.outputs.root }}/build-tools/31.0.0
-          key: android-sdk-ndk21.4.7075529-platform31-v1
+            ${{ steps.sdk.outputs.root }}/ndk/${{ env.NDK_VERSION }}
+            ${{ steps.sdk.outputs.root }}/platforms/${{ env.ANDROID_PLATFORM }}
+            ${{ steps.sdk.outputs.root }}/build-tools/${{ env.ANDROID_BUILD_TOOLS }}
+          key: android-sdk-ndk${{ env.NDK_VERSION }}-${{ env.ANDROID_PLATFORM }}-bt${{ env.ANDROID_BUILD_TOOLS }}-v2
 
       - name: Install Android SDK and NDK
-        if: steps.android-cache.outputs.cache-hit != 'true'
-        shell: bash
+        if: matrix.target == 'android' && steps.android-cache.outputs.cache-hit != 'true'
         timeout-minutes: 50
         run: |
           set -euo pipefail
-
-          SDKMANAGER="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          NDK_DIR="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
-          PLATFORM_DIR="$ANDROID_SDK_ROOT/platforms/android-31"
-          BUILD_TOOLS_DIR="$ANDROID_SDK_ROOT/build-tools/31.0.0"
-
-          if [ ! -x "$SDKMANAGER" ]; then
-            echo "::error::sdkmanager not found at $SDKMANAGER"
-            find "$ANDROID_SDK_ROOT/cmdline-tools" -maxdepth 4 -name sdkmanager -type f 2>/dev/null || true
+          sdkmanager="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$sdkmanager" ]; then
+            echo "::error::sdkmanager not found at $sdkmanager"
             exit 1
           fi
 
           install_package() {
-            local package="$1"
-            local check_file="$2"
-            local attempt=1
+            local package="$1" check="$2" attempt=1
             while [ "$attempt" -le 3 ]; do
-              if [ -f "$check_file" ]; then
-                echo "Already installed: $package"
-                return 0
-              fi
-
-              echo "::group::Installing $package (attempt $attempt/3)"
+              [ -f "$check" ] && { echo "Ready: $package"; return 0; }
+              echo "::group::Installing $package ($attempt/3)"
               set +e
-              yes | timeout 15m "$SDKMANAGER" --sdk_root="$ANDROID_SDK_ROOT" "$package"
-              local statuses=( "${PIPESTATUS[@]}" )
+              yes | timeout 15m "$sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" "$package" > /dev/null
               set -e
               echo "::endgroup::"
-
-              if [ -f "$check_file" ]; then
-                echo "Verified installation: $package"
-                return 0
-              fi
-
-              echo "::warning::Package $package is incomplete (yes exit ${statuses[0]:-unknown}, sdkmanager/timeout exit ${statuses[1]:-unknown})."
-              if [ "$attempt" -lt 3 ]; then
-                sleep 5
-              fi
+              [ -f "$check" ] && { echo "Ready: $package"; return 0; }
+              echo "::warning::$package is incomplete, retrying"
+              sleep 5
               attempt=$((attempt + 1))
             done
-
-            echo "::error::Failed to install $package after 3 attempts."
+            echo "::error::Failed to install $package"
             return 1
           }
 
-          mkdir -p "$ANDROID_SDK_ROOT"
-          install_package "platforms;android-31" "$PLATFORM_DIR/android.jar"
-          install_package "build-tools;31.0.0" "$BUILD_TOOLS_DIR/aapt"
-          install_package "ndk;21.4.7075529" "$NDK_DIR/source.properties"
-
-          echo "Android SDK and NDK installation verified."
-          cat "$NDK_DIR/source.properties" | grep -E 'Pkg.Revision|Pkg.Desc' || true
+          install_package "platforms;$ANDROID_PLATFORM" "$ANDROID_SDK_ROOT/platforms/$ANDROID_PLATFORM/android.jar"
+          install_package "build-tools;$ANDROID_BUILD_TOOLS" "$ANDROID_SDK_ROOT/build-tools/$ANDROID_BUILD_TOOLS/aapt"
+          install_package "ndk;$NDK_VERSION" "$ANDROID_SDK_ROOT/ndk/$NDK_VERSION/source.properties"
 
       - name: Export Android paths
-        shell: bash
+        if: matrix.target == 'android'
         run: |
-          NDK_DIR="$ANDROID_SDK_ROOT/ndk/21.4.7075529"
-
-          if [ ! -f "$NDK_DIR/source.properties" ]; then
-            echo "ERROR: NDK 21.4.7075529 is missing."
+          set -euo pipefail
+          ndk="$ANDROID_SDK_ROOT/ndk/$NDK_VERSION"
+          if [ ! -f "$ndk/source.properties" ]; then
+            echo "::error::NDK $NDK_VERSION is missing"
             exit 1
           fi
-
-          echo "ANDROID_SDK=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_ROOT=$NDK_DIR" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$NDK_DIR" >> "$GITHUB_ENV"
+          {
+            echo "ANDROID_SDK=$ANDROID_SDK_ROOT"
+            echo "ANDROID_HOME=$ANDROID_SDK_ROOT"
+            echo "ANDROID_NDK_ROOT=$ndk"
+            echo "ANDROID_NDK_HOME=$ndk"
+          } >> "$GITHUB_ENV"
 
       - name: Cache Gradle
+        if: matrix.target == 'android'
         uses: actions/cache@v4
         with:
           path: |
@@ -237,173 +268,328 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .haxelib
-          key: haxelib-android-${{ hashFiles('.github/workflows/build.yml') }}
+          key: haxelib-${{ matrix.target }}-${{ env.HAXE_VERSION }}-${{ hashFiles('.github/workflows/build.yml') }}
 
-      - name: Cache hxcpp objects
-        uses: actions/cache@v4
+      - name: Restore compiled objects
+        if: inputs.clean_cache != true
+        uses: actions/cache/restore@v4
         with:
           path: .hxcpp_cache
-          key: hxcpp-android-${{ github.sha }}
+          key: hxcpp-${{ matrix.target }}-${{ env.BUILD_TYPE }}-${{ env.ANDROID_ABIS }}-${{ github.sha }}
           restore-keys: |
-            hxcpp-android-
+            hxcpp-${{ matrix.target }}-${{ env.BUILD_TYPE }}-${{ env.ANDROID_ABIS }}-
+            hxcpp-${{ matrix.target }}-${{ env.BUILD_TYPE }}-
 
       - name: Set up Haxelib
-        shell: bash
         run: |
           mkdir -p "$GITHUB_WORKSPACE/.haxelib"
           haxelib setup "$GITHUB_WORKSPACE/.haxelib"
 
       - name: Install Haxe dependencies
         if: steps.haxelib-cache.outputs.cache-hit != 'true'
-        shell: bash
         run: |
           set -euo pipefail
-          haxelib_retry() {
+          lib() {
             local attempt=1
-            echo "Installing: haxelib $*"
             while [ "$attempt" -le 3 ]; do
-              local status=0
+              echo "::group::haxelib $* ($attempt/3)"
               if timeout 8m haxelib "$@"; then
+                echo "::endgroup::"
                 return 0
-              else
-                status=$?
               fi
-              echo "::warning::haxelib $* failed or timed out (attempt $attempt/3, exit $status)."
-              if [ "$attempt" -lt 3 ]; then sleep 5; fi
+              echo "::endgroup::"
+              echo "::warning::haxelib $* failed, retrying"
+              sleep 5
               attempt=$((attempt + 1))
             done
-            echo "::error::haxelib $* failed after 3 attempts."
+            echo "::error::haxelib $* failed after 3 attempts"
             return 1
           }
-          haxelib_retry install hxcpp 4.3.2 --always
-          haxelib_retry install lime 8.1.2 --always
-          haxelib_retry install openfl 9.3.3 --always
-          haxelib_retry install flixel 5.6.1 --always
-          haxelib_retry install flixel-addons 3.2.2 --always
-          haxelib_retry install flixel-tools 1.5.1 --always
-          haxelib_retry install hscript-iris 1.1.3 --always
-          haxelib_retry install tjson 1.4.0 --always
-          haxelib_retry install hxvlc 2.0.1 --skip-dependencies --always
-          haxelib_retry set hxcpp 4.3.2
-          haxelib_retry set lime 8.1.2
-          haxelib_retry set openfl 9.3.3
-          haxelib_retry git flxanimate https://github.com/Dot-Stuff/flxanimate 768740a56b26aa0c072720e0d1236b94afe68e3e
-          haxelib_retry git linc_luajit https://github.com/superpowers04/linc_luajit 1906c4a96f6bb6df66562b3f24c62f4c5bba14a7
-          haxelib_retry git funkin.vis https://github.com/FunkinCrew/funkVis 22b1ce089dd924f15cdc4632397ef3504d464e90
-          haxelib_retry git grig.audio https://gitlab.com/haxe-grig/grig.audio.git cbf91e2180fd2e374924fe74844086aab7891666
 
-      # Only arm64-v8a is built (almost every modern phone). Building three ABIs
-      # triples the C++ compile time. Add the other lines back if you need them.
-      - name: Configure Android ABI
-        shell: bash
+          lib install hxcpp 4.3.2 --always
+          lib install lime 8.1.2 --always
+          lib install openfl 9.3.3 --always
+          lib install flixel 5.6.1 --always
+          lib install flixel-addons 3.2.2 --always
+          lib install flixel-tools 1.5.1 --always
+          lib install hscript-iris 1.1.3 --always
+          lib install tjson 1.4.0 --always
+          lib install hxvlc 2.0.1 --skip-dependencies --always
+          if [ "$TARGET" != "android" ]; then
+            lib install hxdiscord_rpc 1.2.4 --always
+          fi
+          lib set hxcpp 4.3.2
+          lib set lime 8.1.2
+          lib set openfl 9.3.3
+          lib git flxanimate https://github.com/Dot-Stuff/flxanimate 768740a56b26aa0c072720e0d1236b94afe68e3e
+          lib git linc_luajit https://github.com/superpowers04/linc_luajit 1906c4a96f6bb6df66562b3f24c62f4c5bba14a7
+          lib git funkin.vis https://github.com/FunkinCrew/funkVis 22b1ce089dd924f15cdc4632397ef3504d464e90
+          lib git grig.audio https://gitlab.com/haxe-grig/grig.audio.git cbf91e2180fd2e374924fe74844086aab7891666
+
+      - name: Show installed libraries
+        run: haxelib list
+
+      - name: Configure Android project
+        if: matrix.target == 'android'
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
+          set -euo pipefail
+          signing=false
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+            signing=true
+          fi
 
+          python3 - "$ANDROID_ABIS" "$signing" "$RUNNER_TEMP/release.keystore" <<'PY'
+          import os
+          import re
+          import sys
+          from pathlib import Path
+          from xml.sax.saxutils import quoteattr
+
+          abis, signing, keystore = sys.argv[1], sys.argv[2] == "true", sys.argv[3]
           path = Path("Project.xml")
           text = path.read_text(encoding="utf-8")
+          text = re.sub(r'\s*<architecture\b[^>]*/>', '', text)
 
-          line = '  <architecture name="arm64-v8a" if="android" />'
+          lines = {
+              "arm64": ['<architecture name="arm64" exclude="armv7" if="android" />'],
+              "arm64+armv7": ['<architecture name="armv7" if="android" />', '<architecture name="arm64" if="android" />'],
+              "all": ['<architecture name="armv7" if="android" />', '<architecture name="arm64" if="android" />', '<architecture name="x86_64" if="android" />'],
+          }[abis]
 
-          if line not in text:
-              text = text.replace("</project>", "\n" + line + "\n</project>", 1)
-              path.write_text(text, encoding="utf-8")
+          if signing:
+              password = os.environ["ANDROID_KEYSTORE_PASSWORD"]
+              alias_password = os.environ.get("ANDROID_KEY_PASSWORD") or password
+              lines.append(
+                  "<certificate path=%s password=%s alias=%s alias-password=%s if=\"android\" />"
+                  % (quoteattr(keystore), quoteattr(password), quoteattr(os.environ["ANDROID_KEY_ALIAS"]), quoteattr(alias_password))
+              )
+
+          block = "\n".join("\t" + line for line in lines)
+          text = text.replace("</project>", block + "\n</project>", 1)
+          path.write_text(text, encoding="utf-8")
           PY
 
-          grep '<architecture name=' Project.xml || true
+          grep -E '<architecture' Project.xml
+          if [ "$signing" = true ]; then
+            echo "Release signing: enabled"
+          else
+            echo "::notice::Release signing secrets not set, the APK uses the default signing."
+          fi
 
       - name: Configure Lime for Android
-        shell: bash
-        run: haxelib run lime setup android
+        if: matrix.target == 'android'
+        run: |
+          set -euo pipefail
+          haxelib run lime config ANDROID_SDK "$ANDROID_SDK_ROOT"
+          haxelib run lime config ANDROID_NDK_ROOT "$ANDROID_NDK_ROOT"
+          haxelib run lime config JAVA_HOME "$JAVA_HOME"
+          haxelib run lime config ANDROID_SETUP true
 
-      # No "lime clean" here on purpose: cleaning would throw away the cached objects.
-      - name: Build Android APK
-        shell: bash
-        run: haxelib run lime build android -release
+      - name: Build
+        id: build
+        run: |
+          set -euo pipefail
+          start=$(date +%s)
+          haxelib run lime build "$TARGET" "-$BUILD_TYPE"
+          echo "seconds=$(( $(date +%s) - start ))" >> "$GITHUB_OUTPUT"
 
-      - name: Upload Android APK
+      - name: Save compiled objects
+        if: always() && !cancelled()
+        uses: actions/cache/save@v4
+        with:
+          path: .hxcpp_cache
+          key: hxcpp-${{ matrix.target }}-${{ env.BUILD_TYPE }}-${{ env.ANDROID_ABIS }}-${{ github.sha }}-${{ github.run_attempt }}
+
+      - name: Package
+        id: package
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          name="$APP_NAME-$VERSION-$TARGET"
+          [ "$BUILD_TYPE" = "debug" ] && name="$name-debug"
+          bin="export/$BUILD_TYPE/$TARGET/bin"
+
+          case "$TARGET" in
+            windows)
+              7z a -tzip -mx=7 "dist/$name.zip" "./$bin/*" > /dev/null
+              ;;
+            linux)
+              chmod +x "$bin"/* 2> /dev/null || true
+              tar -czf "dist/$name.tar.gz" -C "$bin" .
+              ;;
+            android)
+              apk=$(find export -type f -name '*.apk' -path "*$BUILD_TYPE*" | head -n 1)
+              [ -n "$apk" ] || apk=$(find export -type f -name '*.apk' | head -n 1)
+              if [ -z "$apk" ]; then
+                echo "::error::No APK was produced"
+                exit 1
+              fi
+              cp "$apk" "dist/$name.apk"
+              ;;
+          esac
+
+          file=$(ls dist | head -n 1)
+          size=$(du -h "dist/$file" | cut -f1)
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+          echo "size=$size" >> "$GITHUB_OUTPUT"
+
+      - name: Write summary
+        if: always() && !cancelled()
+        env:
+          FILE: ${{ steps.package.outputs.file }}
+          SIZE: ${{ steps.package.outputs.size }}
+          SECONDS_TAKEN: ${{ steps.build.outputs.seconds }}
+        run: |
+          {
+            echo "### $TARGET"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Version | $VERSION ($SHORT_SHA) |"
+            echo "| Type | $BUILD_TYPE |"
+            [ "$TARGET" = "android" ] && echo "| ABIs | $ANDROID_ABIS |"
+            if [ -n "${FILE:-}" ]; then
+              echo "| File | \`$FILE\` |"
+              echo "| Size | $SIZE |"
+            else
+              echo "| Result | Failed |"
+            fi
+            [ -n "${SECONDS_TAKEN:-}" ] && echo "| Build time | $((SECONDS_TAKEN / 60))m $((SECONDS_TAKEN % 60))s |"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build
         uses: actions/upload-artifact@v4
         with:
-          name: Sonic3-FNF-Port-Android
-          path: export/**/*.apk
+          name: ${{ env.APP_NAME }}-${{ matrix.target }}
+          path: dist/*
           if-no-files-found: error
-          retention-days: 14
+          compression-level: ${{ matrix.target == 'android' && '0' || '6' }}
+          retention-days: ${{ needs.prepare.outputs.is_release == 'true' && 90 || 14 }}
 
-  # Sends one Discord message after both builds finish (success or failure).
-  # Skipped when the run is cancelled (for example by a newer push).
+  release:
+    name: Publish release
+    needs: [prepare, build]
+    if: needs.prepare.outputs.is_release == 'true' && needs.build.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download builds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ env.APP_NAME }}-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create checksums
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ env.APP_NAME }} ${{ needs.prepare.outputs.version }}
+          files: dist/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+
   notify-discord:
     name: Notify Discord
+    needs: [prepare, build, release]
+    if: always() && !cancelled() && github.event_name != 'pull_request' && needs.prepare.result == 'success'
     runs-on: ubuntu-latest
-    needs: [build-windows, build-android]
-    if: ${{ always() && !cancelled() }}
+    timeout-minutes: 5
 
     steps:
       - name: Send Discord message
         env:
+          GH_TOKEN: ${{ github.token }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          WINDOWS_RESULT: ${{ needs.build-windows.result }}
-          ANDROID_RESULT: ${{ needs.build-android.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          RELEASE_RESULT: ${{ needs.release.result }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          BUILD_TYPE: ${{ needs.prepare.outputs.build_type }}
+          IS_RELEASE: ${{ needs.prepare.outputs.is_release }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RELEASE_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ github.ref_name }}
           COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
           ACTOR: ${{ github.actor }}
-          BRANCH: ${{ github.ref_name }}
-          SHA: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
+          EVENT: ${{ github.event_name }}
         run: |
+          set -euo pipefail
           if [ -z "${DISCORD_WEBHOOK_URL:-}" ]; then
-            echo "::warning::DISCORD_WEBHOOK_URL secret is not set; skipping notification."
+            echo "::warning::DISCORD_WEBHOOK_URL is not set, skipping"
             exit 0
           fi
 
-          if [ "$WINDOWS_RESULT" = "success" ] && [ "$ANDROID_RESULT" = "success" ]; then
-            TITLE="Build finished successfully"
-            COLOR=3066993
-            DESCRIPTION="The Windows zip and the Android APK are ready. Open the run page and scroll down to the Artifacts section to download them."
+          jobs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT/jobs" \
+            --jq '[.jobs[] | select(.name | startswith("Build ")) | {name: (.name | sub("^Build "; "")), conclusion: (.conclusion // "unknown"), started: .started_at, completed: .completed_at}]')
+
+          fields=$(echo "$jobs" | jq -c '[.[] | {
+            name: (.name | ascii_upcase[0:1] + .[1:]),
+            value: ((if .conclusion == "success" then "Success" else "Failed (" + .conclusion + ")" end)
+              + (if .started and .completed then " in " + (((.completed | fromdate) - (.started | fromdate)) / 60 | floor | tostring) + " min" else "" end)),
+            inline: true
+          }]')
+
+          if [ "$BUILD_RESULT" = "success" ]; then
+            if [ "$IS_RELEASE" = "true" ] && [ "$RELEASE_RESULT" = "success" ]; then
+              title="Release $VERSION published"
+              description="The builds are attached to the GitHub release."
+              url="$RELEASE_URL"
+              color=10181046
+            else
+              title="Build finished successfully"
+              description="Open the run page and scroll to Artifacts to download the builds."
+              url="$RUN_URL"
+              color=3066993
+            fi
           else
-            TITLE="Build failed"
-            COLOR=15158332
-            DESCRIPTION="At least one build failed. Open the run page to see the logs."
+            title="Build failed"
+            description="At least one build failed. Open the run page to see the logs."
+            url="$RUN_URL"
+            color=15158332
           fi
 
-          status_label() {
-            if [ "$1" = "success" ]; then echo "Success"; else echo "Failed ($1)"; fi
-          }
-
-          WINDOWS_LABEL=$(status_label "$WINDOWS_RESULT")
-          ANDROID_LABEL=$(status_label "$ANDROID_RESULT")
-
-          SHORT_SHA="${SHA:0:7}"
-          FIRST_LINE=$(printf '%s' "$COMMIT_MESSAGE" | head -n 1)
-          if [ -z "$FIRST_LINE" ]; then
-            FIRST_LINE="Manual run"
-          fi
+          first_line=$(printf '%s' "${COMMIT_MESSAGE:-}" | head -n 1 | cut -c1-200)
+          [ -n "$first_line" ] || first_line="Manual run"
 
           jq -n \
-            --arg title "$TITLE" \
-            --arg description "$DESCRIPTION" \
-            --arg url "$RUN_URL" \
-            --argjson color "$COLOR" \
-            --arg windows "$WINDOWS_LABEL" \
-            --arg android "$ANDROID_LABEL" \
+            --arg title "$title" \
+            --arg description "$description" \
+            --arg url "$url" \
+            --argjson color "$color" \
+            --argjson builds "$fields" \
+            --arg version "$VERSION ($BUILD_TYPE)" \
+            --arg ref "$REF_NAME" \
             --arg author "$ACTOR" \
-            --arg branch "$BRANCH" \
-            --arg commit "$SHORT_SHA: $FIRST_LINE" \
+            --arg commit "${GITHUB_SHA:0:7}: $first_line" \
+            --arg event "$EVENT" \
             '{
               embeds: [{
                 title: $title,
                 description: $description,
                 url: $url,
                 color: $color,
-                fields: [
-                  { name: "Windows", value: $windows, inline: true },
-                  { name: "Android", value: $android, inline: true },
-                  { name: "Branch", value: $branch, inline: true },
+                fields: ($builds + [
+                  { name: "Version", value: $version, inline: true },
+                  { name: "Ref", value: $ref, inline: true },
                   { name: "Author", value: $author, inline: true },
                   { name: "Commit", value: $commit }
-                ]
+                ]),
+                footer: { text: ("Trigger: " + $event) },
+                timestamp: (now | todate)
               }]
             }' > payload.json
 
-          curl -sS --fail-with-body \
+          curl -sS --fail-with-body --retry 3 --retry-delay 2 \
             -H "Content-Type: application/json" \
             -d @payload.json \
             "$DISCORD_WEBHOOK_URL"

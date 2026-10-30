@@ -11,6 +11,7 @@ import flixel.util.FlxColor;
 import flixel.util.FlxTimer;
 
 import backend.Song;
+import backend.Difficulty;
 import backend.Paths;
 import backend.MobileControls;
 import backend.StageData;
@@ -24,6 +25,7 @@ class DataSelectState extends MusicBeatState
 {
 	static inline var SONG_ID:String = 'too-slow';
 	static inline var SECRET_SONG_ID:String = 'uncontrolled-infinity';
+	static inline var SECRET_SONG_DIFFICULTY:String = 'Hard';
 
 	var selection:Int = 1;
 	var isMoving:Bool = false;
@@ -59,6 +61,14 @@ class DataSelectState extends MusicBeatState
 	// Distance (in game pixels) BF falls when jumping out of the save
 	var bfJumpHeight:Float = 20;
 	var bfFallDistance:Float = 300;
+
+	// Pacing of the secret sequence (seconds). Use 0 to run a step instantly.
+	var delayReveal:Float = 1;
+	var delayConfused:Float = 1.8;
+	var delayArrowDown:Float = 2;
+	var delayBalanceHead:Float = 2.1;
+	var delayLookDown:Float = 2;
+	var delayJump:Float = 2;
 
 	var secretTimers:Array<FlxTimer> = [];
 	var secretFadeDone:Bool = false;
@@ -177,22 +187,58 @@ class DataSelectState extends MusicBeatState
 			'dataselect/BFDataSelect'
 		);
 
-		bfDataSelect.animation.addByPrefix('idle', 'idle', 24, true);
-		bfDataSelect.animation.addByPrefix('yeah', 'yeah', 12, false);
+		addBfAnim('idle', 24, true);
+		addBfAnim('yeah', 12, false);
 
 		// ---- Secret animations ----
-		bfDataSelect.animation.addByPrefix('looking', 'looking', 24, false);
-		bfDataSelect.animation.addByPrefix('confusedTransition', 'confusedTransition', 24, false);
-		bfDataSelect.animation.addByPrefix('confused', 'confused', 24, true);
-		bfDataSelect.animation.addByPrefix('lookAt', 'lookAt', 24, false);
-		bfDataSelect.animation.addByPrefix('balanceHead', 'balanceHead', 24, true);
-		bfDataSelect.animation.addByPrefix('lookDown', 'lookDown', 24, false);
-		bfDataSelect.animation.addByPrefix('landing', 'landing', 24, false);
-		bfDataSelect.animation.addByPrefix('falling', 'falling', 24, true);
+		addBfAnim('looking', 24, false);
+		addBfAnim('confusedTransition', 24, false);
+		addBfAnim('confused', 24, true);
+		addBfAnim('lookAt', 24, false);
+		addBfAnim('balanceHead', 24, true);
+		addBfAnim('lookDown', 24, false);
+		addBfAnim('landing', 24, false);
+		addBfAnim('falling', 24, true);
 
 		bfDataSelect.animation.play('idle', true);
 
 		add(bfDataSelect);
+	}
+
+	/**
+	 * Registers an animation by prefix. If no frame starts with the exact name, it tries a
+	 * case-insensitive match against the atlas (e.g. 'Looking' / 'LOOKING'), and logs the
+	 * prefixes that really exist in the XML when nothing matches.
+	 */
+	function addBfAnim(name:String, fps:Int, loop:Bool):Void
+	{
+		var prefix:String = null;
+		var lower:String = name.toLowerCase();
+		var existing:Map<String, Bool> = new Map();
+
+		for (f in bfDataSelect.frames.frames)
+		{
+			if (f.name == null)
+				continue;
+
+			if (f.name.length >= name.length && f.name.substr(0, name.length).toLowerCase() == lower)
+			{
+				prefix = f.name.substr(0, name.length);
+				if (prefix == name)
+					break;
+			}
+
+			// Name without the trailing frame number, for the log
+			existing.set(~/[0-9]+$/.replace(f.name, ''), true);
+		}
+
+		if (prefix == null)
+		{
+			trace('Data Select: no frames for "' + name + '". Prefixes in the XML: ' + [for (k in existing.keys()) k].join(', '));
+			return;
+		}
+
+		bfDataSelect.animation.addByPrefix(name, prefix, fps, loop);
 	}
 
 	function moveCursor():Void
@@ -366,6 +412,12 @@ class DataSelectState extends MusicBeatState
 	/** Schedules an action (automatically cancelled in destroy). */
 	function wait(time:Float, callback:Void->Void):Void
 	{
+		if (time <= 0)
+		{
+			callback();
+			return;
+		}
+
 		secretTimers.push(new FlxTimer().start(time, function(_:FlxTimer)
 		{
 			callback();
@@ -385,13 +437,17 @@ class DataSelectState extends MusicBeatState
 		{
 			trace('Data Select: animation "' + name + '" not found in BFDataSelect (check the prefix in the XML)');
 
+			showError('Missing BF animation: "' + name + '"');
+
 			if (onFinish != null)
-				wait(0.5, onFinish);
+				onFinish();
 
 			return;
 		}
 
+		// Starts on this very frame (forced restart, first frame shown right away)
 		bfDataSelect.animation.play(name, true);
+		bfDataSelect.animation.curAnim.paused = false;
 
 		if (onFinish != null)
 		{
@@ -511,9 +567,12 @@ class DataSelectState extends MusicBeatState
 			trace('Data Select (secret cover): ' + e);
 		}
 
+		// BF starts "looking" right now, while the screen is still covered.
+		playBf('looking');
+
 		// The sequence is scheduled BEFORE closing the substate, so an error while
 		// closing it can never stop the rest of the sequence.
-		wait(1, revealSecret);
+		wait(delayReveal, revealSecret);
 
 		// Close the substate on the next frames (not from inside its own update).
 		wait(0.05, function()
@@ -557,17 +616,15 @@ class DataSelectState extends MusicBeatState
 			});
 		}
 
-		playBf('looking');
-
 		// 3) 1.8s later: confusedTransition -> (ends) -> confused
-		wait(1.8, function()
+		wait(delayConfused, function()
 		{
 			playBf('confusedTransition', function()
 			{
 				playBf('confused');
 
 				// 4) 2s later: arrow_Down fades in
-				wait(2, showArrowDown);
+				wait(delayArrowDown, showArrowDown);
 			});
 		});
 	}
@@ -596,19 +653,19 @@ class DataSelectState extends MusicBeatState
 				playBf('lookAt');
 
 				// 6) 2.1s later: balanceHead
-				wait(2.1, function()
+				wait(delayBalanceHead, function()
 				{
 					playBf('balanceHead');
 
 					// 7) 2s later: lookDown -> (ends) -> landing
-					wait(2, function()
+					wait(delayLookDown, function()
 					{
 						playBf('lookDown', function()
 						{
 							playBf('landing');
 
 							// 8) 2s later: falling + jumps out of the save portrait
-							wait(2, bfJumpOut);
+							wait(delayJump, bfJumpOut);
 						});
 					});
 				});
@@ -635,7 +692,7 @@ class DataSelectState extends MusicBeatState
 					onComplete: function(_:FlxTween)
 					{
 						// 9) Start the song
-						startLevel(SECRET_SONG_ID);
+						startLevel(SECRET_SONG_ID, SECRET_SONG_DIFFICULTY);
 					}
 				});
 			}
@@ -651,12 +708,12 @@ class DataSelectState extends MusicBeatState
 	 * Works the same on every platform (including Android) and NEVER
 	 * lets an exception escape: it returns false if loading fails.
 	 */
-	function loadChart(songId:String, errors:Array<String>):Bool
+	function loadChart(songId:String, fileId:String, errors:Array<String>):Bool
 	{
 		// 1) Psych's own loader (assets + mods)
 		try
 		{
-			PlayState.SONG = Song.getChart(songId, songId);
+			PlayState.SONG = Song.getChart(fileId, songId);
 			if (PlayState.SONG != null)
 			{
 				Song.loadedSongName = songId;
@@ -673,11 +730,11 @@ class DataSelectState extends MusicBeatState
 		// 2) Manual paths (only on platforms with a file system)
 		#if sys
 		var paths:Array<String> = [
-			Paths.json(songId + '/' + songId),
-			'example_mods/data/' + songId + '/' + songId + '.json',
-			'mods/Sonic the Hedgehog 3 (FNF Port)/data/' + songId + '/' + songId + '.json',
-			'mods/data/' + songId + '/' + songId + '.json',
-			'mods/' + songId + '/data/' + songId + '.json'
+			Paths.json(songId + '/' + fileId),
+			'example_mods/data/' + songId + '/' + fileId + '.json',
+			'mods/Sonic the Hedgehog 3 (FNF Port)/data/' + songId + '/' + fileId + '.json',
+			'mods/data/' + songId + '/' + fileId + '.json',
+			'mods/' + songId + '/data/' + fileId + '.json'
 		];
 
 		// On Android the working directory may not be the expected root,
@@ -694,7 +751,7 @@ class DataSelectState extends MusicBeatState
 					if (!FileSystem.exists(full))
 						continue;
 
-					PlayState.SONG = Song.parseJSON(File.getContent(full), songId);
+					PlayState.SONG = Song.parseJSON(File.getContent(full), fileId);
 					if (PlayState.SONG != null)
 					{
 						Song.chartPath = full;
@@ -710,11 +767,11 @@ class DataSelectState extends MusicBeatState
 			}
 		}
 
-		errors.push('No ' + songId + '.json file found in any of the tested paths');
+		errors.push('No ' + fileId + '.json file found in any of the tested paths');
 		#else
 		try
 		{
-			PlayState.SONG = Song.loadFromJson(songId, songId);
+			PlayState.SONG = Song.loadFromJson(fileId, songId);
 			if (PlayState.SONG != null)
 				return true;
 		}
@@ -728,14 +785,31 @@ class DataSelectState extends MusicBeatState
 		return false;
 	}
 
-	function startLevel(songId:String):Void
+	function startLevel(songId:String, ?difficulty:String):Void
 	{
 		var errors:Array<String> = [];
+		var fileId:String = songId;
+
+		// A specific difficulty (e.g. 'Hard') loads songId-hard.json and sets the difficulty for PlayState.
+		if (difficulty != null)
+		{
+			Difficulty.resetList();
+
+			var index:Int = Difficulty.list.indexOf(difficulty);
+			if (index < 0)
+			{
+				Difficulty.list.push(difficulty);
+				index = Difficulty.list.length - 1;
+			}
+
+			PlayState.storyDifficulty = index;
+			fileId = songId + Difficulty.getFilePath(index);
+		}
 
 		// Never enter PlayState without a valid SONG: a null SONG is what closed the app.
-		if (!loadChart(songId, errors))
+		if (!loadChart(songId, fileId, errors))
 		{
-			failToStart('Could not load the chart "' + songId + '".\n\n' + errors.join('\n'));
+			failToStart('Could not load the chart "' + fileId + '".\n\n' + errors.join('\n'));
 			return;
 		}
 

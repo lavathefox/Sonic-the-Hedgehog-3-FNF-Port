@@ -57,8 +57,16 @@ class LoadingState extends MusicBeatState
 		super();
 	}
 
-	inline static public function loadAndSwitchState(target:FlxState, stopMusic = false, intrusive:Bool = true)
+	static public function loadAndSwitchState(target:FlxState, stopMusic = false, intrusive:Bool = true)
+	{
+		// songs use the custom LoadingScreen instead of the default loading state
+		if (target is PlayState)
+		{
+			LoadingScreen.go(target, stopMusic);
+			return;
+		}
 		MusicBeatState.switchState(getNextState(target, stopMusic, intrusive));
+	}
 	
 	var target:FlxState = null;
 	var stopMusic:Bool = false;

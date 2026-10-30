@@ -2,7 +2,7 @@ package backend;
 
 import flixel.FlxState;
 import backend.PsychCamera;
-import states.LoadingState;
+import states.LoadingScreen;
 
 class MusicBeatState extends FlxState
 {
@@ -132,14 +132,15 @@ class MusicBeatState extends FlxState
 		curStep = lastChange.stepTime + Math.floor(shit);
 	}
 
+	// set to true right before switching to PlayState from LoadingScreen (avoids an infinite loop)
 	public static var skipLoading:Bool = false;
 	public static function switchState(nextState:FlxState = null) {
-		// send the next state through LoadingState first (unless loading is skipped)
+		// songs go through the LoadingScreen first (unless loading is skipped)
 		if (skipLoading)
 			skipLoading = false;
-		else if (nextState != null && nextState != FlxG.state && !(nextState is LoadingState))
+		else if (nextState != null && (nextState is PlayState))
 		{
-			LoadingState.loadAndSwitchState(nextState, false, true);
+			LoadingScreen.go();
 			return;
 		}
 

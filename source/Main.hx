@@ -1,21 +1,17 @@
 package;
 
 import debug.FPSCounter;
-
-import flixel.graphics.FlxGraphic;
 import flixel.FlxGame;
 import flixel.FlxState;
 import haxe.io.Path;
-import openfl.Assets;
 import openfl.Lib;
 import openfl.display.Sprite;
-import openfl.events.Event;
 import openfl.display.StageScaleMode;
 import lime.app.Application;
 import lime.system.System;
-import states.TitleState;
-import states.Sonic3TitleState;
 import states.Sonic3TitleStateV2;
+import backend.Highscore;
+import backend.Sonic3Storage;
 
 #if HSCRIPT_ALLOWED
 import crowplexus.iris.Iris;
@@ -27,42 +23,37 @@ import lime.graphics.Image;
 #end
 
 #if desktop
-import backend.ALSoftConfig; // Just to make sure DCE doesn't remove this, since it's not directly referenced anywhere else.
+import backend.ALSoftConfig;
 #end
 
-//crash handler stuff
 #if CRASH_HANDLER
 import openfl.events.UncaughtErrorEvent;
 import haxe.CallStack;
-import haxe.io.Path;
 import sys.FileSystem;
 import sys.io.File;
 #end
 
-import backend.Highscore;
-import backend.Sonic3Storage;
-
-// NATIVE API STUFF, YOU CAN IGNORE THIS AND SCROLL //
 #if (linux && !debug)
 @:cppInclude('./external/gamemode_client.h')
 @:cppFileCode('#define GAMEMODE_AUTO')
 #end
-
-// // // // // // // // //
 class Main extends Sprite
 {
 	public static final game = {
-		width: 959, // WINDOW width
-		height: 670, // WINDOW height
-		initialState: Sonic3TitleStateV2, // initial game state
-		framerate: 60, // default framerate
-		skipSplash: true, // if the default flixel splash screen should be skipped
-		startFullscreen: false // if the game should start at fullscreen mode
+		width: 959,
+		height: 670,
+		initialState: Sonic3TitleStateV2,
+		framerate: 60,
+		skipSplash: true,
+		startFullscreen: false
 	};
 
 	public static var fpsVar:FPSCounter;
 
-	// You can pretty much ignore everything from here on - your code should go in your states.
+	#if CRASH_HANDLER
+	static inline var CRASH_LOG_NAME:String = 'CRASH_LOG.txt';
+	static inline var CRASH_LOG_LIMIT:Int = 512 * 1024;
+	#end
 
 	public static function main():Void
 	{
@@ -73,66 +64,22 @@ class Main extends Sprite
 	{
 		super();
 
+		#if CRASH_HANDLER
+		Lib.current.loaderInfo.uncaughtErrorEvents.addEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR, onCrash);
+		#end
+
 		#if (cpp && windows)
 		backend.Native.fixScaling();
 		#end
 
-		var showPermissionScreen:Bool = false;
+		var needsPermission:Bool = setupStorage();
 
-		// Credits to MAJigsaw77 (he's the og author for this code)
-		#if android
-		if (Sonic3Storage.hasPermission())
-		{
-			// Use /storage/emulated/0/.Sonic3Funkin as the working directory (mods live in its "mods" folder).
-			if (Sonic3Storage.ensureFolders(true))
-			{
-				// Access already granted: copy the mods bundled in the APK (first run, or when BUNDLE_REVISION was raised).
-				Sonic3Storage.syncBundledMods();
-			}
-			else
-			{
-				Sys.println("Could not use " + Sonic3Storage.getRoot() + ", falling back to the app storage directory.");
-				Sys.setCwd(Path.addTrailingSlash(System.applicationStorageDirectory));
-			}
-		}
-		else
-		{
-			// No storage access yet: use the private directory for now and show the permission screen first.
-			Sys.setCwd(Path.addTrailingSlash(System.applicationStorageDirectory));
-			showPermissionScreen = true;
-		}
-		#elseif ios
-		Sys.setCwd(lime.system.System.applicationStorageDirectory);
-		#end
-		#if CRASH_HANDLER
-		#if android
-		try
-		{
-			var crashFolder:String = getAndroidCrashFolder();
-			if (!FileSystem.exists(crashFolder))
-				FileSystem.createDirectory(crashFolder);
-			var crashLogPath:String = crashFolder + "CRASH_LOG.txt";
-			if (!FileSystem.exists(crashLogPath))
-				File.saveContent(crashLogPath, "Sonic 3 FNF Port diagnostic log.\nHaxe errors can be recorded here; native crashes such as SIGSEGV may stop the process before this handler runs.\n");
-
-			// Keep a launch history so a log file is useful even when the crash handler is never reached.
-			var launchLog = File.append(crashLogPath, false);
-			launchLog.writeString("\n=== APP STARTED: " + Date.now().toString() + " ===\n");
-			launchLog.writeString("Package: me.funkin.sonic3\n");
-			launchLog.writeString("Storage directory: " + System.applicationStorageDirectory + "\n");
-			launchLog.writeString("Working directory: " + Sys.getCwd() + "\n");
-			launchLog.writeString("If the app closes without a crash entry, check Android native logs; a native crash may bypass Haxe's crash handler.\n");
-			launchLog.close();
-		}
-		catch (setupError:Dynamic)
-		{
-			Sys.println("Could not initialize crash log folder: " + setupError);
-		}
-		#end
+		#if (CRASH_HANDLER && android)
+		writeLaunchLog();
 		#end
 
 		#if VIDEOS_ALLOWED
-		hxvlc.util.Handle.init(#if (hxvlc >= "1.8.0")  ['--no-lua'] #end);
+		hxvlc.util.Handle.init(#if (hxvlc >= "1.8.0") ['--no-lua'] #end);
 		#end
 
 		#if LUA_ALLOWED
@@ -144,85 +91,33 @@ class Main extends Sprite
 		Highscore.load();
 
 		#if HSCRIPT_ALLOWED
-		Iris.warn = function(x, ?pos:haxe.PosInfos) {
-			Iris.logLevel(WARN, x, pos);
-			var newPos:HScriptInfos = cast pos;
-			if (newPos.showLine == null) newPos.showLine = true;
-			var msgInfo:String = (newPos.funcName != null ? '(${newPos.funcName}) - ' : '')  + '${newPos.fileName}:';
-			#if LUA_ALLOWED
-			if (newPos.isLua == true) {
-				msgInfo += 'HScript:';
-				newPos.showLine = false;
-			}
-			#end
-			if (newPos.showLine == true) {
-				msgInfo += '${newPos.lineNumber}:';
-			}
-			msgInfo += ' $x';
-			if (PlayState.instance != null)
-				PlayState.instance.addTextToDebug('WARNING: $msgInfo', FlxColor.YELLOW);
-		}
-		Iris.error = function(x, ?pos:haxe.PosInfos) {
-			Iris.logLevel(ERROR, x, pos);
-			var newPos:HScriptInfos = cast pos;
-			if (newPos.showLine == null) newPos.showLine = true;
-			var msgInfo:String = (newPos.funcName != null ? '(${newPos.funcName}) - ' : '')  + '${newPos.fileName}:';
-			#if LUA_ALLOWED
-			if (newPos.isLua == true) {
-				msgInfo += 'HScript:';
-				newPos.showLine = false;
-			}
-			#end
-			if (newPos.showLine == true) {
-				msgInfo += '${newPos.lineNumber}:';
-			}
-			msgInfo += ' $x';
-			if (PlayState.instance != null)
-				PlayState.instance.addTextToDebug('ERROR: $msgInfo', FlxColor.RED);
-		}
-		Iris.fatal = function(x, ?pos:haxe.PosInfos) {
-			Iris.logLevel(FATAL, x, pos);
-			var newPos:HScriptInfos = cast pos;
-			if (newPos.showLine == null) newPos.showLine = true;
-			var msgInfo:String = (newPos.funcName != null ? '(${newPos.funcName}) - ' : '')  + '${newPos.fileName}:';
-			#if LUA_ALLOWED
-			if (newPos.isLua == true) {
-				msgInfo += 'HScript:';
-				newPos.showLine = false;
-			}
-			#end
-			if (newPos.showLine == true) {
-				msgInfo += '${newPos.lineNumber}:';
-			}
-			msgInfo += ' $x';
-			if (PlayState.instance != null)
-				PlayState.instance.addTextToDebug('FATAL: $msgInfo', 0xFFBB0000);
-		}
+		setupScriptLogging();
 		#end
 
-		#if LUA_ALLOWED Lua.set_callbacks_function(cpp.Callable.fromStaticFunction(psychlua.CallbackHandler.call)); #end
+		#if LUA_ALLOWED
+		Lua.set_callbacks_function(cpp.Callable.fromStaticFunction(psychlua.CallbackHandler.call));
+		#end
+
 		Controls.instance = new Controls();
 		ClientPrefs.loadDefaultKeys();
-		#if ACHIEVEMENTS_ALLOWED Achievements.load(); #end
-		var startState:Class<FlxState> = game.initialState;
-		if (showPermissionScreen)
-			startState = states.PermissionState;
 
+		#if ACHIEVEMENTS_ALLOWED
+		Achievements.load();
+		#end
+
+		var startState:Class<FlxState> = needsPermission ? states.PermissionState : game.initialState;
 		addChild(new FlxGame(game.width, game.height, startState, game.framerate, game.framerate, game.skipSplash, game.startFullscreen));
 
 		#if !mobile
 		fpsVar = new FPSCounter(10, 3, 0xFFFFFF);
+		fpsVar.visible = ClientPrefs.data.showFPS;
 		addChild(fpsVar);
-		Lib.current.stage.align = "tl";
+		Lib.current.stage.align = 'tl';
 		Lib.current.stage.scaleMode = StageScaleMode.NO_SCALE;
-		if(fpsVar != null) {
-			fpsVar.visible = ClientPrefs.data.showFPS;
-		}
 		#end
 
-		#if (linux || mac) // fix the app icon not showing up on the Linux Panel / Mac Dock
-		var icon = Image.fromFile("icon.png");
-		Lib.current.stage.window.setIcon(icon);
+		#if (linux || mac)
+		Lib.current.stage.window.setIcon(Image.fromFile('icon.png'));
 		#end
 
 		#if html5
@@ -234,115 +129,226 @@ class Main extends Sprite
 		FlxG.game.focusLostFramerate = 60;
 		FlxG.keys.preventDefaultKeys = [TAB];
 
-		#if CRASH_HANDLER
-		Lib.current.loaderInfo.uncaughtErrorEvents.addEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR, onCrash);
-		#end
-
 		#if DISCORD_ALLOWED
 		DiscordClient.prepare();
 		#end
 
-		// shader coords fix
-		FlxG.signals.gameResized.add(function (w, h) {
-		     if (FlxG.cameras != null) {
-			   for (cam in FlxG.cameras.list) {
-				if (cam != null && cam.filters != null)
-					resetSpriteCache(cam.flashSprite);
-			   }
-			}
-
-			if (FlxG.game != null)
-			resetSpriteCache(FlxG.game);
-		});
+		FlxG.signals.gameResized.add(onGameResized);
 	}
 
-	static function resetSpriteCache(sprite:Sprite):Void {
-		@:privateAccess {
-		        sprite.__cacheBitmap = null;
+	static function setupStorage():Bool
+	{
+		#if android
+		if (!Sonic3Storage.hasPermission())
+		{
+			useAppStorage();
+			return true;
+		}
+
+		if (Sonic3Storage.ensureFolders(true))
+			Sonic3Storage.syncBundledMods();
+		else
+		{
+			Sys.println('Could not use ' + Sonic3Storage.getRoot() + ', falling back to the app storage directory.');
+			useAppStorage();
+		}
+		#elseif ios
+		useAppStorage();
+		#end
+
+		return false;
+	}
+
+	#if mobile
+	static function useAppStorage():Void
+	{
+		Sys.setCwd(Path.addTrailingSlash(System.applicationStorageDirectory));
+	}
+	#end
+
+	#if HSCRIPT_ALLOWED
+	static function setupScriptLogging():Void
+	{
+		Iris.warn = function(x, ?pos:haxe.PosInfos)
+		{
+			Iris.logLevel(WARN, x, pos);
+			showScriptMessage('WARNING', x, pos, FlxColor.YELLOW);
+		}
+
+		Iris.error = function(x, ?pos:haxe.PosInfos)
+		{
+			Iris.logLevel(ERROR, x, pos);
+			showScriptMessage('ERROR', x, pos, FlxColor.RED);
+		}
+
+		Iris.fatal = function(x, ?pos:haxe.PosInfos)
+		{
+			Iris.logLevel(FATAL, x, pos);
+			showScriptMessage('FATAL', x, pos, 0xFFBB0000);
+		}
+	}
+
+	static function showScriptMessage(prefix:String, message:Dynamic, pos:haxe.PosInfos, color:FlxColor):Void
+	{
+		if (PlayState.instance == null || pos == null)
+			return;
+
+		var info:HScriptInfos = cast pos;
+		var showLine:Bool = info.showLine != false;
+		var location:String = (info.funcName != null ? '(${info.funcName}) - ' : '') + '${info.fileName}:';
+
+		#if LUA_ALLOWED
+		if (info.isLua == true)
+		{
+			location += 'HScript:';
+			showLine = false;
+		}
+		#end
+
+		if (showLine)
+			location += '${info.lineNumber}:';
+
+		PlayState.instance.addTextToDebug('$prefix: $location $message', color);
+	}
+	#end
+
+	static function onGameResized(width:Int, height:Int):Void
+	{
+		if (FlxG.cameras != null)
+		{
+			for (cam in FlxG.cameras.list)
+			{
+				if (cam != null && cam.filters != null)
+					resetSpriteCache(cam.flashSprite);
+			}
+		}
+
+		if (FlxG.game != null)
+			resetSpriteCache(FlxG.game);
+	}
+
+	static function resetSpriteCache(sprite:Sprite):Void
+	{
+		@:privateAccess
+		{
+			sprite.__cacheBitmap = null;
 			sprite.__cacheBitmapData = null;
 		}
 	}
 
-	#if (CRASH_HANDLER && android)
-	/**
-	 * Folder where crash logs are written on Android.
-	 * Prefers the public .Sonic3Funkin folder so the log can be opened with a
-	 * file manager; falls back to the app's private storage directory.
-	 */
-	static function getAndroidCrashFolder():String
+	#if CRASH_HANDLER
+	static function getCrashFolder():String
 	{
+		#if android
 		if (FileSystem.exists(Sonic3Storage.getRoot()))
-			return Sonic3Storage.getRoot() + "Crashes/";
+			return Sonic3Storage.getRoot() + 'Crashes/';
 
-		return Path.addTrailingSlash(System.applicationStorageDirectory) + "Sonic 3 FNF Port Crashes/";
+		return Path.addTrailingSlash(System.applicationStorageDirectory) + 'Sonic 3 FNF Port Crashes/';
+		#else
+		return './crash/';
+		#end
+	}
+
+	static function appendToLog(path:String, text:String):Bool
+	{
+		try
+		{
+			var folder:String = Path.directory(path);
+			if (folder.length > 0 && !FileSystem.exists(folder))
+				FileSystem.createDirectory(folder);
+
+			if (FileSystem.exists(path) && FileSystem.stat(path).size > CRASH_LOG_LIMIT)
+			{
+				var oldPath:String = path + '.old';
+				if (FileSystem.exists(oldPath))
+					FileSystem.deleteFile(oldPath);
+				FileSystem.rename(path, oldPath);
+			}
+
+			var isNew:Bool = !FileSystem.exists(path);
+			var output = File.append(path, false);
+			if (isNew)
+				output.writeString('Sonic 3 FNF Port diagnostic log.\nHaxe errors are recorded here; native crashes such as SIGSEGV may stop the process before the handler runs.\n');
+			output.writeString(text);
+			output.close();
+			return true;
+		}
+		catch (error:Dynamic)
+		{
+			Sys.println('Could not write log ' + path + ': ' + error);
+			return false;
+		}
+	}
+
+	#if android
+	static function writeLaunchLog():Void
+	{
+		var lines:Array<String> = [
+			'',
+			'=== APP STARTED: ' + Date.now().toString() + ' ===',
+			'Package: ' + Application.current.meta.get('packageName'),
+			'Version: ' + Application.current.meta.get('version'),
+			'Storage directory: ' + System.applicationStorageDirectory,
+			'Working directory: ' + Sys.getCwd(),
+			''
+		];
+
+		appendToLog(getCrashFolder() + CRASH_LOG_NAME, lines.join('\n'));
 	}
 	#end
 
-	// Code was entirely made by sqirra-rng for their fnf engine named "Izzy Engine", big props to them!!!
-	// very cool person for real they don't get enough credit for their work
-	#if CRASH_HANDLER
-	function onCrash(e:UncaughtErrorEvent):Void
+	static function buildCrashReport(error:Dynamic):String
 	{
-		var errMsg:String = "";
-		var path:String;
-		var callStack:Array<StackItem> = CallStack.exceptionStack(true);
-		var dateNow:String = Date.now().toString();
+		var report:StringBuf = new StringBuf();
 
-		dateNow = dateNow.replace(" ", "_");
-		dateNow = dateNow.replace(":", "'");
-
-		#if android
-		// Save in the public .Sonic3Funkin folder when available and use one easy-to-find log file.
-		var crashFolder:String = getAndroidCrashFolder();
-		path = crashFolder + "CRASH_LOG.txt";
-		#else
-		var crashFolder:String = "./crash/";
-		path = crashFolder + "PsychEngine_" + dateNow + ".txt";
-		#end
-
-		for (stackItem in callStack)
+		for (item in CallStack.exceptionStack(true))
 		{
-			switch (stackItem)
+			switch (item)
 			{
-				case FilePos(s, file, line, column):
-					errMsg += file + " (line " + line + ")\n";
+				case FilePos(Method(className, method), file, line, _):
+					report.add('$file (line $line) - $className.$method\n');
+				case FilePos(_, file, line, _):
+					report.add('$file (line $line)\n');
 				default:
-					Sys.println(stackItem);
+					Sys.println(item);
 			}
 		}
 
-		errMsg += "\nUncaught Error: " + e.error;
-		// remove if you're modding and want the crash log message to contain the link
-		// please remember to actually modify the link for the github page to report the issues to.
+		report.add('\nUncaught Error: ' + Std.string(error));
+
 		#if officialBuild
-		errMsg += "\nPlease report this error to the GitHub page: https://github.com/ShadowMario/FNF-PsychEngine";
+		report.add('\nPlease report this error to the GitHub page: https://github.com/lavathefox/Sonic-the-Hedgehog-3-FNF-Port');
 		#end
-		errMsg += "\n\n> Crash Handler written by: sqirra-rng";
 
-		var savedPath:String = path;
-		try
-		{
-			if (!FileSystem.exists(crashFolder))
-				FileSystem.createDirectory(crashFolder);
-			var crashOutput = File.append(path, false);
-			crashOutput.writeString("\n=== HAXE CRASH: " + Date.now().toString() + " ===\n");
-			crashOutput.writeString(errMsg + "\n");
-			crashOutput.close();
-		}
-		catch (saveError:Dynamic)
-		{
-			Sys.println("Could not save crash log to " + path + ": " + saveError);
-		}
+		report.add('\n\n> Crash Handler written by: sqirra-rng');
+		return report.toString();
+	}
 
-		Sys.println(errMsg);
-		Sys.println("Crash dump saved in " + Path.normalize(savedPath));
+	function onCrash(e:UncaughtErrorEvent):Void
+	{
+		var message:String = buildCrashReport(e.error);
+
+		#if android
+		var path:String = getCrashFolder() + CRASH_LOG_NAME;
+		#else
+		var stamp:String = Date.now().toString().replace(' ', '_').replace(':', "'");
+		var path:String = getCrashFolder() + 'Sonic3FNF_' + stamp + '.txt';
+		#end
+
+		var header:String = '\n=== HAXE CRASH: ' + Date.now().toString() + ' ===\n';
+		if (appendToLog(path, header + message + '\n'))
+			Sys.println('Crash dump saved in ' + Path.normalize(path));
+
+		Sys.println(message);
 
 		#if !android
-		Application.current.window.alert(errMsg, "Error!");
+		Application.current.window.alert(message, 'Error!');
 		#end
+
 		#if DISCORD_ALLOWED
 		DiscordClient.shutdown();
 		#end
+
 		Sys.exit(1);
 	}
 	#end

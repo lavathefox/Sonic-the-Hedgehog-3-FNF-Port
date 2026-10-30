@@ -55,6 +55,13 @@ class DataSelectState extends MusicBeatState
 		'aiz_savePortrait'
 	];
 
+	/**
+	 * Fixed position (0 = first, 1 = second, 2 = third visible slot) where the arrow and BF stay
+	 * while the saves scroll underneath them, like in Sonic 3. The cursor only leaves this
+	 * position at the ends of the list, where there is nothing left to scroll.
+	 */
+	var cursorAnchor:Int = 0;
+
 	/** First visible slot index (target) and the animated scroll (in pixels). */
 	var scrollIndex:Int = 0;
 	var scrollX:Float = 0;
@@ -362,16 +369,19 @@ class DataSelectState extends MusicBeatState
 		return savePos[index][0] - scrollIndex * slotSpacing;
 	}
 
-	/** Keeps the selected slot inside the visible window. Returns true if the list has to scroll. */
+	/**
+	 * The list scrolls so the selected slot stays under the cursor anchor. At the start and at the
+	 * end of the list the scroll is clamped, so the cursor moves instead. Returns true if it scrolls.
+	 */
 	function updateScrollTarget():Bool
 	{
 		var index:Int = selection - 1;
 		var old:Int = scrollIndex;
 
-		if (index < scrollIndex)
-			scrollIndex = index;
-		else if (index > scrollIndex + VISIBLE_SLOTS - 1)
-			scrollIndex = index - (VISIBLE_SLOTS - 1);
+		var anchor:Int = Std.int(Math.max(0, Math.min(VISIBLE_SLOTS - 1, cursorAnchor)));
+		var maxScroll:Int = TOTAL_SLOTS - VISIBLE_SLOTS;
+
+		scrollIndex = Std.int(Math.max(0, Math.min(maxScroll, index - anchor)));
 
 		return scrollIndex != old;
 	}

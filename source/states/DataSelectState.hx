@@ -98,8 +98,8 @@ class DataSelectState extends MusicBeatState
 	var otherSaveLift:Float = 0;
 
 	/** noSaveText offset, relative to the otherSave. Y is below it. Adjust to your image sizes. */
-	var noSaveTextX:Float = 0;
-	var noSaveTextY:Float = 120;
+	var noSaveTextX:Float = 30;
+	var noSaveTextY:Float = 80;
 
 	/** dataArrow offset, relative to the otherSave (0, 0 = exactly the same position). */
 	var otherArrowX:Float = 0;

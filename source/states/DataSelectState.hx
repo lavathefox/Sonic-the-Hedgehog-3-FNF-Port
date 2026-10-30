@@ -3,6 +3,7 @@ package states;
 import flixel.FlxCamera;
 import flixel.FlxG;
 import flixel.FlxSprite;
+import flixel.graphics.FlxGraphic;
 import flixel.input.keyboard.FlxKey;
 import flixel.math.FlxRect;
 import flixel.text.FlxText;
@@ -28,22 +29,25 @@ class DataSelectState extends MusicBeatState
 	static inline var SECRET_SONG_ID:String = 'uncontrolled-infinity';
 	static inline var SECRET_SONG_DIFFICULTY:String = 'Hard';
 
-	// ---- Save slots (Sonic 3 style: 8 slots, 3 visible at a time) ----
-	static inline var TOTAL_SLOTS:Int = 8;
+	// ---- Slots (Sonic 3 style: "No Save" slot + 8 saves, 3 visible at a time) ----
+	static inline var SAVE_COUNT:Int = 8;
+
+	/** Slot 0 is the "otherSave" (No Save). Slots 1..SAVE_COUNT are the real saves. */
+	static inline var TOTAL_SLOTS:Int = SAVE_COUNT + 1;
 	static inline var VISIBLE_SLOTS:Int = 3;
 
-	/** Position of the first slot (world pixels). */
+	/** Position of the first slot (the otherSave), in world pixels. */
 	var slotStartX:Float = 2;
 	var slotY:Float = 36;
 
-	/** Distance between the left edge of one slot and the next one. */
-	var slotSpacing:Float = 112;
+	/** Distance between the left edge of one slot and the next one (bigger = more room for otherSave). */
+	var slotSpacing:Float = 124;
 
 	/** Width of the visible area where the slots are shown. Anything outside is clipped. */
 	var windowLeft:Float = 0;
 	var windowRight:Float = 0;
 
-	/** Portrait image of each slot (change per slot if you have different images). */
+	/** Portrait image of each real save (index 0 = first save, NOT the otherSave). */
 	var portraitImages:Array<String> = [
 		'aiz_savePortrait',
 		'aiz_savePortrait',
@@ -57,7 +61,7 @@ class DataSelectState extends MusicBeatState
 
 	/**
 	 * Fixed position (0 = first, 1 = second, 2 = third visible slot) where the arrow and BF stay
-	 * while the saves scroll underneath them, like in Sonic 3. The cursor only leaves this
+	 * while the slots scroll underneath them, like in Sonic 3. The cursor only leaves this
 	 * position at the ends of the list, where there is nothing left to scroll.
 	 */
 	var cursorAnchor:Int = 1;
@@ -67,7 +71,8 @@ class DataSelectState extends MusicBeatState
 	var scrollX:Float = 0;
 	var scrollTween:FlxTween;
 
-	var selection:Int = 1;
+	/** 1 = otherSave, 2 = first real save, ... Change to 1 to start on the otherSave. */
+	var selection:Int = 2;
 	var isMoving:Bool = false;
 	var doFlicker:Bool = true;
 	var confirming:Bool = false;
@@ -80,8 +85,25 @@ class DataSelectState extends MusicBeatState
 	var portraitX:Float = 5;
 	var portraitY:Float = 5;
 
+	// Arrow on the real saves (dataselectarrow)
 	var arrowX:Float = 5;
 	var arrowY:Float = -10;
+
+	// ---- otherSave (No Save) ----
+	/** Extra offset of the otherSave sprite (relative to the slot position). */
+	var otherSaveOffsetX:Float = 0;
+	var otherSaveOffsetY:Float = 0;
+
+	/** The otherSave does not lift when selected (the dataArrow takes its place). */
+	var otherSaveLift:Float = 0;
+
+	/** noSaveText offset, relative to the otherSave. Y is below it. Adjust to your image sizes. */
+	var noSaveTextX:Float = 0;
+	var noSaveTextY:Float = 60;
+
+	/** dataArrow offset, relative to the otherSave (0, 0 = exactly the same position). */
+	var otherArrowX:Float = 0;
+	var otherArrowY:Float = 0;
 
 	var bfX:Float = 22;
 	var bfY:Float = 78;
@@ -123,7 +145,14 @@ class DataSelectState extends MusicBeatState
 	var text:FlxSprite;
 	var arrow:FlxSprite;
 	var bfDataSelect:FlxSprite;
+	var noSaveText:FlxSprite;
 
+	/** Arrow graphics: normal one (real saves) and the one used on the otherSave. */
+	var arrowGraphic:FlxGraphic;
+	var otherArrowGraphic:FlxGraphic;
+	var arrowIsOther:Bool = false;
+
+	/** saves[0] is the otherSave sprite. portraits[0] is null (the otherSave has no portrait). */
 	var saves:Array<FlxSprite> = [];
 	var portraits:Array<FlxSprite> = [];
 
@@ -154,12 +183,21 @@ class DataSelectState extends MusicBeatState
 		// Slot positions + visible window
 		savePos = [];
 		for (i in 0...TOTAL_SLOTS)
-			savePos.push([slotStartX + i * slotSpacing, slotY]);
+		{
+			var offX:Float = isOtherSave(i) ? otherSaveOffsetX : 0;
+			var offY:Float = isOtherSave(i) ? otherSaveOffsetY : 0;
+			savePos.push([slotStartX + i * slotSpacing + offX, slotY + offY]);
+		}
 
 		windowLeft = slotStartX - 2;
 		windowRight = slotStartX + VISIBLE_SLOTS * slotSpacing - 2;
 
 		createSaveSlots();
+
+		// Start with the scroll already placed for the initial selection (no slide on enter)
+		updateScrollTarget();
+		scrollX = scrollIndex * slotSpacing;
+
 		createArrow();
 		createBfDataSelect();
 
@@ -180,12 +218,35 @@ class DataSelectState extends MusicBeatState
 		);
 	}
 
+	/** True if the slot index (0-based) is the "No Save" slot. */
+	inline function isOtherSave(index:Int):Bool
+	{
+		return index == 0;
+	}
+
 	function createSaveSlots():Void
 	{
 		for (i in 0...TOTAL_SLOTS)
 		{
 			var x:Float = savePos[i][0];
 			var y:Float = savePos[i][1];
+
+			if (isOtherSave(i))
+			{
+				// otherSave (No Save): no portrait, with the noSaveText below it
+				var other:FlxSprite = new FlxSprite(x, y);
+				other.loadGraphic(Paths.image('dataselect/otherSave'));
+				add(other);
+				saves.push(other);
+
+				portraits.push(null);
+
+				noSaveText = new FlxSprite(x + noSaveTextX, y + noSaveTextY);
+				noSaveText.loadGraphic(Paths.image('dataselect/noSaveText'));
+				add(noSaveText);
+
+				continue;
+			}
 
 			var save:FlxSprite = new FlxSprite(x, y);
 			save.loadGraphic(Paths.image('dataselect/dataselectSave'));
@@ -198,7 +259,7 @@ class DataSelectState extends MusicBeatState
 			);
 
 			portrait.loadGraphic(
-				Paths.image('dataselect/' + portraitImages[i])
+				Paths.image('dataselect/' + portraitImages[i - 1])
 			);
 
 			portrait.visible = false;
@@ -212,16 +273,47 @@ class DataSelectState extends MusicBeatState
 	{
 		var index:Int = selection - 1;
 
+		arrowGraphic = Paths.image('dataselect/dataselectarrow');
+		otherArrowGraphic = Paths.image('dataselect/dataArrow');
+
+		if (otherArrowGraphic == null)
+		{
+			trace('Data Select: image dataselect/dataArrow not found, using the normal arrow');
+			otherArrowGraphic = arrowGraphic;
+		}
+
+		arrowIsOther = isOtherSave(index);
+
 		arrow = new FlxSprite(
-			slotScreenX(index) + arrowX,
-			savePos[index][1] + arrowY
+			arrowTargetX(index),
+			arrowTargetY(index)
 		);
 
-		arrow.loadGraphic(
-			Paths.image('dataselect/dataselectarrow')
-		);
+		arrow.loadGraphic(arrowIsOther ? otherArrowGraphic : arrowGraphic);
 
 		add(arrow);
+	}
+
+	/** Swaps the arrow image: dataArrow on the otherSave, dataselectarrow on the real saves. */
+	function applyArrowGraphic(index:Int):Void
+	{
+		var wantOther:Bool = isOtherSave(index);
+
+		if (wantOther == arrowIsOther)
+			return;
+
+		arrowIsOther = wantOther;
+		arrow.loadGraphic(wantOther ? otherArrowGraphic : arrowGraphic);
+	}
+
+	function arrowTargetX(index:Int):Float
+	{
+		return slotScreenX(index) + (isOtherSave(index) ? otherArrowX : arrowX);
+	}
+
+	function arrowTargetY(index:Int):Float
+	{
+		return savePos[index][1] + (isOtherSave(index) ? otherArrowY : arrowY);
 	}
 
 	function createBfDataSelect():Void
@@ -412,13 +504,25 @@ class DataSelectState extends MusicBeatState
 			var x:Float = savePos[i][0] - scrollX;
 
 			saves[i].x = x;
-			portraits[i].x = x + portraitX;
 
 			var saveInside:Bool = clipToWindow(saves[i]);
 			saves[i].visible = saveInside;
 
-			var portraitInside:Bool = clipToWindow(portraits[i]);
-			portraits[i].visible = (i == selection - 1) && portraitInside;
+			// The otherSave has no portrait
+			if (portraits[i] != null)
+			{
+				portraits[i].x = x + portraitX;
+
+				var portraitInside:Bool = clipToWindow(portraits[i]);
+				portraits[i].visible = (i == selection - 1) && portraitInside;
+			}
+		}
+
+		// The noSaveText follows the otherSave (slot 0)
+		if (noSaveText != null)
+		{
+			noSaveText.x = savePos[0][0] - scrollX + noSaveTextX;
+			noSaveText.visible = clipToWindow(noSaveText);
 		}
 	}
 
@@ -455,10 +559,14 @@ class DataSelectState extends MusicBeatState
 		if (updateScrollTarget())
 			scrollSlots();
 
+		// dataArrow on the otherSave, dataselectarrow on the real saves
+		applyArrowGraphic(index);
+
 		FlxTween.tween(
 			arrow,
 			{
-				x: slotScreenX(index) + arrowX
+				x: arrowTargetX(index),
+				y: arrowTargetY(index)
 			},
 			moveTime,
 			{
@@ -494,12 +602,14 @@ class DataSelectState extends MusicBeatState
 			var y:Float = savePos[i][1];
 
 			if (i == selection - 1)
-				y -= saveLift;
+				y -= isOtherSave(i) ? otherSaveLift : saveLift;
 
 			if (first)
 			{
 				saves[i].y = y;
-				portraits[i].y = y + portraitY;
+
+				if (portraits[i] != null)
+					portraits[i].y = y + portraitY;
 			}
 			else
 			{
@@ -514,16 +624,19 @@ class DataSelectState extends MusicBeatState
 					}
 				);
 
-				FlxTween.tween(
-					portraits[i],
-					{
-						y: y + portraitY
-					},
-					moveTime,
-					{
-						ease: FlxEase.quadOut
-					}
-				);
+				if (portraits[i] != null)
+				{
+					FlxTween.tween(
+						portraits[i],
+						{
+							y: y + portraitY
+						},
+						moveTime,
+						{
+							ease: FlxEase.quadOut
+						}
+					);
+				}
 			}
 		}
 
@@ -531,8 +644,10 @@ class DataSelectState extends MusicBeatState
 		{
 			var index:Int = selection - 1;
 
-			arrow.x = slotScreenX(index) + arrowX;
-			arrow.y = savePos[index][1] + arrowY;
+			applyArrowGraphic(index);
+
+			arrow.x = arrowTargetX(index);
+			arrow.y = arrowTargetY(index);
 
 			bfDataSelect.x = slotScreenX(index) + bfX;
 			bfDataSelect.y = savePos[index][1] + bfY;
@@ -582,6 +697,8 @@ class DataSelectState extends MusicBeatState
 
 		bfDataSelect.animation.play('yeah', true);
 
+		// For now the otherSave (No Save) starts the same song as the real saves.
+		// Check isOtherSave(selection - 1) here if it should do something different.
 		bfDataSelect.animation.finishCallback = function(name:String)
 		{
 			if (name == 'yeah')
@@ -815,11 +932,14 @@ class DataSelectState extends MusicBeatState
 
 	function showArrowDown():Void
 	{
-		var portrait:FlxSprite = portraits[selection - 1];
+		// The otherSave has no portrait, so use the slot sprite as the reference in that case
+		var reference:FlxSprite = portraits[selection - 1];
+		if (reference == null)
+			reference = saves[selection - 1];
 
 		arrowDown = new FlxSprite(
-			portrait.x + arrowDownX,
-			portrait.y + arrowDownY
+			reference.x + arrowDownX,
+			reference.y + arrowDownY
 		);
 		var arrowDownGraphic = Paths.image('dataselect/arrow_Down');
 		if (arrowDownGraphic != null)

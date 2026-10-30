@@ -40,11 +40,14 @@ class LoadingState extends MusicBeatState
 {
 	public static var loaded:Int = 0;
 	public static var loadMax:Int = 0;
+	public static var currentTask:String = '';
 
 	static var originalBitmapKeys:Map<String, String> = [];
 	static var requestedBitmaps:Map<String, BitmapData> = [];
 	static var mutex:Mutex;
 	static var threadPool:FixedThreadPool = null;
+	static inline var MIN_TIME:Float = 0.6; // duração mínima quando não há nada para carregar
+    var fakeTime:Float = 0;
 
 	function new(target:FlxState, stopMusic:Bool)
 	{
@@ -90,6 +93,11 @@ class LoadingState extends MusicBeatState
 	override function create()
 	{
 		persistentUpdate = true;
+        if (loadMax <= 0 && initialThreadCompleted)
+       {
+        fakeTime = MIN_TIME;
+        stateChangeDelay = MIN_TIME;
+       }
 		barGroup = new FlxSpriteGroup();
 		add(barGroup);
 
@@ -117,6 +125,8 @@ class LoadingState extends MusicBeatState
 					hscript.set('getLoaded', function() return loaded);
 					hscript.set('getLoadMax', function() return loadMax);
 					hscript.set('barBack', barBack);
+					hscript.set('getPercent', function() return intendedPercent);
+                    hscript.set('getCurrentTask', function() return currentTask);
 					hscript.set('bar', bar);
 	
 					if(hscript.exists('onCreate'))
@@ -209,7 +219,9 @@ class LoadingState extends MusicBeatState
 				}
 				else stateChangeDelay = Math.max(0, stateChangeDelay - elapsed);
 			}
-			intendedPercent = loaded / loadMax;
+			if (loadMax > 0) intendedPercent = loaded / loadMax;
+            else if (fakeTime > 0) intendedPercent = 1 - (stateChangeDelay / fakeTime);
+            else intendedPercent = 0;
 		}
 
 		if (curPercent != intendedPercent)
@@ -323,6 +335,7 @@ class LoadingState extends MusicBeatState
 			FlxG.sound.music.stop();
 
 		FlxG.camera.visible = false;
+		MusicBeatState.skipLoading = true;
 		MusicBeatState.switchState(target);
 		transitioning = true;
 		finishedLoading = true;
@@ -330,6 +343,7 @@ class LoadingState extends MusicBeatState
 
 	static function _loaded()
 	{
+		currentTask = '';
 		loaded = 0;
 		loadMax = 0;
 		initialThreadCompleted = true;
@@ -369,9 +383,7 @@ class LoadingState extends MusicBeatState
 	static var isIntrusive:Bool = false;
 	static function getNextState(target:FlxState, stopMusic = false, intrusive:Bool = true):FlxState
 	{
-		#if !SHOW_LOADING_SCREEN
-		intrusive = false;
-		#end
+		intrusive = true;
 
 		LoadingState.isIntrusive = intrusive;
 		_startPool();
@@ -681,12 +693,13 @@ class LoadingState extends MusicBeatState
 	static function initThread(func:Void->Dynamic, traceData:String)
 	{
 		// trace('scheduled $func in threadPool');
-		#if debug
-		var threadSchedule = Sys.time();
-		#end
-		threadPool.run(() -> {
-			#if debug
-			var threadStart = Sys.time();
+        #if debug
+        var threadSchedule = Sys.time();
+        #end
+        threadPool.run(() -> {
+        currentTask = traceData;
+        #if debug
+        var threadStart = Sys.time();
 			trace('$traceData took ${threadStart - threadSchedule}s to start preloading');
 			#end
 

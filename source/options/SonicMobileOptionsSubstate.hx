@@ -16,8 +16,8 @@ import mobile.DeviceUtil;
 /** One line of the menu: its name, how to read its value as text, and how to change it. */
 typedef MobileOptionEntry =
 {
-	var label:String;
-	var getValue:Void->String;
+	var label:String; // already translated to the current language
+	var getValue:Void->String; // always returns the ENGLISH value; it is translated when drawn
 	var change:Int->Void; // +1 = next value, -1 = previous value
 }
 
@@ -39,6 +39,9 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 	var optionsCamera:FlxCamera;
 	var letterWidths:Map<String, Float> = new Map();
 
+	var language:String = 'ENGLISH';
+	var valueTranslations:Map<String, String> = new Map();
+
 	var optionY:Float = 270;
 	var optionSpacing:Float = 90;
 	var labelX:Float = 180;
@@ -54,6 +57,9 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		// Reads the saved options before the menu shows them.
 		AndroidOptions.loadSaved();
 
+		language = getCurrentLanguage();
+		buildValueTranslations();
+
 		optionsCamera = new FlxCamera();
 		optionsCamera.bgColor.alpha = 0;
 		optionsCamera.zoom = 1;
@@ -68,7 +74,8 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		background.cameras = [optionsCamera];
 		add(background);
 
-		createTextSprites('MOBILE OPTIONS', titleSprites, (FlxG.width - getTextWidth('MOBILE OPTIONS', 3)) / 2, 125, 3);
+		var title:String = tr('MOBILE OPTIONS', 'OPCOES MOBILE', 'OPCIONES MOVILES');
+		createTextSprites(title, titleSprites, (FlxG.width - getTextWidth(title, 3)) / 2, 125, 3);
 
 		selectedArrow = new FlxSprite(115, optionY);
 		selectedArrow.loadGraphic(Paths.image('pauseMenuEXE/selectedArrow'));
@@ -93,31 +100,123 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		MobileControls.update();
 	}
 
+	// ---- Language ----
+
+	function getCurrentLanguage():String
+	{
+		var lang:String = StringTools.trim(Std.string(ClientPrefs.data.language).toUpperCase());
+
+		switch (lang)
+		{
+			case 'PORTUGUESE', 'PORTUGUES', 'PORTUGUÊS', 'PTBR', 'PT-BR', 'PT_BR', 'BRAZILIAN PORTUGUESE':
+				return 'PORTUGUESE';
+
+			case 'ESPANOL', 'ESPAÑOL', 'SPANISH', 'ES', 'ES-ES', 'ES_ES':
+				return 'ESPANOL';
+
+			default:
+				return 'ENGLISH';
+		}
+	}
+
+	/** Picks the text for the current language. No accents: the HUD letters only exist for A-Z. */
+	function tr(en:String, pt:String, es:String):String
+	{
+		switch (language)
+		{
+			case 'PORTUGUESE':
+				return pt;
+
+			case 'ESPANOL':
+				return es;
+
+			default:
+				return en;
+		}
+	}
+
+	/**
+	 * Translates the value names that come from AndroidOptions (ON, OFF, LOW, HIGH...).
+	 * A name that is not in the list is shown as it is, so nothing breaks if AndroidOptions has others.
+	 */
+	function buildValueTranslations():Void
+	{
+		valueTranslations = new Map();
+
+		if (language == 'ENGLISH')
+			return;
+
+		var pt:Bool = language == 'PORTUGUESE';
+
+		// [english, portuguese, spanish]
+		var words:Array<Array<String>> = [
+			['ON', 'SIM', 'SI'],
+			['OFF', 'NAO', 'NO'],
+			['AUTO', 'AUTO', 'AUTO'],
+			['NONE', 'NENHUM', 'NINGUNO'],
+			['LOW', 'BAIXO', 'BAJO'],
+			['MEDIUM', 'MEDIO', 'MEDIO'],
+			['HIGH', 'ALTO', 'ALTO'],
+			['SMALL', 'PEQUENO', 'PEQUENO'],
+			['NORMAL', 'NORMAL', 'NORMAL'],
+			['LARGE', 'GRANDE', 'GRANDE'],
+			['BIG', 'GRANDE', 'GRANDE'],
+			['DEFAULT', 'PADRAO', 'DEFECTO'],
+			['FULL', 'TOTAL', 'TOTAL'],
+			['MAX', 'MAXIMO', 'MAXIMO'],
+			['MIN', 'MINIMO', 'MINIMO'],
+			['LIGHT', 'LEVE', 'LEVE'],
+			['SOFT', 'SUAVE', 'SUAVE'],
+			['STRONG', 'FORTE', 'FUERTE'],
+			['WEAK', 'FRACO', 'DEBIL'],
+			['CLASSIC', 'CLASSICO', 'CLASICO'],
+			['MODERN', 'MODERNO', 'MODERNO'],
+			['SIMPLE', 'SIMPLES', 'SIMPLE'],
+			['BAR', 'BARRA', 'BARRA'],
+			['BARS', 'BARRAS', 'BARRAS'],
+			['GLOW', 'BRILHO', 'BRILLO'],
+			['SOLID', 'SOLIDO', 'SOLIDO'],
+			['OUTLINE', 'CONTORNO', 'CONTORNO'],
+			['GRADIENT', 'GRADIENTE', 'GRADIENTE'],
+			['DARK', 'ESCURO', 'OSCURO'],
+			['BRIGHT', 'CLARO', 'BRILLANTE']
+		];
+
+		for (word in words)
+			valueTranslations.set(word[0], pt ? word[1] : word[2]);
+	}
+
+	function translateValue(value:String):String
+	{
+		var translated:String = valueTranslations.get(value.toUpperCase());
+		return translated != null ? translated : value;
+	}
+
 	// ---- The options ----
 
 	function buildEntries():Void
 	{
 		entries = [
-			boolEntry('SHOW HITBOX',
+			boolEntry(tr('SHOW HITBOX', 'MOSTRAR HITBOX', 'MOSTRAR HITBOX'),
 				function() return ClientPrefs.data.mobileShowHitbox,
 				function(value:Bool) { ClientPrefs.data.mobileShowHitbox = value; }),
 
-			boolEntry('SHOW PAUSE BUTTON',
+			boolEntry(tr('SHOW PAUSE BUTTON', 'BOTAO DE PAUSE', 'BOTON DE PAUSA'),
 				function() return ClientPrefs.data.mobilePauseButton,
 				function(value:Bool) { ClientPrefs.data.mobilePauseButton = value; }),
 
 			// Draws a ring where each finger touches the screen.
-			boolEntry('TOUCH CURSOR',
+			boolEntry(tr('TOUCH CURSOR', 'CURSOR DE TOQUE', 'CURSOR TACTIL'),
 				function() return ClientPrefs.data.mobileTouchCursor,
 				function(value:Bool) { ClientPrefs.data.mobileTouchCursor = value; }),
 
 			// How visible the arrows and the A/B buttons are.
-			listEntry('CONTROLS OPACITY', AndroidOptions.OPACITY_NAMES,
+			listEntry(tr('CONTROLS OPACITY', 'OPACIDADE BOTOES', 'OPACIDAD BOTONES'), AndroidOptions.OPACITY_NAMES,
 				function() return ClientPrefs.data.mobileControlsOpacity,
 				function(value:Int) { ClientPrefs.data.mobileControlsOpacity = value; }),
 
 			// A short vibration when a control or a lane is touched.
-			listEntry('VIBRATION', AndroidOptions.VIBRATION_NAMES,
+			listEntry(tr('VIBRATION', 'VIBRACAO', 'VIBRACION'), AndroidOptions.VIBRATION_NAMES,
 				function() return ClientPrefs.data.mobileVibration,
 				function(value:Int)
 				{
@@ -126,34 +225,71 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 				}),
 
 			// Stops the screen from turning off while the game is open.
-			boolEntry('KEEP SCREEN ON',
+			boolEntry(tr('KEEP SCREEN ON', 'MANTER TELA LIGADA', 'PANTALLA ENCENDIDA'),
 				function() return ClientPrefs.data.mobileKeepScreenOn,
 				function(value:Bool) { ClientPrefs.data.mobileKeepScreenOn = value; }),
 
 			// Look of the touch lanes used during songs (applies on the next song).
-			listEntry('LANE STYLE', AndroidOptions.LANE_STYLE_NAMES,
+			listEntry(tr('LANE STYLE', 'ESTILO DAS LANES', 'ESTILO DE LANES'), AndroidOptions.LANE_STYLE_NAMES,
 				function() return ClientPrefs.data.mobileLaneStyle,
 				function(value:Int) { ClientPrefs.data.mobileLaneStyle = value; }),
 
 			// How bright a lane flashes when it is touched (applies on the next song).
-			listEntry('LANE OPACITY', AndroidOptions.LANE_OPACITY_NAMES,
+			listEntry(tr('LANE OPACITY', 'OPACIDADE LANES', 'OPACIDAD LANES'), AndroidOptions.LANE_OPACITY_NAMES,
 				function() return ClientPrefs.data.mobileLaneOpacity,
 				function(value:Int) { ClientPrefs.data.mobileLaneOpacity = value; }),
 
 			// Size of the on-screen arrows and A/B buttons.
-			listEntry('CONTROLS SIZE', AndroidOptions.CONTROLS_SIZE_NAMES,
+			listEntry(tr('CONTROLS SIZE', 'TAMANHO BOTOES', 'TAMANO BOTONES'), AndroidOptions.CONTROLS_SIZE_NAMES,
 				function() return ClientPrefs.data.mobileControlsSize,
 				function(value:Int) { ClientPrefs.data.mobileControlsSize = value; }),
 
 			// Swaps the sides: arrows on the right, A/B buttons on the left.
-			boolEntry('LEFT HANDED',
+			boolEntry(tr('LEFT HANDED', 'MODO CANHOTO', 'MODO ZURDO'),
 				function() return ClientPrefs.data.mobileLeftHanded,
 				function(value:Bool) { ClientPrefs.data.mobileLeftHanded = value; }),
 
 			// Screen brightness while the game is open. AUTO = the phone decides.
-			listEntry('BRIGHTNESS', AndroidOptions.BRIGHTNESS_NAMES,
+			listEntry(tr('BRIGHTNESS', 'BRILHO', 'BRILLO'), AndroidOptions.BRIGHTNESS_NAMES,
 				function() return ClientPrefs.data.mobileBrightness,
-				function(value:Int) { ClientPrefs.data.mobileBrightness = value; })
+				function(value:Int) { ClientPrefs.data.mobileBrightness = value; }),
+
+			// ---- New options ----
+
+			// FPS counter in the corner. Uses the normal showFPS pref that already exists.
+			boolEntry(tr('SHOW FPS', 'MOSTRAR FPS', 'MOSTRAR FPS'),
+				function() return ClientPrefs.data.showFPS,
+				function(value:Bool) { ClientPrefs.data.showFPS = value; }),
+
+			// Size of the ring drawn by TOUCH CURSOR.
+			listEntry(tr('TOUCH CURSOR SIZE', 'TAMANHO CURSOR', 'TAMANO CURSOR'), AndroidOptions.TOUCH_CURSOR_SIZE_NAMES,
+				function() return ClientPrefs.data.mobileTouchCursorSize,
+				function(value:Int) { ClientPrefs.data.mobileTouchCursorSize = value; }),
+
+			// A vibration when a note is missed.
+			boolEntry(tr('VIBRATE ON MISS', 'VIBRAR AO ERRAR', 'VIBRAR AL FALLAR'),
+				function() return ClientPrefs.data.mobileVibrateOnMiss,
+				function(value:Bool)
+				{
+					ClientPrefs.data.mobileVibrateOnMiss = value;
+					if (value)
+						DeviceUtil.tap();
+				}),
+
+			// The A and B buttons trade places.
+			boolEntry(tr('SWAP A AND B', 'TROCAR A E B', 'INTERCAMBIAR A Y B'),
+				function() return ClientPrefs.data.mobileSwapAB,
+				function(value:Bool) { ClientPrefs.data.mobileSwapAB = value; }),
+
+			// Hides the Android status and navigation bars while the game is open.
+			boolEntry(tr('IMMERSIVE MODE', 'MODO IMERSIVO', 'MODO INMERSIVO'),
+				function() return ClientPrefs.data.mobileImmersive,
+				function(value:Bool) { ClientPrefs.data.mobileImmersive = value; }),
+
+			// Turns off heavy effects to save battery on weak phones.
+			boolEntry(tr('BATTERY SAVER', 'ECONOMIA BATERIA', 'AHORRO BATERIA'),
+				function() return ClientPrefs.data.mobileBatterySaver,
+				function(value:Bool) { ClientPrefs.data.mobileBatterySaver = value; })
 		];
 	}
 
@@ -310,7 +446,7 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 
 		destroyTextSprites(values[index]);
 
-		var value:String = entries[index].getValue();
+		var value:String = translateValue(entries[index].getValue());
 		var startX:Float = valueX + (valueWidth - getTextWidth(value)) / 2;
 		createTextSprites(value, values[index], startX, rowY(index));
 

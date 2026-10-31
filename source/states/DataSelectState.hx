@@ -76,7 +76,7 @@ class DataSelectState extends MusicBeatState
 	 * true  = large saves (dataSelectLarge + dataSelectArrowLarge). The portraits move by
 	 *         portraitLargeOffsetY (and slotSpacing / bfX / bfY may need new values for big saves).
 	 */
-	var useLargeSaves:Bool = true;
+	var useLargeSaves:Bool = false;
 
 	/** Extra Y added to the portraits (newIcon, aiz_savePortrait, static) in large mode. */
 	var portraitLargeOffsetY:Float = 0;
@@ -180,7 +180,7 @@ class DataSelectState extends MusicBeatState
 	var hudLivesOffsetY:Float = 47;
 
 	/** Continues row (placeholderContinueIcon + number): extra Y below the lives row. */
-	var hudContinueOffsetY:Float = 16;
+	var hudContinueOffsetY:Float = 18;
 
 	/** false = every used save shows the HUD (selected or not). true = only the selected save. */
 	var hudOnlySelected:Bool = false;
@@ -212,14 +212,14 @@ class DataSelectState extends MusicBeatState
 
 	// ---- Delete mode (Eggman) ----
 	/** Extra offset for Eggman when he is centered on the Delete slot (fine tuning). */
-	var eggCenterOffsetX:Float = 0;
-	var eggCenterOffsetY:Float = 0;
+	var eggCenterOffsetX:Float = -4;
+	var eggCenterOffsetY:Float = -4;
 
 	/**
 	 * Extra X offset of Eggman relative to the arrow while he follows it in delete mode
 	 * (0 = exactly the same X as the dataselectarrow / dataSelectArrowLarge).
 	 */
-	var eggArrowOffsetX:Float = 0;
+	var eggArrowOffsetX:Float = 10;
 
 	/** 0 = Eggman centered on the Delete slot, 1 = Eggman at the X of the arrow. Animated. */
 	var eggBlend:Float = 0;

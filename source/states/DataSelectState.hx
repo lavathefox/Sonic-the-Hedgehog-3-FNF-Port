@@ -48,6 +48,12 @@ class DataSelectState extends MusicBeatState
 	static inline var TOTAL_SLOTS:Int = SAVE_COUNT + 2;
 	static inline var VISIBLE_SLOTS:Int = 3;
 
+	// ---- Save / arrow images (inside images/dataselect/) for each style ----
+	static inline var SAVE_IMAGE_NORMAL:String = 'dataselectSave';
+	static inline var SAVE_IMAGE_LARGE:String = 'dataSelectLarge';
+	static inline var ARROW_IMAGE_NORMAL:String = 'dataselectarrow';
+	static inline var ARROW_IMAGE_LARGE:String = 'dataSelectArrowLarge';
+
 	// ---- HUD (lives / continues) image names (without folder, without .png) ----
 	static inline var HUD_LIFE_ICON:String = 'placeholderIcon';
 	static inline var HUD_COLON:String = 'colon';
@@ -63,6 +69,17 @@ class DataSelectState extends MusicBeatState
 
 	/** Max digits shown for the lives counter. */
 	static inline var LIVES_DIGITS:Int = 2;
+
+	// ---- SAVE STYLE ----
+	/**
+	 * false = normal saves (dataselectSave + dataselectarrow).
+	 * true  = large saves (dataSelectLarge + dataSelectArrowLarge). The portraits move by
+	 *         portraitLargeOffsetY (and slotSpacing / bfX / bfY may need new values for big saves).
+	 */
+	var useLargeSaves:Bool = true;
+
+	/** Extra Y added to the portraits (newIcon, aiz_savePortrait, static) in large mode. */
+	var portraitLargeOffsetY:Float = -7;
 
 	/** Position of the first slot (the otherSave), in world pixels. */
 	var slotStartX:Float = 2;
@@ -125,7 +142,7 @@ class DataSelectState extends MusicBeatState
 	var portraitX:Float = 5;
 	var portraitY:Float = 5;
 
-	// Arrow on the real saves (dataselectarrow)
+	// Arrow on the real saves (dataselectarrow / dataSelectArrowLarge)
 	var arrowX:Float = 5;
 	var arrowY:Float = -10;
 
@@ -355,6 +372,35 @@ class DataSelectState extends MusicBeatState
 	inline function isSpecialSlot(index:Int):Bool
 	{
 		return index == 0 || index == TOTAL_SLOTS - 1;
+	}
+
+	// =====================================================================
+	//  Save style (normal / large)
+	// =====================================================================
+
+	/** Y of the portraits (and statics) relative to the save slot, for the current style. */
+	function portraitOffsetY():Float
+	{
+		return portraitY + (useLargeSaves ? portraitLargeOffsetY : 0);
+	}
+
+	/**
+	 * Loads an image for the current style. If the large image does not exist, it falls back
+	 * to the normal one (and logs it), so the screen never ends up without a graphic.
+	 */
+	function loadStyleImage(normalImage:String, largeImage:String):FlxGraphic
+	{
+		if (useLargeSaves)
+		{
+			var large:FlxGraphic = Paths.image('dataselect/' + largeImage);
+
+			if (large != null)
+				return large;
+
+			trace('Data Select: image dataselect/' + largeImage + ' not found, using dataselect/' + normalImage);
+		}
+
+		return Paths.image('dataselect/' + normalImage);
 	}
 
 	// =====================================================================
@@ -747,14 +793,15 @@ class DataSelectState extends MusicBeatState
 				continue;
 			}
 
+			// Normal or large save image, depending on useLargeSaves
 			var save:FlxSprite = new FlxSprite(x, y);
-			save.loadGraphic(Paths.image('dataselect/dataselectSave'));
+			save.loadGraphic(loadStyleImage(SAVE_IMAGE_NORMAL, SAVE_IMAGE_LARGE));
 			add(save);
 			saves.push(save);
 
 			var portrait:FlxSprite = new FlxSprite(
 				x + portraitX,
-				y + portraitY
+				y + portraitOffsetY()
 			);
 
 			portrait.visible = false;
@@ -766,7 +813,7 @@ class DataSelectState extends MusicBeatState
 			// Static shown on used saves while they are NOT selected
 			var staticSprite:FlxSprite = new FlxSprite(
 				x + portraitX,
-				y + portraitY
+				y + portraitOffsetY()
 			);
 
 			staticSprite.frames = Paths.getSparrowAtlas('dataselect/dataStatic');
@@ -801,7 +848,8 @@ class DataSelectState extends MusicBeatState
 	{
 		var index:Int = selection - 1;
 
-		arrowGraphic = Paths.image('dataselect/dataselectarrow');
+		// Normal or large arrow for the real saves, depending on useLargeSaves
+		arrowGraphic = loadStyleImage(ARROW_IMAGE_NORMAL, ARROW_IMAGE_LARGE);
 		otherArrowGraphic = Paths.image('dataselect/dataArrow');
 
 		if (otherArrowGraphic == null)
@@ -822,7 +870,7 @@ class DataSelectState extends MusicBeatState
 		add(arrow);
 	}
 
-	/** Swaps the arrow image: dataArrow on the otherSave slots, dataselectarrow on the real saves. */
+	/** Swaps the arrow image: dataArrow on the otherSave slots, the normal / large arrow on the real saves. */
 	function applyArrowGraphic(index:Int):Void
 	{
 		var wantOther:Bool = isSpecialSlot(index);
@@ -1195,7 +1243,7 @@ class DataSelectState extends MusicBeatState
 		if (updateScrollTarget())
 			scrollSlots();
 
-		// dataArrow on the otherSave slots, dataselectarrow on the real saves
+		// dataArrow on the otherSave slots, normal / large arrow on the real saves
 		applyArrowGraphic(index);
 
 		updateBfVisibility();
@@ -1252,8 +1300,8 @@ class DataSelectState extends MusicBeatState
 
 				if (portraits[i] != null)
 				{
-					portraits[i].y = y + portraitY;
-					statics[i].y = y + portraitY;
+					portraits[i].y = y + portraitOffsetY();
+					statics[i].y = y + portraitOffsetY();
 				}
 			}
 			else
@@ -1274,7 +1322,7 @@ class DataSelectState extends MusicBeatState
 					FlxTween.tween(
 						portraits[i],
 						{
-							y: y + portraitY
+							y: y + portraitOffsetY()
 						},
 						moveTime,
 						{
@@ -1285,7 +1333,7 @@ class DataSelectState extends MusicBeatState
 					FlxTween.tween(
 						statics[i],
 						{
-							y: y + portraitY
+							y: y + portraitOffsetY()
 						},
 						moveTime,
 						{

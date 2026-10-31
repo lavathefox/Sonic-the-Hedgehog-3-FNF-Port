@@ -125,7 +125,7 @@ class DataSelectState extends MusicBeatState
 
 	// BF on the real saves
 	var bfX:Float = 22;
-	var bfY:Float = 78;
+	var bfY:Float = 58;
 
 	/** Extra offset for BF when he is centered on the otherSave (fine tuning, 0 = exact center). */
 	var bfOtherOffsetX:Float = 0;

@@ -169,10 +169,10 @@ class DataSelectState extends MusicBeatState
 	var hudOnlySelected:Bool = false;
 
 	/**
-	 * TEST OPTION: true = the HUD is also shown on saves that were never created, so you can
-	 * check the positions without creating a save first. Set it back to false when done.
+	 * TEST OPTION: true = the HUD is also shown on saves that were never created.
+	 * Keep it false: the HUD only appears on saves that were created.
 	 */
-	var hudShowOnUnusedSaves:Bool = true;
+	var hudShowOnUnusedSaves:Bool = false;
 
 	/** Space between the icon / colon / digits. */
 	var hudGap:Float = 1;
@@ -198,22 +198,11 @@ class DataSelectState extends MusicBeatState
 	var eggCenterOffsetX:Float = 0;
 	var eggCenterOffsetY:Float = 0;
 
-	/** Extra offset for Eggman when he goes over a save to ask for the delete (same spot as BF + this). */
-	var eggSaveOffsetX:Float = 0;
-	var eggSaveOffsetY:Float = 0;
-
 	/** Seconds between the end of one eggSelect and the start of the next one. */
 	var eggSelectDelay:Float = 0.4;
 
 	var eggman:FlxSprite;
 	var eggTimer:FlxTimer;
-
-	/** Screen position where Eggman stands while delete mode is on (saved when it starts). */
-	var eggHomeX:Float = 0;
-	var eggHomeY:Float = 0;
-
-	/** True while Eggman is over a save asking for the delete (he must go back home afterwards). */
-	var eggAway:Bool = false;
 
 	/** True after pressing ENTER on the Delete slot. */
 	var deleteMode:Bool = false;
@@ -879,18 +868,6 @@ class DataSelectState extends MusicBeatState
 		return savePos[index][1] + bfY;
 	}
 
-	/** X of Eggman when he goes over a real save to ask for the delete (same spot BF uses). */
-	function eggTargetX(index:Int):Float
-	{
-		return slotScreenX(index) + bfX + eggSaveOffsetX;
-	}
-
-	/** Y of Eggman when he goes over a real save to ask for the delete (same spot BF uses). */
-	function eggTargetY(index:Int):Float
-	{
-		return savePos[index][1] + bfY + eggSaveOffsetY;
-	}
-
 	/** BF is hidden while the cursor is on the Delete slot and during delete mode (Eggman takes his place). */
 	function updateBfVisibility():Void
 	{
@@ -1129,8 +1106,8 @@ class DataSelectState extends MusicBeatState
 				statics[i].visible = saveUsed[i] && !selected && staticInside;
 
 				// Lives / continues HUD: X from BF's X, Y from BF's Y + the row offsets.
-				// Shown on every used save (selected or not) unless hudOnlySelected is true.
-				// Hidden only during the secret sequence (BF falls off the screen).
+				// Shown only on created saves (selected or not) unless hudOnlySelected is true.
+				// Hidden during the secret sequence (BF falls off the screen).
 				var hud:HudSlot = huds[i];
 
 				if (hud != null)
@@ -1163,8 +1140,8 @@ class DataSelectState extends MusicBeatState
 			deleteText.visible = clipToWindow(deleteText);
 		}
 
-		// Eggman: in the middle of the Delete slot. In delete mode he stays where he is
-		// (his position is only changed by the tweens in requestDelete / sendEggHome).
+		// Eggman: in the middle of the Delete slot. In delete mode his position is NOT touched:
+		// he keeps the same x and y while the cursor moves over the normal saves.
 		if (eggman != null)
 		{
 			if (deleteMode)
@@ -1488,28 +1465,20 @@ class DataSelectState extends MusicBeatState
 
 		deleteMode = !deleteMode;
 		deleteConfirm = false;
-		eggAway = false;
 
 		cancelEggTimer();
 		updateBfVisibility();
 
+		// In delete mode Eggman keeps his current x and y (see layoutSlots)
 		if (deleteMode)
-		{
-			// Remember where Eggman is standing: he stays here while the cursor moves over the saves
-			eggHomeX = eggman.x;
-			eggHomeY = eggman.y;
-
 			eggSelectCycle();
-		}
 		else
-		{
 			playEgg('idle');
-		}
 	}
 
 	/**
 	 * ENTER on a save in delete mode: only used saves can be deleted.
-	 * Eggman walks to the save, plays eggDelete and waits for LEFT / RIGHT.
+	 * Eggman stays where he is, plays eggDelete and waits for LEFT / RIGHT.
 	 */
 	function requestDelete(index:Int):Void
 	{
@@ -1523,55 +1492,10 @@ class DataSelectState extends MusicBeatState
 			Paths.sound('confirmMenu')
 		);
 
-		eggAway = true;
-
-		FlxTween.tween(
-			eggman,
-			{
-				x: eggTargetX(index),
-				y: eggTargetY(index)
-			},
-			moveTime,
-			{
-				ease: FlxEase.quadOut
-			}
-		);
-
 		playEgg('eggDelete');
 	}
 
-	/** Moves Eggman back to the spot he had before asking for a delete, then runs onDone. */
-	function sendEggHome(onDone:Void->Void):Void
-	{
-		if (!eggAway)
-		{
-			onDone();
-			return;
-		}
-
-		// Blocks the input until he is back
-		isMoving = true;
-
-		FlxTween.tween(
-			eggman,
-			{
-				x: eggHomeX,
-				y: eggHomeY
-			},
-			moveTime,
-			{
-				ease: FlxEase.quadOut,
-				onComplete: function(_:FlxTween)
-				{
-					eggAway = false;
-					isMoving = false;
-					onDone();
-				}
-			}
-		);
-	}
-
-	/** LEFT while waiting: deletes the save, Eggman goes back home and returns to the eggSelect loop. */
+	/** LEFT while waiting: deletes the save and Eggman goes back to the eggSelect loop (same place). */
 	function acceptDelete():Void
 	{
 		var index:Int = selection - 1;
@@ -1586,10 +1510,10 @@ class DataSelectState extends MusicBeatState
 			Paths.sound('confirmMenu')
 		);
 
-		sendEggHome(eggSelectCycle);
+		eggSelectCycle();
 	}
 
-	/** RIGHT while waiting: does NOT delete, Eggman goes back to where he was and returns to the eggSelect loop. */
+	/** RIGHT while waiting: does NOT delete, Eggman goes back to the eggSelect loop (same place). */
 	function cancelDelete():Void
 	{
 		deleteConfirm = false;
@@ -1598,7 +1522,7 @@ class DataSelectState extends MusicBeatState
 			Paths.sound('dataselectswitch')
 		);
 
-		sendEggHome(eggSelectCycle);
+		eggSelectCycle();
 	}
 
 	// =====================================================================

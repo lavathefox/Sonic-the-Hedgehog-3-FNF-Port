@@ -48,12 +48,15 @@ class DataSelectState extends MusicBeatState
 	static inline var TOTAL_SLOTS:Int = SAVE_COUNT + 2;
 	static inline var VISIBLE_SLOTS:Int = 3;
 
-	// ---- HUD (lives / continues) image names, inside images/dataselect/ ----
+	// ---- HUD (lives / continues) image names (without folder, without .png) ----
 	static inline var HUD_LIFE_ICON:String = 'placeholderIcon';
 	static inline var HUD_COLON:String = 'colon';
 	static inline var HUD_CONT_ICON:String = 'placeholderContinueIcon';
 	/** Digit images are HUD_NUMBER_PREFIX + 0..9 (number0, number1, ... number9). */
 	static inline var HUD_NUMBER_PREFIX:String = 'number';
+
+	/** Folders (inside images/) where the HUD images are searched, in this order. */
+	static var HUD_FOLDERS:Array<String> = ['dataselect/', 'dataselect/hud/', 'dataselect/numbersData/', ''];
 
 	/** Name of the file that stores the number of lives. It is searched in every folder. */
 	static inline var LIVES_FILE:String = 'lives.dat';
@@ -160,10 +163,16 @@ class DataSelectState extends MusicBeatState
 	var hudLivesOffsetY:Float = 25;
 
 	/** Continues row (placeholderContinueIcon + number): extra Y below the lives row. */
-	var hudContinueOffsetY:Float = 45;
+	var hudContinueOffsetY:Float = 25;
 
 	/** false = every used save shows the HUD (selected or not). true = only the selected save. */
 	var hudOnlySelected:Bool = false;
+
+	/**
+	 * TEST OPTION: true = the HUD is also shown on saves that were never created, so you can
+	 * check the positions without creating a save first. Set it back to false when done.
+	 */
+	var hudShowOnUnusedSaves:Bool = true;
 
 	/** Space between the icon / colon / digits. */
 	var hudGap:Float = 1;
@@ -180,6 +189,9 @@ class DataSelectState extends MusicBeatState
 
 	var digitGraphics:Array<FlxGraphic> = [];
 	var huds:Array<HudSlot> = [];
+
+	/** HUD images that could not be found (shown on screen so they are easy to fix). */
+	var hudMissingImages:Array<String> = [];
 
 	// ---- Delete mode (Eggman) ----
 	/** Extra offset for Eggman when he is centered on the Delete slot (fine tuning). */
@@ -412,20 +424,37 @@ class DataSelectState extends MusicBeatState
 	//  Lives (lives.dat) + HUD
 	// =====================================================================
 
-	/** Loads the 0..9 digit images once. A missing image stays null (and is logged). */
+	/** Remembers a HUD image that was not found (no duplicates). */
+	function reportMissingHudImage(name:String):Void
+	{
+		if (hudMissingImages.indexOf(name) < 0)
+			hudMissingImages.push(name);
+	}
+
+	/** Looks for a HUD image in every folder of HUD_FOLDERS. Returns null if it is not found. */
+	function loadHudImage(name:String):FlxGraphic
+	{
+		for (folder in HUD_FOLDERS)
+		{
+			var g:FlxGraphic = Paths.image(folder + name);
+
+			if (g != null)
+				return g;
+		}
+
+		reportMissingHudImage(name);
+		trace('Data Select: HUD image "' + name + '" not found in any of these folders: ' + HUD_FOLDERS.join(', '));
+		return null;
+	}
+
+	/** Loads the 0..9 digit images once. A missing image stays null (and is reported). */
 	function loadDigitGraphics():Void
 	{
 		digitGraphics = [];
+		hudMissingImages = [];
 
 		for (d in 0...10)
-		{
-			var g:FlxGraphic = Paths.image('dataselect/' + HUD_NUMBER_PREFIX + d);
-
-			if (g == null)
-				trace('Data Select: image dataselect/' + HUD_NUMBER_PREFIX + d + ' not found');
-
-			digitGraphics.push(g);
-		}
+			digitGraphics.push(loadHudImage(HUD_NUMBER_PREFIX + d));
 	}
 
 	/** Looks for the file `name` inside `dir` and all its sub folders (up to `depth` levels). */
@@ -527,25 +556,28 @@ class DataSelectState extends MusicBeatState
 		#end
 	}
 
-	function makeHudSprite(?image:String):FlxSprite
+	/**
+	 * Creates one HUD sprite. If the image is missing, a visible colored box is used instead
+	 * (so you can still see where it is) and the name is reported on screen.
+	 * With no image name it creates an empty 1x1 sprite (used for the digits).
+	 */
+	function makeHudSprite(?image:String, boxWidth:Int = 8, boxHeight:Int = 8, boxColor:FlxColor = FlxColor.MAGENTA):FlxSprite
 	{
 		var spr:FlxSprite = new FlxSprite(0, 0);
 
-		if (image != null)
+		if (image == null)
 		{
-			var g:FlxGraphic = Paths.image('dataselect/' + image);
-
-			if (g != null)
-			{
-				spr.loadGraphic(g);
-				return spr;
-			}
-
-			trace('Data Select: image dataselect/' + image + ' not found');
+			spr.makeGraphic(1, 1, FlxColor.TRANSPARENT);
+			return spr;
 		}
 
-		// Placeholder (invisible, 1x1) so the layout code never has to deal with a null graphic
-		spr.makeGraphic(1, 1, FlxColor.TRANSPARENT);
+		var g:FlxGraphic = loadHudImage(image);
+
+		if (g != null)
+			spr.loadGraphic(g);
+		else
+			spr.makeGraphic(boxWidth, boxHeight, boxColor);
+
 		return spr;
 	}
 
@@ -555,6 +587,8 @@ class DataSelectState extends MusicBeatState
 
 		if (g != null)
 			spr.loadGraphic(g);
+		else
+			spr.makeGraphic(6, 8, FlxColor.GRAY); // fallback box (image not found)
 	}
 
 	/**
@@ -565,13 +599,13 @@ class DataSelectState extends MusicBeatState
 	{
 		var list:Array<FlxSprite> = [];
 
-		list.push(makeHudSprite(HUD_LIFE_ICON));
-		list.push(makeHudSprite(HUD_COLON));
+		list.push(makeHudSprite(HUD_LIFE_ICON, 8, 8, FlxColor.LIME));
+		list.push(makeHudSprite(HUD_COLON, 3, 8, FlxColor.WHITE));
 
 		for (d in 0...LIVES_DIGITS)
 			list.push(makeHudSprite());
 
-		list.push(makeHudSprite(HUD_CONT_ICON));
+		list.push(makeHudSprite(HUD_CONT_ICON, 8, 8, FlxColor.CYAN));
 		list.push(makeHudSprite());
 
 		for (s in list)
@@ -603,6 +637,18 @@ class DataSelectState extends MusicBeatState
 
 			huds.push(createHud());
 			refreshHud(i);
+		}
+
+		// Tell on screen which HUD images were not found (a colored box is drawn instead)
+		if (hudMissingImages.length > 0)
+		{
+			var previous:String = (errorText != null && errorText.text != '') ? errorText.text + '\n\n' : '';
+
+			showError(
+				previous
+				+ 'HUD images not found (searched in: ' + HUD_FOLDERS.join(', ') + '):\n'
+				+ hudMissingImages.join(', ')
+			);
 		}
 	}
 
@@ -1089,7 +1135,7 @@ class DataSelectState extends MusicBeatState
 
 				if (hud != null)
 				{
-					var showHud:Bool = saveUsed[i] && !secretActive && (!hudOnlySelected || selected);
+					var showHud:Bool = (saveUsed[i] || hudShowOnUnusedSaves) && !secretActive && (!hudOnlySelected || selected);
 
 					for (k in 0...hud.sprites.length)
 					{

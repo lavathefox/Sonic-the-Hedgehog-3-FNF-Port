@@ -22,12 +22,64 @@ local GAME_OVER_STATE = 'states.DataSelectState'
 local DEBUG_LIVES = false
 -- ==========================================================================
 
+-- ===================== GAME OVER SEQUENCE (Sonic.exe style) =====================
+-- 1) "GAME" / "OVER" slide in and the game over sound plays
+-- 2) when the game over sound is almost over: the texts fade to red, the animated static
+--    fades in and the static sound loops (fading in)
+-- 3) the pitch of the static sound drops until it reaches 0
+-- 4) at pitch 0 the laugh plays, and END_DELAY seconds later the song ends
+
+local GAME_OVER_SOUND = 'sonicGameOver'
+-- length of the game over sound in seconds. 0 = read it automatically.
+-- If the effects start only when the sound ends, the length could not be read: set it here.
+local GAME_OVER_SOUND_LENGTH = 0
+local EFFECTS_START_REMAINING = 2 -- seconds left in the game over sound when step 2 starts
+
+local RED_COLOR = 'FF0000'
+local RED_FADE_TIME = 1.2
+
+local STATIC_TAG = 'screenSTATIC' -- sprite tag
+local STATIC_IMAGE = 'static' -- image (png + xml) of the animated static
+local STATIC_ANIM = 'idle' -- animation name
+local STATIC_PREFIX = 'static' -- animation prefix inside the xml
+local STATIC_FPS = 12
+local STATIC_SCALE = 7
+local STATIC_MAX_ALPHA = 0.6 -- 1 = the static fully covers the screen
+local STATIC_FADE_TIME = 1.5
+
+local STATIC_SOUND = 'exeStatic'
+local STATIC_SOUND_VOLUME = 1
+local LAUGH_SOUND = 'exeLaugh'
+
+-- keep this below EFFECTS_START_REMAINING * 2, so the game over sound is still playing when the pitch reaches 0
+local PITCH_DROP_TIME = 3 -- seconds the pitch takes to go from 1 to 0
+local PITCH_CUTOFF = 0.03 -- at or below this value the pitch counts as 0
+local PITCH_TAGS = { GAME_OVER_SOUND } -- sounds slowed down and stopped at pitch 0 (add STATIC_SOUND to slow the static too)
+
+local END_DELAY = 1.7 -- seconds between the laugh and the end of the song
+
+-- prints each step of the game over sequence
+local DEBUG_GAME_OVER = false
+
+-- prints errors/steps of the freeze (chart + song stopped on death)
+local DEBUG_FREEZE = false
+-- ==========================================================================
+
 local healthX = 140
 local healthY = 628
 
 local deadStarted = false
 local gameOverPending = false -- true when the death was the last life: game over runs after the death
 local gameOverStarted = false
+
+local gameOverSoundLength = 0 -- seconds, 0 = unknown
+local gameOverClock = 0 -- seconds since the game over sound started (own clock)
+local lengthAttempts = 0
+
+local frozenPosition = nil -- song position (ms) at the moment of death
+local effectsStarted = false
+local pitchActive = false
+local pitchTime = 0
 
 local digitScale = 3
 local digitSpacing = 8 * digitScale
@@ -79,8 +131,9 @@ local lastBase = 0 -- songScore without hold points, seen on the previous frame
 local introStarted = false
 local hudHidden = nil -- nil until the first update
 
--- remembers what is currently drawn for each tag, so sprites are only rebuilt when the value changes
-local lastDrawn = {}
+-- what is currently drawn for each tag: drawn[tag] = { value = ..., names = { sprite names } }
+-- sprites are only rebuilt when the value changes
+local drawn = {}
 
 -- ============================ LIVES FILE ============================
 
@@ -154,6 +207,25 @@ local function letterPath(char)
 	return 'hud/letershud/' .. char
 end
 
+-- creates a static HUD sprite (scaled x3, no antialiasing, on the HUD camera)
+local function makeHudSprite(tag, image, x, y, front, alpha)
+
+	makeLuaSprite(tag, image, x, y)
+
+	setScrollFactor(tag, 0, 0)
+	setObjectCamera(tag, 'hud')
+
+	setProperty(tag .. '.antialiasing', false)
+
+	scaleObject(tag, 3, 3)
+
+	addLuaSprite(tag, front)
+
+	if alpha ~= nil then
+		setProperty(tag .. '.alpha', alpha)
+	end
+end
+
 -- creates one sprite per character; returns the sprite names
 local function drawChars(tag, str, x, y, spacing, scale, getPath)
 
@@ -185,24 +257,33 @@ local function drawChars(tag, str, x, y, spacing, scale, getPath)
 	return names
 end
 
-function clearDigits(tag)
+-- removes every sprite drawn for this tag
+local function clearDigits(tag)
 
-	if lastDrawn[tag] == nil then
+	local entry = drawn[tag]
+
+	if entry == nil then
 		return
 	end
 
-	lastDrawn[tag] = nil
+	drawn[tag] = nil
 
-	for i = 1, 20 do
-		removeLuaSprite(tag .. i, true)
+	for _, name in ipairs(entry.names) do
+		removeLuaSprite(name, true)
 	end
-
-	removeLuaSprite(tag, true)
 end
 
-function setNumber(tag, value, x, y, align)
+-- true when this tag already shows exactly this value
+local function isDrawn(tag, value)
 
-	if lastDrawn[tag] == value then
+	local entry = drawn[tag]
+
+	return entry ~= nil and entry.value == value
+end
+
+local function setNumber(tag, value, x, y, align)
+
+	if isDrawn(tag, value) then
 		return
 	end
 
@@ -218,42 +299,42 @@ function setNumber(tag, value, x, y, align)
 		startX = x - totalWidth + 5
 	end
 
-	drawChars(tag, str, startX, y, digitSpacing, digitScale, numberPath)
+	local names = drawChars(tag, str, startX, y, digitSpacing, digitScale, numberPath)
 
-	lastDrawn[tag] = value
+	drawn[tag] = { value = value, names = names }
 end
 
 -- draws a number with the life font (used for both lives and health)
-function setHealthNumber(tag, value, x, y)
+local function setHealthNumber(tag, value, x, y)
 
-	if lastDrawn[tag] == value then
+	if isDrawn(tag, value) then
 		return
 	end
 
 	clearDigits(tag)
 
-	drawChars(tag, tostring(value), x, y, digitSpacing, digitScale, lifePath)
+	local names = drawChars(tag, tostring(value), x, y, digitSpacing, digitScale, lifePath)
 
-	lastDrawn[tag] = value
+	drawn[tag] = { value = value, names = names }
 end
 
-function setLetters(tag, text, x, y)
+local function setLetters(tag, text, x, y)
 
-	if lastDrawn[tag] == text then
+	if isDrawn(tag, text) then
 		return
 	end
 
 	clearDigits(tag)
 
-	drawChars(tag, string.upper(text), x, y, letterSpacing, letterScale, letterPath)
+	local names = drawChars(tag, string.upper(text), x, y, letterSpacing, letterScale, letterPath)
 
-	lastDrawn[tag] = text
+	drawn[tag] = { value = text, names = names }
 end
 
 -- ============================ SCORE POPUP ============================
 
 -- creates a floating number above (downscroll) or below (upscroll) the receptor of the hit note
-function spawnScorePopup(direction, value)
+local function spawnScorePopup(direction, value)
 
 	local strumX = getPropertyFromGroup('playerStrums', direction, 'x')
 	local strumY = getPropertyFromGroup('playerStrums', direction, 'y')
@@ -318,36 +399,119 @@ local function applyHudVisibility(hide)
 	end
 end
 
--- ============================ GAME OVER ============================
+-- ============================ SOUND HELPERS ============================
 
--- runs after the death animation (the black fade) when the last life was lost:
--- "GAME" and "OVER" slide in over the black screen and the game over sound plays
-local function startGameOver()
+-- length (in seconds) of a sound started with playSound and a tag; 0 if it cannot be read.
+-- First tries the sound that is playing, then the sound file itself.
+local function getSoundLength(tag)
 
-	if gameOverStarted then
+	local length = runHaxeCode([[
+		try
+		{
+			var s = game.modchartSounds.get(']] .. tag .. [[');
+
+			if (s != null && s.length > 0)
+				return s.length / 1000;
+		}
+		catch (e:Dynamic) {}
+
+		try
+		{
+			var pathsClass = Type.resolveClass('backend.Paths');
+			var snd = Reflect.callMethod(pathsClass, Reflect.field(pathsClass, 'sound'), [']] .. tag .. [[']);
+
+			if (snd != null && snd.length > 0)
+				return snd.length / 1000;
+		}
+		catch (e:Dynamic) {}
+
+		return 0;
+	]])
+
+	if type(length) == 'number' then
+		return length
+	end
+
+	return 0
+end
+
+-- changes the pitch of a tagged sound (uses setSoundPitch when it exists, haxe otherwise)
+local function setSoundPitchSafe(tag, pitch)
+
+	if type(setSoundPitch) == 'function' then
+		setSoundPitch(tag, pitch)
 		return
 	end
 
-	gameOverStarted = true
-
-	-- the sprites are on the 'other' camera and added in front, so they stay above the black fade
-	makeLuaSprite('gamee', 'textgame', -280, 300)
-	setProperty('gamee.antialiasing', false)
-	scaleObject('gamee', 3, 3)
-	setObjectCamera('gamee', 'other')
-	addLuaSprite('gamee', true)
-	doTweenX('gamee', 'gamee', 280, 0.3)
-
-	makeLuaSprite('over', 'over', 280 * 3, 300)
-	setProperty('over.antialiasing', false)
-	scaleObject('over', 3, 3)
-	setObjectCamera('over', 'other')
-	addLuaSprite('over', true)
-	doTweenX('over', 'over', 280, 0.3)
-
-	-- the third argument is the sound tag, used by onSoundFinished
-	playSound('sonicGameOver', 1, 'sonicGameOver')
+	runHaxeCode("var s = game.modchartSounds.get('" .. tag .. "'); if (s != null) s.pitch = " .. string.format('%.4f', pitch) .. ';')
 end
+
+-- ============================ FREEZE ============================
+
+-- freezes the chart and the song without touching playbackRate (animations keep running)
+local function freezeSong()
+
+	frozenPosition = getSongPosition()
+
+	local ok = runHaxeCode([[
+		try
+		{
+			// chart: no spawn, no note movement, no input, no misses, no events
+			game.generatedMusic = false;
+			game.canPause = false;
+
+			// song
+			if (FlxG.sound.music != null)
+				FlxG.sound.music.pause();
+
+			if (game.vocals != null)
+				game.vocals.pause();
+
+			if (game.opponentVocals != null)
+				game.opponentVocals.pause();
+
+			// notes disappear
+			game.notes.visible = false;
+			game.strumLineNotes.visible = false;
+			game.grpNoteSplashes.visible = false;
+
+			return true;
+		}
+		catch (e:Dynamic)
+		{
+			return Std.string(e);
+		}
+	]])
+
+	if DEBUG_FREEZE then
+		debugPrint('freeze result: ' .. tostring(ok) .. ' at ' .. tostring(frozenPosition) .. 'ms')
+	end
+end
+
+-- called every frame after the death: keeps the song and the conductor stopped
+local function keepFrozen()
+
+	if frozenPosition == nil then
+		return
+	end
+
+	-- the conductor never moves (HUD time stays still, no resync can restart the song)
+	setPropertyFromClass('backend.Conductor', 'songPosition', frozenPosition)
+
+	-- safety: if the game resynced and the song started again, pause it again
+	runHaxeCode([[
+		if (FlxG.sound.music != null && FlxG.sound.music.playing)
+			FlxG.sound.music.pause();
+
+		if (game.vocals != null && game.vocals.playing)
+			game.vocals.pause();
+
+		if (game.opponentVocals != null && game.opponentVocals.playing)
+			game.opponentVocals.pause();
+	]])
+end
+
+-- ============================ GAME OVER ============================
 
 -- leaves the song without saving the score and opens GAME_OVER_STATE
 local function goToGameOverState()
@@ -358,11 +522,11 @@ local function goToGameOverState()
 		if (stateClass == null)
 			return false;
 
-		var menuClass = Type.resolveClass('states.DataSelectState');
+		var beatClass = Type.resolveClass('backend.MusicBeatState');
 		var newState = Type.createInstance(stateClass, []);
 
-		if (menuClass != null)
-			Reflect.callMethod(menuClass, Reflect.field(menuClass, 'switchState'), [newState]);
+		if (beatClass != null)
+			Reflect.callMethod(beatClass, Reflect.field(beatClass, 'switchState'), [newState]);
 		else
 			FlxG.switchState(newState);
 
@@ -376,6 +540,162 @@ local function goToGameOverState()
 
 		exitSong()
 	end
+end
+
+-- creates one "GAME" / "OVER" text on the 'other' camera (in front of the black fade)
+local function makeGameOverText(tag, image, startX, targetX)
+
+	makeLuaSprite(tag, image, startX, 300)
+	setProperty(tag .. '.antialiasing', false)
+	scaleObject(tag, 3, 3)
+	setObjectCamera(tag, 'other')
+	addLuaSprite(tag, true)
+	doTweenX(tag, tag, targetX, 0.3)
+end
+
+-- runs after the death animation (the black fade) when the last life was lost:
+-- "GAME" and "OVER" slide in over the black screen and the game over sound plays
+local function startGameOver()
+
+	if gameOverStarted then
+		return
+	end
+
+	gameOverStarted = true
+
+	makeGameOverText('gamee', 'textgame', -280, 280)
+	makeGameOverText('over', 'over', 280 * 3, 280)
+
+	-- the third argument is the sound tag, used by onSoundFinished
+	playSound(GAME_OVER_SOUND, 1, GAME_OVER_SOUND)
+
+	-- needed to know when the sound is almost over
+	gameOverClock = 0
+	lengthAttempts = 0
+
+	if GAME_OVER_SOUND_LENGTH > 0 then
+		gameOverSoundLength = GAME_OVER_SOUND_LENGTH
+	else
+		gameOverSoundLength = getSoundLength(GAME_OVER_SOUND)
+	end
+
+	if DEBUG_GAME_OVER then
+		debugPrint('game over started (sound length = ' .. tostring(gameOverSoundLength) .. 's)')
+	end
+end
+
+-- the game over sound is almost over: texts fade to red, the static fades in and loops
+local function startGameOverEffects()
+
+	if effectsStarted then
+		return
+	end
+
+	effectsStarted = true
+
+	if DEBUG_GAME_OVER then
+		debugPrint('game over effects started')
+	end
+
+	-- GAME / OVER fade to red
+	doTweenColor('gameeRed', 'gamee', RED_COLOR, RED_FADE_TIME, 'linear')
+	doTweenColor('overRed', 'over', RED_COLOR, RED_FADE_TIME, 'linear')
+
+	-- animated static (fades in, covers the screen)
+	makeAnimatedLuaSprite(STATIC_TAG, STATIC_IMAGE, 0, 0)
+	addAnimationByPrefix(STATIC_TAG, STATIC_ANIM, STATIC_PREFIX, STATIC_FPS, true)
+	objectPlayAnimation(STATIC_TAG, STATIC_ANIM, true)
+
+	setObjectCamera(STATIC_TAG, 'other')
+	scaleObject(STATIC_TAG, STATIC_SCALE, STATIC_SCALE)
+
+	setProperty(STATIC_TAG .. '.alpha', 0)
+
+	addLuaSprite(STATIC_TAG, true)
+
+	doTweenAlpha('exeStaticFade', STATIC_TAG, STATIC_MAX_ALPHA, STATIC_FADE_TIME, 'linear')
+
+	-- static sound: loops forever and fades in
+	playSound(STATIC_SOUND, 0, STATIC_SOUND, true)
+	soundFadeIn(STATIC_SOUND, STATIC_FADE_TIME, 0, STATIC_SOUND_VOLUME)
+
+	-- the pitch starts dropping right away
+	pitchTime = 0
+	pitchActive = true
+end
+
+-- the pitch reached 0: silence the slowed sounds, laugh, and end the song after END_DELAY
+local function finishPitchDrop()
+
+	pitchActive = false
+
+	for _, tag in ipairs(PITCH_TAGS) do
+		stopSound(tag)
+	end
+
+	playSound(LAUGH_SOUND, 1, LAUGH_SOUND)
+
+	runTimer('gameOverEnd', END_DELAY)
+
+	if DEBUG_GAME_OVER then
+		debugPrint('pitch reached 0: laugh played, the song ends in ' .. END_DELAY .. 's')
+	end
+end
+
+local function updatePitchDrop(elapsed)
+
+	if not pitchActive then
+		return
+	end
+
+	pitchTime = pitchTime + elapsed
+
+	local pitch = math.max(0, 1 - pitchTime / PITCH_DROP_TIME)
+
+	if pitch <= PITCH_CUTOFF then
+		finishPitchDrop()
+		return
+	end
+
+	for _, tag in ipairs(PITCH_TAGS) do
+		setSoundPitchSafe(tag, pitch)
+	end
+end
+
+local function updateGameOver(elapsed)
+
+	if not gameOverStarted then
+		return
+	end
+
+	gameOverClock = gameOverClock + elapsed
+
+	-- trigger: the game over sound has EFFECTS_START_REMAINING seconds left
+	if not effectsStarted then
+
+		-- length still unknown: keep trying for a short while
+		if gameOverSoundLength <= 0 and lengthAttempts < 30 then
+
+			lengthAttempts = lengthAttempts + 1
+			gameOverSoundLength = getSoundLength(GAME_OVER_SOUND)
+
+			if gameOverSoundLength <= 0 and lengthAttempts == 30 then
+				debugPrint('game over: could not read the length of "' .. GAME_OVER_SOUND .. '". Set GAME_OVER_SOUND_LENGTH (seconds) at the top of the script.')
+			end
+		end
+
+		if gameOverSoundLength > 0 then
+
+			-- own clock, backed up by the real position of the sound (whichever is further)
+			local played = math.max(gameOverClock, (getSoundTime(GAME_OVER_SOUND) or 0) / 1000)
+
+			if gameOverSoundLength - played <= EFFECTS_START_REMAINING then
+				startGameOverEffects()
+			end
+		end
+	end
+
+	updatePitchDrop(elapsed)
 end
 
 -- ============================ CALLBACKS ============================
@@ -400,51 +720,13 @@ function onCreate()
 	setProperty('timeBar.visible', false)
 	setProperty('timeTxt.visible', false)
 
-	makeLuaSprite('score', 'hud/score', 51, 23)
-	setScrollFactor('score', 0, 0)
-	setObjectCamera('score', 'hud')
-	setProperty('score.antialiasing', false)
-	scaleObject('score', 3, 3)
-	addLuaSprite('score', true)
-	setProperty('score.alpha', 1)
-
-	makeLuaSprite('time', 'hud/time', 51, 74)
-	setObjectCamera('time', 'hud')
-	setProperty('time.antialiasing', false)
-	scaleObject('time', 3, 3)
-	addLuaSprite('time', false)
-	setProperty('time.alpha', 1)
-
-	makeLuaSprite('time2', 'hud/time2', 60, 97)
-	setScrollFactor('time2', 0, 0)
-	setObjectCamera('time2', 'hud')
-	setProperty('time2.antialiasing', false)
-	scaleObject('time2', 3, 3)
-	addLuaSprite('time2', false)
-	setProperty('time2.alpha', 0)
+	makeHudSprite('score', 'hud/score', 51, 23, true, 1)
+	makeHudSprite('time', 'hud/time', 51, 74, false, 1)
+	makeHudSprite('time2', 'hud/time2', 60, 97, false, 0)
 	setProperty('time2.visible', false)
-
-	makeLuaSprite('misses', 'hud/misses', 51, 123)
-	setObjectCamera('misses', 'hud')
-	setProperty('misses.antialiasing', false)
-	scaleObject('misses', 3, 3)
-	addLuaSprite('misses', true)
-	setProperty('misses.alpha', 0)
-
-	makeLuaSprite('misses2', 'hud/misses2', 60, 150)
-	setScrollFactor('misses2', 0, 0)
-	setObjectCamera('misses2', 'hud')
-	setProperty('misses2.antialiasing', false)
-	scaleObject('misses2', 3, 3)
-	addLuaSprite('misses2', true)
-	setProperty('misses2.alpha', 0)
-
-	makeLuaSprite('hudlife', 'hud/bf_hud-life', 48, 600)
-	setScrollFactor('hudlife', 0, 0)
-	setObjectCamera('hudlife', 'hud')
-	setProperty('hudlife.antialiasing', false)
-	scaleObject('hudlife', 3, 3)
-	addLuaSprite('hudlife', true)
+	makeHudSprite('misses', 'hud/misses', 51, 123, true, 0)
+	makeHudSprite('misses2', 'hud/misses2', 60, 150, true, 0)
+	makeHudSprite('hudlife', 'hud/bf_hud-life', 48, 600, true)
 end
 
 -- note pieces keep the hold alive; tapped notes spawn a popup
@@ -482,6 +764,12 @@ end
 
 -- runs after the game processed the input of this frame, so the score is already updated
 function onUpdatePost(elapsed)
+
+	-- after death: keep the song/conductor stopped, no hold score or popups
+	if deadStarted then
+		keepFrozen()
+		return
+	end
 
 	-- points rising while a note piece is held
 	if HOLD_SCORE and holdTimer > 0 and not botPlay then
@@ -533,6 +821,9 @@ function onUpdatePost(elapsed)
 end
 
 function onUpdate(elapsed)
+
+	-- game over sequence (red texts, static, pitch drop, laugh)
+	updateGameOver(elapsed)
 
 	setProperty('time2.alpha', getProperty('misses2.alpha'))
 
@@ -617,7 +908,7 @@ function onUpdate(elapsed)
 
 	if m >= 20 and badending == false then
 
-		runTimer('blink1', 0.2) -- note: there is no onTimerCompleted for this timer yet
+		runTimer('blink1', 0.2) -- note: there is no handler for this timer yet
 
 		setProperty('misses.alpha', 0)
 
@@ -682,7 +973,8 @@ function onGameOver()
 
 	setProperty('boyfriend.visible', false)
 
-	setProperty('playbackRate', 0)
+	-- stops the chart and the song, hides the notes (animations keep running)
+	freezeSong()
 
 	playSound('death', 1)
 
@@ -693,10 +985,22 @@ function onGameOver()
 	return Function_Stop
 end
 
--- the game over sound ended: leave the song without saving the score
+-- safety net: if the game over sound ended before the effects started
+-- (for example its length could not be read), start them now
 function onSoundFinished(tag)
 
-	if tag == 'sonicGameOver' then
+	if tag == GAME_OVER_SOUND and gameOverStarted and not effectsStarted then
+
+		debugPrint('game over: the sound ended before the effects started (length unknown). Set GAME_OVER_SOUND_LENGTH at the top of the script.')
+
+		startGameOverEffects()
+	end
+end
+
+-- END_DELAY seconds after the laugh: leave the song without saving the score
+function onTimerCompleted(tag)
+
+	if tag == 'gameOverEnd' then
 		goToGameOverState()
 	end
 end
@@ -714,12 +1018,12 @@ function onTweenCompleted(tag)
 		doTweenY('tailsdeathfall', 'tailsdeath', getProperty('tailsdeath.y') + 1700, 2.75, 'sineIn')
 
 		makeLuaSprite('blackdeath', '', 0, 0)
-		makeGraphic('blackdeath', 1280, 720, '000000')
+		makeGraphic('blackdeath', screenWidth or 1280, screenHeight or 720, '000000')
 		setObjectCamera('blackdeath', 'other')
 		addLuaSprite('blackdeath', true)
 		setProperty('blackdeath.alpha', 0)
 
-		doTweenAlpha('blackdeathFade', 'blackdeath', 1, 1,'linear')
+		doTweenAlpha('blackdeathFade', 'blackdeath', 1, 1, 'linear')
 	end
 
 	if tag == 'blackdeathFade' then

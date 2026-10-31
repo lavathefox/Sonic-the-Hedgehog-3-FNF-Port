@@ -23,7 +23,7 @@ import sys.FileSystem;
 import sys.io.File;
 #end
 
-/** Sprites of the small lives / continues row shown under BF on a used save. */
+/** Sprites of the small lives / continues row shown over BF on a used save. */
 typedef HudSlot =
 {
 	var sprites:Array<FlxSprite>;
@@ -152,18 +152,14 @@ class DataSelectState extends MusicBeatState
 	var bfOtherOffsetX:Float = 0;
 	var bfOtherOffsetY:Float = 0;
 
-	// ---- HUD under BF on used saves (lives / continues) ----
-	/** X of the HUD row, relative to the save slot (same as BF by default). */
-	var hudX:Float = 22;
+	// ---- HUD over BF on the selected used save (lives / continues) ----
+	// It uses the same X and Y as BF on that save (bfX / bfY), plus hudOffsetY.
 
-	/** Extra Y added to the HUD row. */
+	/** Extra Y added to the BF position. */
 	var hudOffsetY:Float = 8;
 
-	/**
-	 * true  = the row is placed BELOW BF (bfY + BF height + hudOffsetY).
-	 * false = the row is placed at bfY + hudOffsetY (it overlaps BF).
-	 */
-	var hudBelowBf:Bool = true;
+	/** true = only the selected save shows the HUD. false = every used save shows it. */
+	var hudOnlySelected:Bool = true;
 
 	/** Space between the icon / colon / digits. */
 	var hudGap:Float = 1;
@@ -171,9 +167,6 @@ class DataSelectState extends MusicBeatState
 
 	/** Space between the lives group and the continues group. */
 	var hudGroupGap:Float = 6;
-
-	/** Calculated after BF is created: Y of the HUD row, relative to the save slot. */
-	var hudRelY:Float = 0;
 
 	/** Number of continues (only 0 for now). */
 	var continuesValue:Int = 0;
@@ -319,6 +312,9 @@ class DataSelectState extends MusicBeatState
 
 		createArrow();
 		createBfDataSelect();
+
+		// Created after BF so the HUD is drawn on top of him
+		createHuds();
 
 		updateSelection(true);
 		layoutSlots();
@@ -590,6 +586,24 @@ class DataSelectState extends MusicBeatState
 		};
 	}
 
+	/** Creates the HUD row of every real save (null on the otherSave slots). Call it after BF is added. */
+	function createHuds():Void
+	{
+		huds = [];
+
+		for (i in 0...TOTAL_SLOTS)
+		{
+			if (isSpecialSlot(i))
+			{
+				huds.push(null);
+				continue;
+			}
+
+			huds.push(createHud());
+			refreshHud(i);
+		}
+	}
+
 	/** Sets the digits and the X of every sprite of the HUD row of one save. */
 	function refreshHud(index:Int):Void
 	{
@@ -667,7 +681,6 @@ class DataSelectState extends MusicBeatState
 
 				portraits.push(null);
 				statics.push(null);
-				huds.push(null);
 
 				if (isOtherSave(i))
 				{
@@ -719,10 +732,6 @@ class DataSelectState extends MusicBeatState
 
 			add(staticSprite);
 			statics.push(staticSprite);
-
-			// Lives / continues row (only visible when the save is used)
-			huds.push(createHud());
-			refreshHud(i);
 		}
 	}
 
@@ -868,9 +877,6 @@ class DataSelectState extends MusicBeatState
 		bfDataSelect.animation.play('idle', true);
 
 		add(bfDataSelect);
-
-		// Y of the lives / continues row, relative to the save slot (measured with the idle frame)
-		hudRelY = bfY + (hudBelowBf ? bfDataSelect.height : 0) + hudOffsetY;
 	}
 
 	/**
@@ -1065,16 +1071,22 @@ class DataSelectState extends MusicBeatState
 				var staticInside:Bool = clipToWindow(statics[i]);
 				statics[i].visible = saveUsed[i] && !selected && staticInside;
 
-				// Lives / continues row: follows the slot (and its lift) while the save is used
+				// Lives / continues row: same X and Y as BF on this save, +hudOffsetY.
+				// Hidden in delete mode (Eggman takes BF's place) and during the secret sequence.
 				var hud:HudSlot = huds[i];
 
-				for (k in 0...hud.sprites.length)
+				if (hud != null)
 				{
-					var s:FlxSprite = hud.sprites[k];
+					var showHud:Bool = saveUsed[i] && !deleteMode && !secretActive && (!hudOnlySelected || selected);
 
-					s.x = x + hudX + hud.relX[k];
-					s.y = saves[i].y + hudRelY;
-					s.visible = saveUsed[i] && hud.shown[k] && clipToWindow(s);
+					for (k in 0...hud.sprites.length)
+					{
+						var s:FlxSprite = hud.sprites[k];
+
+						s.x = x + bfX + hud.relX[k];
+						s.y = savePos[i][1] + bfY + hudOffsetY;
+						s.visible = showHud && hud.shown[k] && clipToWindow(s);
+					}
 				}
 			}
 		}

@@ -215,6 +215,16 @@ class DataSelectState extends MusicBeatState
 	var eggCenterOffsetX:Float = 0;
 	var eggCenterOffsetY:Float = 0;
 
+	/**
+	 * Extra X offset of Eggman relative to the arrow while he follows it in delete mode
+	 * (0 = exactly the same X as the dataselectarrow / dataSelectArrowLarge).
+	 */
+	var eggArrowOffsetX:Float = 0;
+
+	/** 0 = Eggman centered on the Delete slot, 1 = Eggman at the X of the arrow. Animated. */
+	var eggBlend:Float = 0;
+	var eggBlendTween:FlxTween;
+
 	/** Seconds between the end of one eggSelect and the start of the next one. */
 	var eggSelectDelay:Float = 0.4;
 
@@ -350,6 +360,25 @@ class DataSelectState extends MusicBeatState
 			1,
 			true
 		);
+	}
+
+	// =====================================================================
+	//  Input helpers (keyboard / controls + mobile buttons)
+	// =====================================================================
+
+	inline function leftPressed():Bool
+	{
+		return controls.UI_LEFT_P || MobileControls.leftJustPressed;
+	}
+
+	inline function rightPressed():Bool
+	{
+		return controls.UI_RIGHT_P || MobileControls.rightJustPressed;
+	}
+
+	inline function acceptPressed():Bool
+	{
+		return controls.ACCEPT || MobileControls.aJustPressed;
 	}
 
 	// =====================================================================
@@ -1188,11 +1217,21 @@ class DataSelectState extends MusicBeatState
 			deleteText.visible = clipToWindow(deleteText);
 		}
 
-		// Eggman: in the middle of the Delete slot. In delete mode his position is NOT touched:
-		// he keeps the same x and y while the cursor moves over the normal saves.
+		// Eggman: centered on the Delete slot. In delete mode, while the cursor is over the normal
+		// saves, he slides to the X of the arrow (eggBlend 0 -> 1) and stays there. Cancelling or
+		// leaving delete mode slides him back to the Delete slot (eggBlend 1 -> 0).
 		if (eggman != null)
 		{
-			if (deleteMode)
+			var last:Int = TOTAL_SLOTS - 1;
+
+			var homeX:Float = saves[last].x + (saves[last].width - eggman.width) / 2 + eggCenterOffsetX;
+			var followX:Float = (arrow != null) ? arrow.x + eggArrowOffsetX : homeX;
+
+			eggman.x = homeX + (followX - homeX) * eggBlend;
+			eggman.y = saves[last].y + (saves[last].height - eggman.height) / 2 + eggCenterOffsetY;
+
+			// In delete mode (or while sliding back) he is not cropped by the window
+			if (deleteMode || eggBlend > 0)
 			{
 				if (eggman.clipRect != null)
 					eggman.clipRect = null;
@@ -1201,10 +1240,6 @@ class DataSelectState extends MusicBeatState
 			}
 			else
 			{
-				var last:Int = TOTAL_SLOTS - 1;
-
-				eggman.x = saves[last].x + (saves[last].width - eggman.width) / 2 + eggCenterOffsetX;
-				eggman.y = saves[last].y + (saves[last].height - eggman.height) / 2 + eggCenterOffsetY;
 				eggman.visible = clipToWindow(eggman);
 			}
 		}
@@ -1233,11 +1268,45 @@ class DataSelectState extends MusicBeatState
 		return true;
 	}
 
+	/** Tweens only the Y of a sprite (cancels any previous tween of it, so they never stack). */
+	function tweenY(obj:FlxSprite, y:Float):Void
+	{
+		FlxTween.cancelTweensOf(obj);
+		FlxTween.tween(obj, {y: y}, moveTime, {ease: FlxEase.quadOut});
+	}
+
+	/**
+	 * Eggman follows the X of the arrow only in delete mode and only while the cursor is on the
+	 * normal saves. Everywhere else (not in delete mode, or cursor back on the Delete slot) he
+	 * goes back to the center of the Delete slot.
+	 */
+	function updateEggFollow():Void
+	{
+		var target:Float = (deleteMode && !isDeleteSlot(selection - 1)) ? 1 : 0;
+
+		if (eggBlendTween != null)
+			eggBlendTween.cancel();
+
+		eggBlendTween = FlxTween.num(
+			eggBlend,
+			target,
+			moveTime,
+			{ease: FlxEase.quadOut},
+			function(value:Float)
+			{
+				eggBlend = value;
+			}
+		);
+	}
+
 	function moveCursor():Void
 	{
 		var index:Int = selection - 1;
 
 		isMoving = true;
+
+		// Eggman slides to the arrow's X (or back to the Delete slot)
+		updateEggFollow();
 
 		// If the selection reached the edge of the window, the slots slide instead of the cursor.
 		if (updateScrollTarget())
@@ -1247,6 +1316,9 @@ class DataSelectState extends MusicBeatState
 		applyArrowGraphic(index);
 
 		updateBfVisibility();
+
+		FlxTween.cancelTweensOf(arrow);
+		FlxTween.cancelTweensOf(bfDataSelect);
 
 		FlxTween.tween(
 			arrow,
@@ -1259,8 +1331,6 @@ class DataSelectState extends MusicBeatState
 				ease: FlxEase.quadOut
 			}
 		);
-
-		// Eggman does NOT follow the cursor: in delete mode he stays where he is.
 
 		// BF goes to the center of the otherSave, or back to the normal spot on the real saves
 		FlxTween.tween(
@@ -1306,40 +1376,12 @@ class DataSelectState extends MusicBeatState
 			}
 			else
 			{
-				FlxTween.tween(
-					saves[i],
-					{
-						y: y
-					},
-					moveTime,
-					{
-						ease: FlxEase.quadOut
-					}
-				);
+				tweenY(saves[i], y);
 
 				if (portraits[i] != null)
 				{
-					FlxTween.tween(
-						portraits[i],
-						{
-							y: y + portraitOffsetY()
-						},
-						moveTime,
-						{
-							ease: FlxEase.quadOut
-						}
-					);
-
-					FlxTween.tween(
-						statics[i],
-						{
-							y: y + portraitOffsetY()
-						},
-						moveTime,
-						{
-							ease: FlxEase.quadOut
-						}
-					);
+					tweenY(portraits[i], y + portraitOffsetY());
+					tweenY(statics[i], y + portraitOffsetY());
 				}
 			}
 		}
@@ -1516,8 +1558,8 @@ class DataSelectState extends MusicBeatState
 
 		cancelEggTimer();
 		updateBfVisibility();
+		updateEggFollow();
 
-		// In delete mode Eggman keeps his current x and y (see layoutSlots)
 		if (deleteMode)
 			eggSelectCycle();
 		else
@@ -1526,7 +1568,7 @@ class DataSelectState extends MusicBeatState
 
 	/**
 	 * ENTER on a save in delete mode: only used saves can be deleted.
-	 * Eggman stays where he is, plays eggDelete and waits for LEFT / RIGHT.
+	 * Eggman stays at the arrow's X, plays eggDelete and waits for LEFT / RIGHT.
 	 */
 	function requestDelete(index:Int):Void
 	{
@@ -1561,16 +1603,26 @@ class DataSelectState extends MusicBeatState
 		eggSelectCycle();
 	}
 
-	/** RIGHT while waiting: does NOT delete, Eggman goes back to the eggSelect loop (same place). */
+	/**
+	 * RIGHT while waiting: does NOT delete. Cancels everything: delete mode ends and Eggman
+	 * slides back to his original X on the Delete slot.
+	 * (To only cancel the deletion and stay in delete mode, replace the body with:
+	 *  deleteConfirm = false; ...play sound...; eggSelectCycle();)
+	 */
 	function cancelDelete():Void
 	{
 		deleteConfirm = false;
+		deleteMode = false;
+
+		cancelEggTimer();
+		updateBfVisibility();
+		updateEggFollow(); // eggBlend -> 0: back to the Delete slot
 
 		FlxG.sound.play(
 			Paths.sound('dataselectswitch')
 		);
 
-		eggSelectCycle();
+		playEgg('idle');
 	}
 
 	// =====================================================================
@@ -2069,24 +2121,24 @@ class DataSelectState extends MusicBeatState
 		// Waiting for the answer after eggDelete: LEFT = delete the save, RIGHT = do not delete
 		if (deleteConfirm)
 		{
-			if (FlxG.keys.justPressed.LEFT || MobileControls.leftJustPressed)
+			if (leftPressed())
 				acceptDelete();
-			else if (FlxG.keys.justPressed.RIGHT || MobileControls.rightJustPressed)
+			else if (rightPressed())
 				cancelDelete();
 
 			return;
 		}
 
-		if (FlxG.keys.justPressed.LEFT || MobileControls.leftJustPressed)
+		if (leftPressed())
 		{
 			selectPrevious();
 		}
-		else if (FlxG.keys.justPressed.RIGHT || MobileControls.rightJustPressed)
+		else if (rightPressed())
 		{
 			selectNext();
 		}
 
-		if (FlxG.keys.justPressed.ENTER || MobileControls.aJustPressed)
+		if (acceptPressed())
 			confirmSelection();
 	}
 
@@ -2104,6 +2156,18 @@ class DataSelectState extends MusicBeatState
 			scrollTween.cancel();
 			scrollTween = null;
 		}
+
+		if (eggBlendTween != null)
+		{
+			eggBlendTween.cancel();
+			eggBlendTween = null;
+		}
+
+		if (arrow != null)
+			FlxTween.cancelTweensOf(arrow);
+
+		if (bfDataSelect != null)
+			FlxTween.cancelTweensOf(bfDataSelect);
 
 		#if android
 		if (MobileControls.isAttachedTo(this))

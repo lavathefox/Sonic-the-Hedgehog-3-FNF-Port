@@ -160,10 +160,10 @@ class DataSelectState extends MusicBeatState
 	// X starts at BF's X (bfX). Y starts at BF's Y (bfY) plus the offsets below.
 
 	/** Lives row (placeholderIcon, colon, lives digits): Y offset from BF's Y. */
-	var hudLivesOffsetY:Float = 45;
+	var hudLivesOffsetY:Float = 50;
 
 	/** Continues row (placeholderContinueIcon + number): extra Y below the lives row. */
-	var hudContinueOffsetY:Float = 5;
+	var hudContinueOffsetY:Float = 17;
 
 	/** false = every used save shows the HUD (selected or not). true = only the selected save. */
 	var hudOnlySelected:Bool = false;

@@ -21,6 +21,11 @@ import states.TitleState;
   public var mobileControlsSize:Int = 1; // 0 = small, 1 = medium, 2 = large
   public var mobileLeftHanded:Bool = false;
   public var mobileBrightness:Int = 0; // 0 = automatic
+	public var mobileTouchCursorSize:Int = 1;
+    public var mobileVibrateOnMiss:Bool = false;
+    public var mobileSwapAB:Bool = false;
+    public var mobileImmersive:Bool = true;
+    public var mobileBatterySaver:Bool = false;
 	public var downScroll:Bool = false;
 	public var middleScroll:Bool = false;
 	public var opponentStrums:Bool = true;

@@ -7,6 +7,7 @@ import flixel.tweens.FlxEase;
 import flixel.util.FlxTimer;
 import flixel.util.FlxColor;
 
+import backend.ClientPrefs;
 import backend.MusicBeatState;
 import backend.Paths;
 import backend.MobileControls;
@@ -19,7 +20,8 @@ import backend.Discord;
 
 class Sonic3TitleStateV2 extends MusicBeatState
 {
-	var LANGUAGE:String = 'PORTUGUESE';
+	// Current language: 'ENGLISH', 'PORTUGUESE' or 'ESPANOL'. Read from the saved options in create().
+	var LANGUAGE:String = 'ENGLISH';
 
 	var canPressStart:Bool = false;
 	var selectedStart:Bool = false;
@@ -30,19 +32,21 @@ class Sonic3TitleStateV2 extends MusicBeatState
 	var PLAYER_Y:Float = 196;
 	var OPTIONS_Y:Float = 206;
 
+	// ---- Time of day (minutes since midnight) ----
+	static inline var DAWN_START:Int = 330; // 05:30
+	static inline var DAY_START:Int = 360; // 06:00
+	static inline var SUNSET_START:Int = 1050; // 17:30
+	static inline var NIGHT_START:Int = 1110; // 18:30
+
+	// The base layer is always drawn; the others are shown one at a time depending on the time.
 	var titleBg:FlxSprite;
 	var titleBgDay:FlxSprite;
 	var titleBgSunset:FlxSprite;
-	var titleBgNight:FlxSprite;
+	var titleBgNight:FlxSprite; // full moon
 	var titleBgDawn:FlxSprite;
 
-	var titleBgNightNew:FlxSprite;
-	var titleBgNightCrescent:FlxSprite;
-	var titleBgNightQuarter:FlxSprite;
-	var titleBgNightWaxingGibbous:FlxSprite;
-	var titleBgNightLastQuarter:FlxSprite;
-	var titleBgNightWaningCrescent:FlxSprite;
-	var titleBgNightWaningGibbous:FlxSprite;
+	// Night backgrounds by moon phase, found by name (see getMoonBackground).
+	var moonBackgrounds:Map<String, FlxSprite> = new Map();
 
 	var sonic:FlxSprite;
 	var title:FlxSprite;
@@ -59,12 +63,13 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 	// ---- Logo drop (tweak these numbers to change the animation) ----
 	// Positions are in game pixels; the screen is 320x224.
-	static inline var LOGO_APEX_Y:Float = -27;            // highest point, reached at the end of the entrance
-	static inline var LOGO_REST_Y:Float = -3;             // where the logo comes to rest
-	static inline var LOGO_GRAVITY:Float = 0.21875;       // pixels per frame squared, like a 60 Hz console
-	static inline var LOGO_BOUNCE_DAMPING:Float = 0.45;   // speed kept after each bounce (0 = no bounce)
-	static inline var LOGO_MIN_BOUNCE_SPEED:Float = 0.5;  // below this speed the logo stops bouncing
-	static inline var LOGO_STEP:Float = 1 / 60;           // the drop is simulated in 60 Hz steps
+	static inline var LOGO_APEX_Y:Float = -27; // highest point, reached at the end of the entrance
+	static inline var LOGO_REST_Y:Float = -3; // where the logo comes to rest
+	static inline var LOGO_GRAVITY:Float = 0.21875; // pixels per frame squared, like a 60 Hz console
+	static inline var LOGO_BOUNCE_DAMPING:Float = 0.45; // speed kept after each bounce (0 = no bounce)
+	static inline var LOGO_MIN_BOUNCE_SPEED:Float = 0.5; // below this speed the logo stops bouncing
+	static inline var LOGO_STEP:Float = 1 / 60; // the drop is simulated in 60 Hz steps
+	static inline var LOGO_MAX_ELAPSED:Float = 0.1; // a long frame never makes the drop run too many steps
 
 	var logoFalling:Bool = false;
 	var logoY:Float = 0;
@@ -75,9 +80,11 @@ class Sonic3TitleStateV2 extends MusicBeatState
 	{
 		super.create();
 
+		LANGUAGE = getCurrentLanguage();
+
 		#if DISCORD_ALLOWED
 		DiscordClient.changePresence(
-			'In the Title Screen',
+			tr('In the Title Screen', 'Na Tela de Título', 'En la Pantalla de Título'),
 			'Sonic the Hedgehog 3 FNF Port'
 		);
 		#end
@@ -94,8 +101,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		setupVisibility();
 		setupTimeBackground();
 
-		FlxG.camera.pixelPerfectRender = true;
-
 		FlxG.sound.play(Paths.sound('segaOpening'));
 
 		#if android
@@ -104,23 +109,8 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		MobileControls.setVisible(false);
 		#end
 
-		FlxTween.tween(
-			blueFade,
-			{alpha: 0},
-			0.6,
-			{
-				ease: FlxEase.sineOut
-			}
-		);
-
-		FlxTween.tween(
-			blackFade,
-			{alpha: 0},
-			0.5,
-			{
-				ease: FlxEase.sineOut
-			}
-		);
+		FlxTween.tween(blueFade, {alpha: 0}, 0.6, {ease: FlxEase.sineOut});
+		FlxTween.tween(blackFade, {alpha: 0}, 0.5, {ease: FlxEase.sineOut});
 
 		new FlxTimer().start(2.9, function(timer:FlxTimer)
 		{
@@ -128,240 +118,39 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		});
 	}
 
-	function createBackgrounds():Void
+	// ---- Language ----
+
+	function getCurrentLanguage():String
 	{
-		titleBg = createAnimatedSprite(
-			'titlescreen3/titleBg',
-			'titleIdle',
-			12,
-			true
-		);
+		var language:String = StringTools.trim(Std.string(ClientPrefs.data.language).toUpperCase());
 
-		titleBgDay = createAnimatedSprite(
-			'titlescreen3/titleBg',
-			'titleIdle',
-			12,
-			true
-		);
+		switch (language)
+		{
+			case 'PORTUGUESE', 'PORTUGUES', 'PORTUGUÊS', 'PTBR', 'PT-BR', 'PT_BR', 'BRAZILIAN PORTUGUESE':
+				return 'PORTUGUESE';
 
-		titleBgSunset = createAnimatedSprite(
-			'titlescreen3/titleBgSunset',
-			'titleIdle',
-			12,
-			true
-		);
+			case 'ESPANOL', 'ESPAÑOL', 'SPANISH', 'ES', 'ES-ES', 'ES_ES':
+				return 'ESPANOL';
 
-		titleBgNight = createAnimatedSprite(
-			'titlescreen3/titleBgNight',
-			'titleIdle',
-			12,
-			true
-		);
-
-		titleBgDawn = createAnimatedSprite(
-			'titlescreen3/titleBgDawn',
-			'titleIdle',
-			12,
-			true
-		);
-
-		titleBgNightNew = createAnimatedSprite(
-			'titlescreen3/titleBgNightNew',
-			'titleBg',
-			12,
-			true
-		);
-
-		titleBgNightCrescent = createAnimatedSprite(
-			'titlescreen3/titleBgNightCrescent',
-			'titleBg',
-			12,
-			true
-		);
-
-		titleBgNightQuarter = createAnimatedSprite(
-			'titlescreen3/titleBgNightQuarter',
-			'titleBg',
-			12,
-			true
-		);
-
-		titleBgNightWaxingGibbous = createAnimatedSprite(
-			'titlescreen3/titleBgNightWaxingGibbous',
-			'titleIdle',
-			12,
-			true
-		);
-
-		titleBgNightLastQuarter = createAnimatedSprite(
-			'titlescreen3/titleBgNightLastQuarter',
-			'titleIdle',
-			12,
-			true
-		);
-
-		titleBgNightWaningCrescent = createAnimatedSprite(
-			'titlescreen3/titleBgNightWaningCrescent',
-			'titleIdle',
-			12,
-			true
-		);
-
-		titleBgNightWaningGibbous = createAnimatedSprite(
-			'titlescreen3/titleBgNightWaningGibbous',
-			'titleIdle',
-			12,
-			true
-		);
-
-		add(titleBg);
-		add(titleBgDay);
-		add(titleBgSunset);
-		add(titleBgNight);
-		add(titleBgDawn);
-
-		add(titleBgNightNew);
-		add(titleBgNightCrescent);
-		add(titleBgNightQuarter);
-		add(titleBgNightWaxingGibbous);
-		add(titleBgNightLastQuarter);
-		add(titleBgNightWaningCrescent);
-		add(titleBgNightWaningGibbous);
+			default:
+				return 'ENGLISH';
+		}
 	}
 
-	function createAnimatedSprite(path:String, prefix:String, fps:Int, loop:Bool):FlxSprite
+	/** Picks the text for the current language. */
+	function tr(en:String, pt:String, es:String):String
 	{
-		var sprite:FlxSprite = new FlxSprite(0, 0);
+		switch (LANGUAGE)
+		{
+			case 'PORTUGUESE':
+				return pt;
 
-		sprite.frames = Paths.getSparrowAtlas(path);
+			case 'ESPANOL':
+				return es;
 
-		sprite.animation.addByPrefix(
-			'idle',
-			prefix,
-			fps,
-			loop
-		);
-
-		sprite.animation.play('idle');
-		sprite.antialiasing = false;
-
-		return sprite;
-	}
-
-	function createSprites():Void
-	{
-		sonic = new FlxSprite(0, -7);
-
-		sonic.frames = Paths.getSparrowAtlas(
-			'titlescreen3/sonicTitleScreen'
-		);
-
-		sonic.animation.addByPrefix(
-			'finger',
-			'sonicFinger',
-			12,
-			true
-		);
-
-		sonic.animation.addByPrefix(
-			'wink',
-			'sonicWink',
-			12,
-			false
-		);
-
-		sonic.animation.play('finger');
-
-		add(sonic);
-
-		title = new FlxSprite(0, 260);
-
-		title.loadGraphic(
-			Paths.image('titlescreen3/FNFPortTitle')
-		);
-
-		title.antialiasing = false;
-
-		add(title);
-
-		copyright = new FlxSprite(0, 7);
-
-		copyright.loadGraphic(
-			Paths.image('titlescreen3/copyright')
-		);
-
-		copyright.antialiasing = false;
-
-		add(copyright);
-
-		selectedIcon = new FlxSprite(80, PLAYER_Y);
-
-		selectedIcon.loadGraphic(
-			Paths.image('titlescreen3/selectedIcon')
-		);
-
-		selectedIcon.antialiasing = false;
-
-		add(selectedIcon);
-
-		createPlayerSprite();
-		createOptionsSprite();
-	}
-
-	function createPlayerSprite():Void
-	{
-		player = new FlxSprite(108, PLAYER_Y);
-
-		player.frames = Paths.getSparrowAtlas(
-			getPlayerLanguageSprite()
-		);
-
-		player.animation.addByPrefix(
-			'idle',
-			'1PlayerNot',
-			12,
-			true
-		);
-
-		player.animation.addByPrefix(
-			'select',
-			'1PlayerSelect',
-			24,
-			false
-		);
-
-		player.animation.play('select');
-		player.antialiasing = false;
-
-		add(player);
-	}
-
-	function createOptionsSprite():Void
-	{
-		options = new FlxSprite(108, OPTIONS_Y);
-
-		options.frames = Paths.getSparrowAtlas(
-			getOptionsLanguageSprite()
-		);
-
-		options.animation.addByPrefix(
-			'idle',
-			'OptionsNot',
-			12,
-			true
-		);
-
-		options.animation.addByPrefix(
-			'select',
-			'OptionsSelect',
-			24,
-			false
-		);
-
-		options.animation.play('idle');
-		options.antialiasing = false;
-
-		add(options);
+			default:
+				return en;
+		}
 	}
 
 	function getPlayerLanguageSprite():String
@@ -394,145 +183,175 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		}
 	}
 
-	function setLanguage(language:String):Void
+	/** Changes the language while the title is open (for example if a language menu is added here later). */
+	public function setLanguage(language:String):Void
 	{
-		if (language != 'PORTUGUESE'
-			&& language != 'ENGLISH'
-			&& language != 'ESPANOL')
-		{
+		if (language != 'PORTUGUESE' && language != 'ENGLISH' && language != 'ESPANOL')
 			return;
-		}
 
 		LANGUAGE = language;
 
-		var playerX:Float = player.x;
-		var playerY:Float = player.y;
-		var playerAlpha:Float = player.alpha;
-		var playerVisible:Bool = player.visible;
+		var newPlayer:FlxSprite = createMenuSprite(player.x, player.y, getPlayerLanguageSprite(), '1PlayerNot', '1PlayerSelect');
+		newPlayer.animation.play(menuSelection == 1 ? 'select' : 'idle');
+		replaceMenuSprite(player, newPlayer);
+		player = newPlayer;
 
-		remove(player, true);
+		var newOptions:FlxSprite = createMenuSprite(options.x, options.y, getOptionsLanguageSprite(), 'OptionsNot', 'OptionsSelect');
+		newOptions.animation.play(menuSelection == 2 ? 'select' : 'idle');
+		replaceMenuSprite(options, newOptions);
+		options = newOptions;
+	}
 
-		player = new FlxSprite(playerX, playerY);
+	// ---- Sprites ----
 
-		player.frames = Paths.getSparrowAtlas(
-			getPlayerLanguageSprite()
-		);
+	function addBackground(path:String, prefix:String):FlxSprite
+	{
+		var sprite:FlxSprite = createAnimatedSprite(path, prefix, 12, true);
+		sprite.visible = false;
+		add(sprite);
+		return sprite;
+	}
 
-		player.animation.addByPrefix(
-			'idle',
-			'1PlayerNot',
-			12,
-			true
-		);
+	function addMoonBackground(name:String, prefix:String):FlxSprite
+	{
+		var sprite:FlxSprite = addBackground('titlescreen3/' + name, prefix);
+		moonBackgrounds.set(name, sprite);
+		return sprite;
+	}
 
-		player.animation.addByPrefix(
-			'select',
-			'1PlayerSelect',
-			24,
-			false
-		);
+	function createBackgrounds():Void
+	{
+		// The order matters: later sprites are drawn on top of earlier ones.
+		titleBg = addBackground('titlescreen3/titleBg', 'titleIdle');
+		titleBg.visible = true;
 
-		player.animation.play(
-			menuSelection == 1 ? 'select' : 'idle'
-		);
+		titleBgDay = addBackground('titlescreen3/titleBg', 'titleIdle');
+		titleBgSunset = addBackground('titlescreen3/titleBgSunset', 'titleIdle');
+		titleBgNight = addMoonBackground('titleBgNight', 'titleIdle');
+		titleBgDawn = addBackground('titlescreen3/titleBgDawn', 'titleIdle');
 
-		player.alpha = playerAlpha;
-		player.visible = playerVisible;
-		player.antialiasing = false;
+		addMoonBackground('titleBgNightNew', 'titleBg');
+		addMoonBackground('titleBgNightCrescent', 'titleBg');
+		addMoonBackground('titleBgNightQuarter', 'titleBg');
+		addMoonBackground('titleBgNightWaxingGibbous', 'titleIdle');
+		addMoonBackground('titleBgNightLastQuarter', 'titleIdle');
+		addMoonBackground('titleBgNightWaningCrescent', 'titleIdle');
+		addMoonBackground('titleBgNightWaningGibbous', 'titleIdle');
+	}
 
+	function createAnimatedSprite(path:String, prefix:String, fps:Int, loop:Bool):FlxSprite
+	{
+		var sprite:FlxSprite = new FlxSprite(0, 0);
+
+		sprite.frames = Paths.getSparrowAtlas(path);
+		sprite.animation.addByPrefix('idle', prefix, fps, loop);
+		sprite.animation.play('idle');
+		sprite.antialiasing = false;
+
+		return sprite;
+	}
+
+	function createSprites():Void
+	{
+		sonic = new FlxSprite(0, -7);
+		sonic.frames = Paths.getSparrowAtlas('titlescreen3/sonicTitleScreen');
+		sonic.animation.addByPrefix('finger', 'sonicFinger', 12, true);
+		sonic.animation.addByPrefix('wink', 'sonicWink', 12, false);
+		sonic.animation.play('finger');
+		add(sonic);
+
+		title = new FlxSprite(0, 260);
+		title.loadGraphic(Paths.image('titlescreen3/FNFPortTitle'));
+		title.antialiasing = false;
+		add(title);
+
+		copyright = new FlxSprite(0, 7);
+		copyright.loadGraphic(Paths.image('titlescreen3/copyright'));
+		copyright.antialiasing = false;
+		add(copyright);
+
+		selectedIcon = new FlxSprite(80, PLAYER_Y);
+		selectedIcon.loadGraphic(Paths.image('titlescreen3/selectedIcon'));
+		selectedIcon.antialiasing = false;
+		add(selectedIcon);
+
+		createPlayerSprite();
+		createOptionsSprite();
+	}
+
+	/** A menu entry ("1 PLAYER" / "OPTIONS") with an idle and a select animation. */
+	function createMenuSprite(x:Float, y:Float, path:String, idlePrefix:String, selectPrefix:String):FlxSprite
+	{
+		var sprite:FlxSprite = new FlxSprite(x, y);
+
+		sprite.frames = Paths.getSparrowAtlas(path);
+		sprite.animation.addByPrefix('idle', idlePrefix, 12, true);
+		sprite.animation.addByPrefix('select', selectPrefix, 24, false);
+		sprite.antialiasing = false;
+
+		return sprite;
+	}
+
+	/** Puts the new sprite where the old one was in the draw order, so it never ends up above the fades. */
+	function replaceMenuSprite(oldSprite:FlxSprite, newSprite:FlxSprite):Void
+	{
+		newSprite.alpha = oldSprite.alpha;
+		newSprite.visible = oldSprite.visible;
+
+		var index:Int = members.indexOf(oldSprite);
+
+		if (index >= 0)
+			insert(index, newSprite);
+		else
+			add(newSprite);
+
+		remove(oldSprite, true);
+		oldSprite.destroy();
+	}
+
+	function createPlayerSprite():Void
+	{
+		player = createMenuSprite(108, PLAYER_Y, getPlayerLanguageSprite(), '1PlayerNot', '1PlayerSelect');
+		player.animation.play('select');
 		add(player);
+	}
 
-		var optionsX:Float = options.x;
-		var optionsY:Float = options.y;
-		var optionsAlpha:Float = options.alpha;
-		var optionsVisible:Bool = options.visible;
-
-		remove(options, true);
-
-		options = new FlxSprite(optionsX, optionsY);
-
-		options.frames = Paths.getSparrowAtlas(
-			getOptionsLanguageSprite()
-		);
-
-		options.animation.addByPrefix(
-			'idle',
-			'OptionsNot',
-			12,
-			true
-		);
-
-		options.animation.addByPrefix(
-			'select',
-			'OptionsSelect',
-			24,
-			false
-		);
-
-		options.animation.play(
-			menuSelection == 2 ? 'select' : 'idle'
-		);
-
-		options.alpha = optionsAlpha;
-		options.visible = optionsVisible;
-		options.antialiasing = false;
-
+	function createOptionsSprite():Void
+	{
+		options = createMenuSprite(108, OPTIONS_Y, getOptionsLanguageSprite(), 'OptionsNot', 'OptionsSelect');
+		options.animation.play('idle');
 		add(options);
 	}
 
 	function createFades():Void
 	{
 		blueFade = new FlxSprite(0, 0);
-
-		blueFade.makeGraphic(
-			FlxG.width,
-			FlxG.height,
-			FlxColor.fromRGB(0, 38, 255)
-		);
-
+		blueFade.makeGraphic(FlxG.width, FlxG.height, FlxColor.fromRGB(0, 38, 255));
 		blueFade.scrollFactor.set();
 		blueFade.cameras = [FlxG.camera];
-
 		add(blueFade);
 
 		blackFade = new FlxSprite(0, 0);
-
-		blackFade.makeGraphic(
-			FlxG.width,
-			FlxG.height,
-			FlxColor.BLACK
-		);
-
+		blackFade.makeGraphic(FlxG.width, FlxG.height, FlxColor.BLACK);
 		blackFade.scrollFactor.set();
 		blackFade.cameras = [FlxG.camera];
-
 		add(blackFade);
 	}
 
 	function createSegaIntro():Void
 	{
 		segaIntro = new FlxSprite(0, 0);
-
-		segaIntro.frames = Paths.getSparrowAtlas(
-			'titlescreen3/segaIntro'
-		);
-
-		segaIntro.animation.addByPrefix(
-			'intro',
-			'segaIntro',
-			10,
-			false
-		);
-
+		segaIntro.frames = Paths.getSparrowAtlas('titlescreen3/segaIntro');
+		segaIntro.animation.addByPrefix('intro', 'segaIntro', 10, false);
 		segaIntro.animation.play('intro');
 		segaIntro.animation.pause();
 		segaIntro.antialiasing = false;
-
 		add(segaIntro);
 	}
 
 	function setupVisibility():Void
 	{
+		// Every background except the base layer starts hidden (see addBackground).
 		titleBg.alpha = 0;
 		title.alpha = 0;
 		sonic.alpha = 0;
@@ -541,51 +360,29 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		selectedIcon.alpha = 0;
 		copyright.alpha = 0;
 
-		titleBgDay.visible = false;
-		titleBgSunset.visible = false;
-		titleBgDawn.visible = false;
-
-		titleBgNightNew.visible = false;
-		titleBgNightCrescent.visible = false;
-		titleBgNightQuarter.visible = false;
-		titleBgNight.visible = false;
-		titleBgNightWaxingGibbous.visible = false;
-		titleBgNightWaningGibbous.visible = false;
-		titleBgNightLastQuarter.visible = false;
-		titleBgNightWaningCrescent.visible = false;
-
 		segaIntro.alpha = 1;
 		blueFade.alpha = 1;
 		blackFade.alpha = 1;
 	}
 
+	// ---- Background by time of day ----
+
 	function setupTimeBackground():Void
 	{
 		var now:Date = Date.now();
+		var total:Int = now.getHours() * 60 + now.getMinutes();
 
-		var hour:Int = now.getHours();
-		var minute:Int = now.getMinutes();
-
-		var total:Int = hour * 60 + minute;
-
-		if (total >= 330 && total < 360)
-		{
+		if (total >= DAWN_START && total < DAY_START)
 			titleBgDawn.visible = true;
-		}
-		else if (total >= 360 && total < 1050)
-		{
+		else if (total >= DAY_START && total < SUNSET_START)
 			titleBgDay.visible = true;
-		}
-		else if (total >= 1050 && total < 1110)
-		{
+		else if (total >= SUNSET_START && total < NIGHT_START)
 			titleBgSunset.visible = true;
-		}
 		else
-		{
 			setMoonBackground(getMoonBackground());
-		}
 	}
 
+	/** The 8 moon phases, from the age of the moon in days (0 = new moon, about 14.8 = full moon). */
 	function getMoonBackground():String
 	{
 		var now:Float = Date.now().getTime() / 1000;
@@ -593,25 +390,27 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		var knownNewMoon:Float = 947182440;
 		var lunarCycle:Float = 29.530588853;
 
-		var moonAge:Float =
-			((now - knownNewMoon) / 86400) % lunarCycle;
+		var moonAge:Float = ((now - knownNewMoon) / 86400) % lunarCycle;
 
-		if (moonAge < 3.69 || moonAge >= 27.68)
+		if (moonAge < 1.85 || moonAge >= 27.68)
 			return 'titleBgNightNew';
 
-		if (moonAge < 9.22)
+		if (moonAge < 7.38)
+			return 'titleBgNightCrescent';
+
+		if (moonAge < 11.07)
 			return 'titleBgNightQuarter';
 
-		if (moonAge < 12.91)
+		if (moonAge < 14.77)
 			return 'titleBgNightWaxingGibbous';
 
-		if (moonAge < 16.61)
+		if (moonAge < 18.46)
 			return 'titleBgNight';
 
-		if (moonAge < 20.30)
+		if (moonAge < 22.15)
 			return 'titleBgNightWaningGibbous';
 
-		if (moonAge < 23.99)
+		if (moonAge < 25.84)
 			return 'titleBgNightLastQuarter';
 
 		return 'titleBgNightWaningCrescent';
@@ -619,68 +418,31 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 	function setMoonBackground(name:String):Void
 	{
-		switch (name)
-		{
-			case 'titleBgNightNew':
-				titleBgNightNew.visible = true;
+		var background:FlxSprite = moonBackgrounds.get(name);
 
-			case 'titleBgNightQuarter':
-				titleBgNightQuarter.visible = true;
-
-			case 'titleBgNightWaxingGibbous':
-				titleBgNightWaxingGibbous.visible = true;
-
-			case 'titleBgNight':
-				titleBgNight.visible = true;
-
-			case 'titleBgNightWaningGibbous':
-				titleBgNightWaningGibbous.visible = true;
-
-			case 'titleBgNightLastQuarter':
-				titleBgNightLastQuarter.visible = true;
-
-			case 'titleBgNightWaningCrescent':
-				titleBgNightWaningCrescent.visible = true;
-
-			case 'titleBgNightCrescent':
-				titleBgNightCrescent.visible = true;
-		}
+		if (background != null)
+			background.visible = true;
 	}
+
+	// ---- Intro ----
 
 	function playSegaIntro():Void
 	{
-		segaIntro.animation.play('intro', true);
-
-		FlxG.sound.playMusic(
-			Paths.music('TitleScreenSonic3'),
-			1,
-			true
-		);
-
-		new FlxTimer().start(0.01, function(timer:FlxTimer)
+		// Starts the title when the SEGA animation ends.
+		segaIntro.animation.finishCallback = function(name:String)
 		{
-			checkSegaIntro();
-		});
-	}
-
-	function checkSegaIntro():Void
-	{
-		if (segaIntro.animation.finished)
-		{
+			segaIntro.animation.finishCallback = null;
 			segaFinished = true;
 
 			new FlxTimer().start(0.197, function(timer:FlxTimer)
 			{
 				startTitle();
 			});
-		}
-		else
-		{
-			new FlxTimer().start(0.01, function(timer:FlxTimer)
-			{
-				checkSegaIntro();
-			});
-		}
+		};
+
+		segaIntro.animation.play('intro', true);
+
+		FlxG.sound.playMusic(Paths.music('TitleScreenSonic3'), 1, true);
 	}
 
 	function startTitle():Void
@@ -701,23 +463,18 @@ class Sonic3TitleStateV2 extends MusicBeatState
 	function logoIntro():Void
 	{
 		// The logo flies up from below the screen and slows down until it reaches its highest point.
-		FlxTween.tween(
-			title,
-			{y: LOGO_APEX_Y},
-			0.39,
+		FlxTween.tween(title, {y: LOGO_APEX_Y}, 0.39, {
+			ease: FlxEase.quadOut,
+			onUpdate: function(tween:FlxTween)
 			{
-				ease: FlxEase.quadOut,
-				onUpdate: function(tween:FlxTween)
-				{
-					// Move in whole pixels, like the original hardware.
-					title.y = Math.round(title.y);
-				},
-				onComplete: function(tween:FlxTween)
-				{
-					logoDrop();
-				}
+				// Move in whole pixels, like the original hardware.
+				title.y = Math.round(title.y);
+			},
+			onComplete: function(tween:FlxTween)
+			{
+				logoDrop();
 			}
-		);
+		});
 	}
 
 	function logoDrop():Void
@@ -792,7 +549,9 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 		new FlxTimer().start(0.1, function(timer:FlxTimer)
 		{
-			canPressStart = true;
+			// Once the player has picked "1 PLAYER" the menu stays locked.
+			if (!selectedStart)
+				canPressStart = true;
 		});
 
 		new FlxTimer().start(1.3, function(timer:FlxTimer)
@@ -800,6 +559,8 @@ class Sonic3TitleStateV2 extends MusicBeatState
 			playFinger();
 		});
 	}
+
+	// ---- Menu ----
 
 	function updateMenuSelection():Void
 	{
@@ -818,9 +579,7 @@ class Sonic3TitleStateV2 extends MusicBeatState
 			selectedIcon.y = OPTIONS_Y;
 		}
 
-		FlxG.sound.play(
-			Paths.sound('dataselectswitch')
-		);
+		FlxG.sound.play(Paths.sound('dataselectswitch'));
 	}
 
 	function changeMenuSelection(change:Int):Void
@@ -852,29 +611,12 @@ class Sonic3TitleStateV2 extends MusicBeatState
 			MobileControls.setEnabled(false);
 			#end
 
-			FlxG.sound.play(
-				Paths.sound('confirmMenu')
-			);
+			FlxG.sound.play(Paths.sound('confirmMenu'));
 
 			player.animation.play('select', false);
 
-			FlxTween.tween(
-				blackFade,
-				{alpha: 1},
-				0.5,
-				{
-					ease: FlxEase.sineIn
-				}
-			);
-
-			FlxTween.tween(
-				blueFade,
-				{alpha: 1},
-				0.6,
-				{
-					ease: FlxEase.sineIn
-				}
-			);
+			FlxTween.tween(blackFade, {alpha: 1}, 0.5, {ease: FlxEase.sineIn});
+			FlxTween.tween(blueFade, {alpha: 1}, 0.6, {ease: FlxEase.sineIn});
 
 			new FlxTimer().start(0.6, function(timer:FlxTimer)
 			{
@@ -885,16 +627,9 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		{
 			canPressStart = false;
 
-			#if android
-			#end
+			FlxG.sound.play(Paths.sound('confirmMenu'));
 
-			FlxG.sound.play(
-				Paths.sound('confirmMenu')
-			);
-
-			MusicBeatState.switchState(
-				new Sonic3Options()
-			);
+			MusicBeatState.switchState(new Sonic3Options());
 		}
 	}
 
@@ -905,9 +640,7 @@ class Sonic3TitleStateV2 extends MusicBeatState
 			MobileControls.removeFromState(this);
 		#end
 
-		MusicBeatState.switchState(
-			new DataSelectState()
-		);
+		MusicBeatState.switchState(new DataSelectState());
 	}
 
 	override public function update(elapsed:Float):Void
@@ -917,7 +650,7 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		// Logo drop: simulated in fixed 60 Hz steps so it looks the same at any frame rate.
 		if (logoFalling)
 		{
-			logoStepTimer += elapsed;
+			logoStepTimer += Math.min(elapsed, LOGO_MAX_ELAPSED);
 
 			while (logoFalling && logoStepTimer >= LOGO_STEP)
 			{
@@ -936,46 +669,14 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		if (!canPressStart || selectedStart)
 			return;
 
-		var moveUp:Bool = false;
-		var moveDown:Bool = false;
-		var confirm:Bool = false;
-		var back:Bool = false;
-
-		if (FlxG.keys.justPressed.UP || FlxG.keys.justPressed.W)
-			moveUp = true;
-
-		if (FlxG.keys.justPressed.DOWN || FlxG.keys.justPressed.S)
-			moveDown = true;
-
-		if (
-			FlxG.keys.justPressed.ENTER
-			|| FlxG.keys.justPressed.SPACE
-			|| FlxG.keys.justPressed.Z
-		)
-		{
-			confirm = true;
-		}
-
-		if (
-			FlxG.keys.justPressed.ESCAPE
-			|| FlxG.keys.justPressed.X
-		)
-		{
-			back = true;
-		}
+		var moveUp:Bool = FlxG.keys.justPressed.UP || FlxG.keys.justPressed.W;
+		var moveDown:Bool = FlxG.keys.justPressed.DOWN || FlxG.keys.justPressed.S;
+		var confirm:Bool = FlxG.keys.justPressed.ENTER || FlxG.keys.justPressed.SPACE || FlxG.keys.justPressed.Z;
 
 		#if android
-		if (MobileControls.upJustPressed)
-			moveUp = true;
-
-		if (MobileControls.downJustPressed)
-			moveDown = true;
-
-		if (MobileControls.aJustPressed)
-			confirm = true;
-
-		if (MobileControls.bJustPressed)
-			back = true;
+		moveUp = moveUp || MobileControls.upJustPressed;
+		moveDown = moveDown || MobileControls.downJustPressed;
+		confirm = confirm || MobileControls.aJustPressed;
 		#end
 
 		if (moveUp)
@@ -985,14 +686,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 		if (confirm)
 			selectMenu();
-
-		if (back)
-		{
-			#if android
-			MobileControls.setEnabled(false);
-			MobileControls.removeFromState(this);
-			#end
-		}
 	}
 
 	override public function destroy():Void
@@ -1001,6 +694,8 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		if (MobileControls.isAttachedTo(this))
 			MobileControls.removeFromState(this);
 		#end
+
+		moonBackgrounds.clear();
 
 		super.destroy();
 	}

@@ -179,7 +179,7 @@ class Sonic3TitleStateV2 extends MusicBeatState
 				return 'titlescreen3/languages/OptionsES';
 
 			default:
-				return 'titlescreen3/languages/Options';
+				return 'titlescreen3/Options';
 		}
 	}
 

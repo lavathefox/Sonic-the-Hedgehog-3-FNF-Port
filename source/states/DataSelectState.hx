@@ -79,7 +79,7 @@ class DataSelectState extends MusicBeatState
 	var useLargeSaves:Bool = true;
 
 	/** Extra Y added to the portraits (newIcon, aiz_savePortrait, static) in large mode. */
-	var portraitLargeOffsetY:Float = -7;
+	var portraitLargeOffsetY:Float = 0;
 
 	/** Position of the first slot (the otherSave), in world pixels. */
 	var slotStartX:Float = 2;
@@ -303,11 +303,11 @@ class DataSelectState extends MusicBeatState
 		reloadLives();
 
 		// BG and text are added first and are NEVER touched by the scroll: they stay fixed.
-		bg = new FlxSprite(0, 0);
+		bg = new FlxSprite(0, 3);
 		bg.loadGraphic(Paths.image('dataselect/dataSelect_BG'));
 		add(bg);
 
-		text = new FlxSprite(100, 200);
+		text = new FlxSprite(100, 203);
 		text.loadGraphic(Paths.image('dataselect/dataSelectText'));
 		add(text);
 

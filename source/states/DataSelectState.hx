@@ -23,11 +23,12 @@ import sys.FileSystem;
 import sys.io.File;
 #end
 
-/** Sprites of the small lives / continues row shown over BF on a used save. */
+/** Sprites of the lives / continues rows shown on a used save. */
 typedef HudSlot =
 {
 	var sprites:Array<FlxSprite>;
 	var relX:Array<Float>;
+	var relY:Array<Float>;
 	var shown:Array<Bool>;
 }
 
@@ -152,21 +153,21 @@ class DataSelectState extends MusicBeatState
 	var bfOtherOffsetX:Float = 0;
 	var bfOtherOffsetY:Float = 0;
 
-	// ---- HUD over BF on the selected used save (lives / continues) ----
-	// It uses the same X and Y as BF on that save (bfX / bfY), plus hudOffsetY.
+	// ---- HUD on used saves (lives / continues) ----
+	// X starts at BF's X (bfX). Y starts at BF's Y (bfY) plus the offsets below.
 
-	/** Extra Y added to the BF position. */
-	var hudOffsetY:Float = 8;
+	/** Lives row (placeholderIcon, colon, lives digits): Y offset from BF's Y. */
+	var hudLivesOffsetY:Float = 75;
 
-	/** true = only the selected save shows the HUD. false = every used save shows it. */
-	var hudOnlySelected:Bool = true;
+	/** Continues row (placeholderContinueIcon + number): extra Y below the lives row. */
+	var hudContinueOffsetY:Float = 95;
+
+	/** false = every used save shows the HUD (selected or not). true = only the selected save. */
+	var hudOnlySelected:Bool = false;
 
 	/** Space between the icon / colon / digits. */
 	var hudGap:Float = 1;
 	var hudDigitGap:Float = 0;
-
-	/** Space between the lives group and the continues group. */
-	var hudGroupGap:Float = 6;
 
 	/** Number of continues (only 0 for now). */
 	var continuesValue:Int = 0;
@@ -418,10 +419,10 @@ class DataSelectState extends MusicBeatState
 
 		for (d in 0...10)
 		{
-			var g:FlxGraphic = Paths.image('dataselect/numbersData/' + HUD_NUMBER_PREFIX + d);
+			var g:FlxGraphic = Paths.image('dataselect/' + HUD_NUMBER_PREFIX + d);
 
 			if (g == null)
-				trace('Data Select: image dataselect/numbersData/' + HUD_NUMBER_PREFIX + d + ' not found');
+				trace('Data Select: image dataselect/' + HUD_NUMBER_PREFIX + d + ' not found');
 
 			digitGraphics.push(g);
 		}
@@ -532,7 +533,7 @@ class DataSelectState extends MusicBeatState
 
 		if (image != null)
 		{
-			var g:FlxGraphic = Paths.image('dataselect/numbersData/' + image);
+			var g:FlxGraphic = Paths.image('dataselect/' + image);
 
 			if (g != null)
 			{
@@ -540,7 +541,7 @@ class DataSelectState extends MusicBeatState
 				return spr;
 			}
 
-			trace('Data Select: image dataselect/numbersData/' + image + ' not found');
+			trace('Data Select: image dataselect/' + image + ' not found');
 		}
 
 		// Placeholder (invisible, 1x1) so the layout code never has to deal with a null graphic
@@ -582,11 +583,12 @@ class DataSelectState extends MusicBeatState
 		return {
 			sprites: list,
 			relX: [for (_ in list) 0.0],
+			relY: [for (_ in list) 0.0],
 			shown: [for (_ in list) false]
 		};
 	}
 
-	/** Creates the HUD row of every real save (null on the otherSave slots). Call it after BF is added. */
+	/** Creates the HUD of every real save (null on the otherSave slots). Call it after BF is added. */
 	function createHuds():Void
 	{
 		huds = [];
@@ -604,7 +606,7 @@ class DataSelectState extends MusicBeatState
 		}
 	}
 
-	/** Sets the digits and the X of every sprite of the HUD row of one save. */
+	/** Sets the digits and the X / Y of every sprite of the HUD of one save. */
 	function refreshHud(index:Int):Void
 	{
 		var hud:HudSlot = huds[index];
@@ -612,15 +614,22 @@ class DataSelectState extends MusicBeatState
 			return;
 
 		var sp:Array<FlxSprite> = hud.sprites;
+
+		// Row 1: lives. Row 2: continues (below row 1).
+		var livesY:Float = hudLivesOffsetY;
+		var contY:Float = hudLivesOffsetY + hudContinueOffsetY;
+
 		var x:Float = 0;
 
 		// Life icon
 		hud.relX[0] = x;
+		hud.relY[0] = livesY;
 		hud.shown[0] = true;
 		x += sp[0].width + hudGap;
 
 		// Colon
 		hud.relX[1] = x;
+		hud.relY[1] = livesY;
 		hud.shown[1] = true;
 		x += sp[1].width + hudGap;
 
@@ -637,6 +646,7 @@ class DataSelectState extends MusicBeatState
 				setDigit(sp[k], digit);
 
 				hud.relX[k] = x;
+				hud.relY[k] = livesY;
 				hud.shown[k] = true;
 				x += sp[k].width + hudDigitGap;
 			}
@@ -646,17 +656,18 @@ class DataSelectState extends MusicBeatState
 			}
 		}
 
-		x += hudGroupGap;
-
-		// Continue icon + continue number (0 for now)
+		// Continue icon + continue number (0 for now), on the second row
 		var contIcon:Int = 2 + LIVES_DIGITS;
+		var cx:Float = 0;
 
-		hud.relX[contIcon] = x;
+		hud.relX[contIcon] = cx;
+		hud.relY[contIcon] = contY;
 		hud.shown[contIcon] = true;
-		x += sp[contIcon].width + hudGap;
+		cx += sp[contIcon].width + hudGap;
 
 		setDigit(sp[contIcon + 1], Std.int(Math.max(0, Math.min(9, continuesValue))));
-		hud.relX[contIcon + 1] = x;
+		hud.relX[contIcon + 1] = cx;
+		hud.relY[contIcon + 1] = contY;
 		hud.shown[contIcon + 1] = true;
 	}
 
@@ -1071,20 +1082,21 @@ class DataSelectState extends MusicBeatState
 				var staticInside:Bool = clipToWindow(statics[i]);
 				statics[i].visible = saveUsed[i] && !selected && staticInside;
 
-				// Lives / continues row: same X and Y as BF on this save, +hudOffsetY.
-				// Hidden in delete mode (Eggman takes BF's place) and during the secret sequence.
+				// Lives / continues HUD: X from BF's X, Y from BF's Y + the row offsets.
+				// Shown on every used save (selected or not) unless hudOnlySelected is true.
+				// Hidden only during the secret sequence (BF falls off the screen).
 				var hud:HudSlot = huds[i];
 
 				if (hud != null)
 				{
-					var showHud:Bool = saveUsed[i] && !deleteMode && !secretActive && (!hudOnlySelected || selected);
+					var showHud:Bool = saveUsed[i] && !secretActive && (!hudOnlySelected || selected);
 
 					for (k in 0...hud.sprites.length)
 					{
 						var s:FlxSprite = hud.sprites[k];
 
 						s.x = x + bfX + hud.relX[k];
-						s.y = savePos[i][1] + bfY + hudOffsetY;
+						s.y = savePos[i][1] + bfY + hud.relY[k];
 						s.visible = showHud && hud.shown[k] && clipToWindow(s);
 					}
 				}

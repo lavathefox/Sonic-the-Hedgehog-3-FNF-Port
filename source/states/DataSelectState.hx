@@ -23,6 +23,14 @@ import sys.FileSystem;
 import sys.io.File;
 #end
 
+/** Sprites of the small lives / continues row shown under BF on a used save. */
+typedef HudSlot =
+{
+	var sprites:Array<FlxSprite>;
+	var relX:Array<Float>;
+	var shown:Array<Bool>;
+}
+
 class DataSelectState extends MusicBeatState
 {
 	static inline var SONG_ID:String = 'too-slow';
@@ -38,6 +46,19 @@ class DataSelectState extends MusicBeatState
 	 */
 	static inline var TOTAL_SLOTS:Int = SAVE_COUNT + 2;
 	static inline var VISIBLE_SLOTS:Int = 3;
+
+	// ---- HUD (lives / continues) image names, inside images/dataselect/ ----
+	static inline var HUD_LIFE_ICON:String = 'placeholderIcon';
+	static inline var HUD_COLON:String = 'colon';
+	static inline var HUD_CONT_ICON:String = 'placeholderContinueIcon';
+	/** Digit images are HUD_NUMBER_PREFIX + 0..9 (number0, number1, ... number9). */
+	static inline var HUD_NUMBER_PREFIX:String = 'number';
+
+	/** Name of the file that stores the number of lives. It is searched in every folder. */
+	static inline var LIVES_FILE:String = 'lives.dat';
+
+	/** Max digits shown for the lives counter. */
+	static inline var LIVES_DIGITS:Int = 2;
 
 	/** Position of the first slot (the otherSave), in world pixels. */
 	var slotStartX:Float = 2;
@@ -131,12 +152,47 @@ class DataSelectState extends MusicBeatState
 	var bfOtherOffsetX:Float = 0;
 	var bfOtherOffsetY:Float = 0;
 
+	// ---- HUD under BF on used saves (lives / continues) ----
+	/** X of the HUD row, relative to the save slot (same as BF by default). */
+	var hudX:Float = 22;
+
+	/** Extra Y added to the HUD row. */
+	var hudOffsetY:Float = 8;
+
+	/**
+	 * true  = the row is placed BELOW BF (bfY + BF height + hudOffsetY).
+	 * false = the row is placed at bfY + hudOffsetY (it overlaps BF).
+	 */
+	var hudBelowBf:Bool = true;
+
+	/** Space between the icon / colon / digits. */
+	var hudGap:Float = 1;
+	var hudDigitGap:Float = 0;
+
+	/** Space between the lives group and the continues group. */
+	var hudGroupGap:Float = 6;
+
+	/** Calculated after BF is created: Y of the HUD row, relative to the save slot. */
+	var hudRelY:Float = 0;
+
+	/** Number of continues (only 0 for now). */
+	var continuesValue:Int = 0;
+
+	/** Lives read from lives.dat. -1 = the file does not exist (yet) or has no number. */
+	var livesValue:Int = -1;
+
+	/** Last path where lives.dat was found (cached). */
+	var livesPath:String = null;
+
+	var digitGraphics:Array<FlxGraphic> = [];
+	var huds:Array<HudSlot> = [];
+
 	// ---- Delete mode (Eggman) ----
 	/** Extra offset for Eggman when he is centered on the Delete slot (fine tuning). */
 	var eggCenterOffsetX:Float = 0;
 	var eggCenterOffsetY:Float = 0;
 
-	/** Extra offset for Eggman when he follows the cursor over a save (same spot as BF + this). */
+	/** Extra offset for Eggman when he goes over a save to ask for the delete (same spot as BF + this). */
 	var eggSaveOffsetX:Float = 0;
 	var eggSaveOffsetY:Float = 0;
 
@@ -145,6 +201,13 @@ class DataSelectState extends MusicBeatState
 
 	var eggman:FlxSprite;
 	var eggTimer:FlxTimer;
+
+	/** Screen position where Eggman stands while delete mode is on (saved when it starts). */
+	var eggHomeX:Float = 0;
+	var eggHomeY:Float = 0;
+
+	/** True while Eggman is over a save asking for the delete (he must go back home afterwards). */
+	var eggAway:Bool = false;
 
 	/** True after pressing ENTER on the Delete slot. */
 	var deleteMode:Bool = false;
@@ -202,7 +265,7 @@ class DataSelectState extends MusicBeatState
 
 	/**
 	 * saves[0] is the otherSave sprite and saves[last] is the Delete slot sprite.
-	 * portraits and statics are null on those two slots (they have no portrait).
+	 * portraits, statics and huds are null on those two slots (they have no portrait).
 	 */
 	var saves:Array<FlxSprite> = [];
 	var portraits:Array<FlxSprite> = [];
@@ -224,6 +287,8 @@ class DataSelectState extends MusicBeatState
 		FlxG.camera.pixelPerfectRender = true;
 
 		loadSaveData();
+		loadDigitGraphics();
+		reloadLives();
 
 		// BG and text are added first and are NEVER touched by the scroll: they stay fixed.
 		bg = new FlxSprite(0, 0);
@@ -330,6 +395,10 @@ class DataSelectState extends MusicBeatState
 		saveUsed[index] = true;
 		storeSaveData();
 		refreshPortrait(index);
+
+		// The save was just created: read lives.dat again and update the HUD
+		reloadLives();
+		refreshHud(index);
 	}
 
 	/** Loads the right portrait image for a save: newIcon if unused, aiz_savePortrait if used. */
@@ -340,6 +409,241 @@ class DataSelectState extends MusicBeatState
 
 		var name:String = saveUsed[index] ? usedPortraitImages[index - 1] : newPortraitImages[index - 1];
 		portraits[index].loadGraphic(Paths.image('dataselect/' + name));
+	}
+
+	// =====================================================================
+	//  Lives (lives.dat) + HUD
+	// =====================================================================
+
+	/** Loads the 0..9 digit images once. A missing image stays null (and is logged). */
+	function loadDigitGraphics():Void
+	{
+		digitGraphics = [];
+
+		for (d in 0...10)
+		{
+			var g:FlxGraphic = Paths.image('dataselect/numbersData/' + HUD_NUMBER_PREFIX + d);
+
+			if (g == null)
+				trace('Data Select: image dataselect/numbersData/' + HUD_NUMBER_PREFIX + d + ' not found');
+
+			digitGraphics.push(g);
+		}
+	}
+
+	/** Looks for the file `name` inside `dir` and all its sub folders (up to `depth` levels). */
+	function searchFile(dir:String, name:String, depth:Int):String
+	{
+		#if sys
+		try
+		{
+			if (depth < 0 || !FileSystem.exists(dir) || !FileSystem.isDirectory(dir))
+				return null;
+
+			var base:String = (dir.charAt(dir.length - 1) == '/') ? dir : dir + '/';
+
+			var direct:String = base + name;
+			if (FileSystem.exists(direct) && !FileSystem.isDirectory(direct))
+				return direct;
+
+			for (entry in FileSystem.readDirectory(dir))
+			{
+				var path:String = base + entry;
+
+				if (FileSystem.isDirectory(path))
+				{
+					var found:String = searchFile(path, name, depth - 1);
+					if (found != null)
+						return found;
+				}
+			}
+		}
+		catch (e:Dynamic)
+		{
+			trace('Data Select (searching ' + name + ' in ' + dir + '): ' + e);
+		}
+		#end
+
+		return null;
+	}
+
+	/** Finds lives.dat in the game folders. Returns null if it does not exist (yet). */
+	function findLivesDat():String
+	{
+		#if sys
+		// Cached path still valid
+		if (livesPath != null && FileSystem.exists(livesPath))
+			return livesPath;
+
+		livesPath = null;
+
+		var roots:Array<String> = ['data', 'mods', 'assets', 'example_mods'];
+		var cwd:String = Sys.getCwd();
+
+		for (base in ['', cwd])
+		{
+			for (r in roots)
+			{
+				var found:String = searchFile(base + r, LIVES_FILE, 6);
+				if (found != null)
+				{
+					livesPath = found;
+					return found;
+				}
+			}
+		}
+
+		// Last try: the whole game folder
+		livesPath = searchFile(cwd, LIVES_FILE, 6);
+		return livesPath;
+		#else
+		return null;
+		#end
+	}
+
+	/** Reads the number of lives from lives.dat (first number found in the file). */
+	function reloadLives():Void
+	{
+		livesValue = -1;
+
+		#if sys
+		var path:String = findLivesDat();
+		if (path == null)
+			return;
+
+		try
+		{
+			var content:String = File.getContent(path);
+			var digits:EReg = ~/[0-9]+/;
+
+			if (digits.match(content))
+			{
+				var n:Null<Int> = Std.parseInt(digits.matched(0));
+				if (n != null)
+					livesValue = n;
+			}
+		}
+		catch (e:Dynamic)
+		{
+			trace('Data Select (reading ' + LIVES_FILE + '): ' + e);
+		}
+		#end
+	}
+
+	function makeHudSprite(?image:String):FlxSprite
+	{
+		var spr:FlxSprite = new FlxSprite(0, 0);
+
+		if (image != null)
+		{
+			var g:FlxGraphic = Paths.image('dataselect/numbersData/' + image);
+
+			if (g != null)
+			{
+				spr.loadGraphic(g);
+				return spr;
+			}
+
+			trace('Data Select: image dataselect/numbersData/' + image + ' not found');
+		}
+
+		// Placeholder (invisible, 1x1) so the layout code never has to deal with a null graphic
+		spr.makeGraphic(1, 1, FlxColor.TRANSPARENT);
+		return spr;
+	}
+
+	function setDigit(spr:FlxSprite, digit:Int):Void
+	{
+		var g:FlxGraphic = digitGraphics[digit];
+
+		if (g != null)
+			spr.loadGraphic(g);
+	}
+
+	/**
+	 * Sprites order: [0] life icon, [1] colon, [2..2+LIVES_DIGITS-1] lives digits,
+	 * [2+LIVES_DIGITS] continue icon, [3+LIVES_DIGITS] continue number.
+	 */
+	function createHud():HudSlot
+	{
+		var list:Array<FlxSprite> = [];
+
+		list.push(makeHudSprite(HUD_LIFE_ICON));
+		list.push(makeHudSprite(HUD_COLON));
+
+		for (d in 0...LIVES_DIGITS)
+			list.push(makeHudSprite());
+
+		list.push(makeHudSprite(HUD_CONT_ICON));
+		list.push(makeHudSprite());
+
+		for (s in list)
+		{
+			s.visible = false;
+			add(s);
+		}
+
+		return {
+			sprites: list,
+			relX: [for (_ in list) 0.0],
+			shown: [for (_ in list) false]
+		};
+	}
+
+	/** Sets the digits and the X of every sprite of the HUD row of one save. */
+	function refreshHud(index:Int):Void
+	{
+		var hud:HudSlot = huds[index];
+		if (hud == null)
+			return;
+
+		var sp:Array<FlxSprite> = hud.sprites;
+		var x:Float = 0;
+
+		// Life icon
+		hud.relX[0] = x;
+		hud.shown[0] = true;
+		x += sp[0].width + hudGap;
+
+		// Colon
+		hud.relX[1] = x;
+		hud.shown[1] = true;
+		x += sp[1].width + hudGap;
+
+		// Lives digits (only when lives.dat exists)
+		var livesText:String = (livesValue >= 0) ? Std.string(Std.int(Math.min(livesValue, 99))) : '';
+
+		for (d in 0...LIVES_DIGITS)
+		{
+			var k:Int = 2 + d;
+
+			if (d < livesText.length)
+			{
+				var digit:Int = Std.parseInt(livesText.charAt(d));
+				setDigit(sp[k], digit);
+
+				hud.relX[k] = x;
+				hud.shown[k] = true;
+				x += sp[k].width + hudDigitGap;
+			}
+			else
+			{
+				hud.shown[k] = false;
+			}
+		}
+
+		x += hudGroupGap;
+
+		// Continue icon + continue number (0 for now)
+		var contIcon:Int = 2 + LIVES_DIGITS;
+
+		hud.relX[contIcon] = x;
+		hud.shown[contIcon] = true;
+		x += sp[contIcon].width + hudGap;
+
+		setDigit(sp[contIcon + 1], Std.int(Math.max(0, Math.min(9, continuesValue))));
+		hud.relX[contIcon + 1] = x;
+		hud.shown[contIcon + 1] = true;
 	}
 
 	// =====================================================================
@@ -355,7 +659,7 @@ class DataSelectState extends MusicBeatState
 
 			if (isSpecialSlot(i))
 			{
-				// otherSave-style slot: no portrait, no static
+				// otherSave-style slot: no portrait, no static, no HUD
 				var other:FlxSprite = new FlxSprite(x, y);
 				other.loadGraphic(Paths.image('dataselect/otherSave'));
 				add(other);
@@ -363,6 +667,7 @@ class DataSelectState extends MusicBeatState
 
 				portraits.push(null);
 				statics.push(null);
+				huds.push(null);
 
 				if (isOtherSave(i))
 				{
@@ -414,6 +719,10 @@ class DataSelectState extends MusicBeatState
 
 			add(staticSprite);
 			statics.push(staticSprite);
+
+			// Lives / continues row (only visible when the save is used)
+			huds.push(createHud());
+			refreshHud(i);
 		}
 	}
 
@@ -504,21 +813,15 @@ class DataSelectState extends MusicBeatState
 		return savePos[index][1] + bfY;
 	}
 
-	/** Final X of Eggman while he follows the cursor in delete mode. */
+	/** X of Eggman when he goes over a real save to ask for the delete (same spot BF uses). */
 	function eggTargetX(index:Int):Float
 	{
-		if (isSpecialSlot(index))
-			return slotScreenX(index) + (saves[index].width - eggman.width) / 2 + eggCenterOffsetX;
-
 		return slotScreenX(index) + bfX + eggSaveOffsetX;
 	}
 
-	/** Final Y of Eggman while he follows the cursor in delete mode. */
+	/** Y of Eggman when he goes over a real save to ask for the delete (same spot BF uses). */
 	function eggTargetY(index:Int):Float
 	{
-		if (isSpecialSlot(index))
-			return savePos[index][1] - otherSaveLift + (saves[index].height - eggman.height) / 2 + eggCenterOffsetY;
-
 		return savePos[index][1] + bfY + eggSaveOffsetY;
 	}
 
@@ -565,6 +868,9 @@ class DataSelectState extends MusicBeatState
 		bfDataSelect.animation.play('idle', true);
 
 		add(bfDataSelect);
+
+		// Y of the lives / continues row, relative to the save slot (measured with the idle frame)
+		hudRelY = bfY + (hudBelowBf ? bfDataSelect.height : 0) + hudOffsetY;
 	}
 
 	/**
@@ -745,7 +1051,7 @@ class DataSelectState extends MusicBeatState
 			var saveInside:Bool = clipToWindow(saves[i]);
 			saves[i].visible = saveInside;
 
-			// The otherSave slots have no portrait and no static
+			// The otherSave slots have no portrait, no static and no HUD
 			if (portraits[i] != null)
 			{
 				var selected:Bool = (i == selection - 1);
@@ -758,6 +1064,18 @@ class DataSelectState extends MusicBeatState
 				statics[i].x = x + portraitX;
 				var staticInside:Bool = clipToWindow(statics[i]);
 				statics[i].visible = saveUsed[i] && !selected && staticInside;
+
+				// Lives / continues row: follows the slot (and its lift) while the save is used
+				var hud:HudSlot = huds[i];
+
+				for (k in 0...hud.sprites.length)
+				{
+					var s:FlxSprite = hud.sprites[k];
+
+					s.x = x + hudX + hud.relX[k];
+					s.y = saves[i].y + hudRelY;
+					s.visible = saveUsed[i] && hud.shown[k] && clipToWindow(s);
+				}
 			}
 		}
 
@@ -775,7 +1093,8 @@ class DataSelectState extends MusicBeatState
 			deleteText.visible = clipToWindow(deleteText);
 		}
 
-		// Eggman: in the middle of the Delete slot, unless he is following the cursor (delete mode)
+		// Eggman: in the middle of the Delete slot. In delete mode he stays where he is
+		// (his position is only changed by the tweens in requestDelete / sendEggHome).
 		if (eggman != null)
 		{
 			if (deleteMode)
@@ -846,21 +1165,7 @@ class DataSelectState extends MusicBeatState
 			}
 		);
 
-		// Eggman follows the cursor in delete mode
-		if (deleteMode)
-		{
-			FlxTween.tween(
-				eggman,
-				{
-					x: eggTargetX(index),
-					y: eggTargetY(index)
-				},
-				moveTime,
-				{
-					ease: FlxEase.quadOut
-				}
-			);
-		}
+		// Eggman does NOT follow the cursor: in delete mode he stays where he is.
 
 		// BF goes to the center of the otherSave, or back to the normal spot on the real saves
 		FlxTween.tween(
@@ -1113,17 +1418,29 @@ class DataSelectState extends MusicBeatState
 
 		deleteMode = !deleteMode;
 		deleteConfirm = false;
+		eggAway = false;
 
 		cancelEggTimer();
 		updateBfVisibility();
 
 		if (deleteMode)
+		{
+			// Remember where Eggman is standing: he stays here while the cursor moves over the saves
+			eggHomeX = eggman.x;
+			eggHomeY = eggman.y;
+
 			eggSelectCycle();
+		}
 		else
+		{
 			playEgg('idle');
+		}
 	}
 
-	/** ENTER on a save in delete mode: only used saves can be deleted. Eggman plays eggDelete and waits for LEFT / RIGHT. */
+	/**
+	 * ENTER on a save in delete mode: only used saves can be deleted.
+	 * Eggman walks to the save, plays eggDelete and waits for LEFT / RIGHT.
+	 */
 	function requestDelete(index:Int):Void
 	{
 		if (index < 1 || index > SAVE_COUNT || !saveUsed[index])
@@ -1136,10 +1453,55 @@ class DataSelectState extends MusicBeatState
 			Paths.sound('confirmMenu')
 		);
 
+		eggAway = true;
+
+		FlxTween.tween(
+			eggman,
+			{
+				x: eggTargetX(index),
+				y: eggTargetY(index)
+			},
+			moveTime,
+			{
+				ease: FlxEase.quadOut
+			}
+		);
+
 		playEgg('eggDelete');
 	}
 
-	/** LEFT while waiting: deletes the save and Eggman goes back to the eggSelect loop. */
+	/** Moves Eggman back to the spot he had before asking for a delete, then runs onDone. */
+	function sendEggHome(onDone:Void->Void):Void
+	{
+		if (!eggAway)
+		{
+			onDone();
+			return;
+		}
+
+		// Blocks the input until he is back
+		isMoving = true;
+
+		FlxTween.tween(
+			eggman,
+			{
+				x: eggHomeX,
+				y: eggHomeY
+			},
+			moveTime,
+			{
+				ease: FlxEase.quadOut,
+				onComplete: function(_:FlxTween)
+				{
+					eggAway = false;
+					isMoving = false;
+					onDone();
+				}
+			}
+		);
+	}
+
+	/** LEFT while waiting: deletes the save, Eggman goes back home and returns to the eggSelect loop. */
 	function acceptDelete():Void
 	{
 		var index:Int = selection - 1;
@@ -1154,10 +1516,10 @@ class DataSelectState extends MusicBeatState
 			Paths.sound('confirmMenu')
 		);
 
-		eggSelectCycle();
+		sendEggHome(eggSelectCycle);
 	}
 
-	/** RIGHT while waiting: does NOT delete, Eggman goes back to the eggSelect loop where he is. */
+	/** RIGHT while waiting: does NOT delete, Eggman goes back to where he was and returns to the eggSelect loop. */
 	function cancelDelete():Void
 	{
 		deleteConfirm = false;
@@ -1166,7 +1528,7 @@ class DataSelectState extends MusicBeatState
 			Paths.sound('dataselectswitch')
 		);
 
-		eggSelectCycle();
+		sendEggHome(eggSelectCycle);
 	}
 
 	// =====================================================================

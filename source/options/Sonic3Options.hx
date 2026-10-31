@@ -8,6 +8,7 @@ import flixel.util.FlxTimer;
 
 import backend.ClientPrefs;
 import backend.MusicBeatState;
+import backend.MusicBeatSubstate;
 import backend.Paths;
 import backend.MobileControls;
 
@@ -366,6 +367,9 @@ class Sonic3Options extends MusicBeatState
 			case 1:
 				openPreferences();
 
+			case 2:
+				openGameplay();
+
 			case 3:
 				openControls();
 
@@ -382,7 +386,8 @@ class Sonic3Options extends MusicBeatState
 		}
 	}
 
-	function openPreferences():Void
+	/** Shared by every category: plays the sound, locks this menu, hides it and opens the substate. */
+	function openOptionsSubState(substate:MusicBeatSubstate):Void
 	{
 		if (subStateOpen)
 			return;
@@ -396,73 +401,38 @@ class Sonic3Options extends MusicBeatState
 		FlxTween.cancelTweensOf(selectedArrow);
 		hideCategories();
 
-		openSubState(new options.SonicPreferencesSubstate());
+		openSubState(substate);
+	}
+
+	function openPreferences():Void
+	{
+		openOptionsSubState(new options.SonicPreferencesSubstate());
+	}
+
+	function openGameplay():Void
+	{
+		openOptionsSubState(new options.SonicGameplayState());
 	}
 
 	function openControls():Void
 	{
-		if (subStateOpen)
-			return;
-
-		FlxG.sound.play(Paths.sound('confirmMenu'));
-
-		subStateOpen = true;
-		canSelect = false;
-		isMoving = false;
-
-		FlxTween.cancelTweensOf(selectedArrow);
-		hideCategories();
-
-		openSubState(new options.SonicControlsSubstate());
+		openOptionsSubState(new options.SonicControlsSubstate());
 	}
 
 	function openGraphics():Void
 	{
-		if (subStateOpen)
-			return;
-
-		FlxG.sound.play(Paths.sound('confirmMenu'));
-
-		subStateOpen = true;
-		canSelect = false;
-		isMoving = false;
-
-		FlxTween.cancelTweensOf(selectedArrow);
-		hideCategories();
-
-		openSubState(new options.SonicGraphicsSubstate());
+		openOptionsSubState(new options.SonicGraphicsSubstate());
 	}
 
 	function openLanguage():Void
 	{
-		if (subStateOpen)
-			return;
-
-		FlxG.sound.play(Paths.sound('confirmMenu'));
-
-		subStateOpen = true;
-		canSelect = false;
-		isMoving = false;
-
-		FlxTween.cancelTweensOf(selectedArrow);
-		hideCategories();
-
-		openSubState(new options.SonicLanguageSubstate());
+		openOptionsSubState(new options.SonicLanguageSubstate());
 	}
 
 	#if android
 	function openMobileOptions():Void
 	{
-		if (subStateOpen)
-			return;
-
-		FlxG.sound.play(Paths.sound('confirmMenu'));
-		subStateOpen = true;
-		canSelect = false;
-		isMoving = false;
-		FlxTween.cancelTweensOf(selectedArrow);
-		hideCategories();
-		openSubState(new options.SonicMobileOptionsSubstate());
+		openOptionsSubState(new options.SonicMobileOptionsSubstate());
 	}
 	#end
 

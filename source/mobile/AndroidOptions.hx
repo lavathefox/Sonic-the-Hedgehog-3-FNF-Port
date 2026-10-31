@@ -52,6 +52,13 @@ class AndroidOptions
 		{name: 'HIGH', value: 1.0}
 	];
 
+	// Multiplier for the size of the ring drawn by the touch cursor (1 = normal size).
+	static final TOUCH_CURSOR_SIZE:Array<OptionChoice<Float>> = [
+		{name: 'SMALL', value: 0.75},
+		{name: 'MEDIUM', value: 1.0},
+		{name: 'LARGE', value: 1.5}
+	];
+
 	public static final OPACITY_NAMES:Array<String> = namesOf(OPACITY);
 	public static final OPACITY_VALUES:Array<Float> = valuesOf(OPACITY);
 
@@ -70,6 +77,9 @@ class AndroidOptions
 	public static final BRIGHTNESS_NAMES:Array<String> = namesOf(BRIGHTNESS);
 	public static final BRIGHTNESS_VALUES:Array<Float> = valuesOf(BRIGHTNESS);
 
+	public static final TOUCH_CURSOR_SIZE_NAMES:Array<String> = namesOf(TOUCH_CURSOR_SIZE);
+	public static final TOUCH_CURSOR_SIZE_VALUES:Array<Float> = valuesOf(TOUCH_CURSOR_SIZE);
+
 	public static final SAVED_FIELDS:Array<String> = [
 		'mobileShowHitbox',
 		'mobilePauseButton',
@@ -81,7 +91,12 @@ class AndroidOptions
 		'mobileLaneOpacity',
 		'mobileControlsSize',
 		'mobileLeftHanded',
-		'mobileBrightness'
+		'mobileBrightness',
+		'mobileTouchCursorSize',
+		'mobileVibrateOnMiss',
+		'mobileSwapAB',
+		'mobileImmersive',
+		'mobileBatterySaver'
 	];
 
 	static inline var DEFAULT_CONTROLS_SCALE:Float = 3;
@@ -91,6 +106,9 @@ class AndroidOptions
 	static inline var BUTTON_A_Y:Float = 500;
 	static inline var BUTTON_B_X:Float = 700;
 	static inline var BUTTON_B_Y:Float = 560;
+
+	// Framerate used while BATTERY SAVER is on.
+	static inline var BATTERY_SAVER_FPS:Int = 60;
 
 	static var loaded:Bool = false;
 
@@ -150,6 +168,24 @@ class AndroidOptions
 		return pick(LANE_OPACITY_VALUES, ClientPrefs.data.mobileLaneOpacity);
 	}
 
+	/** Size multiplier for the touch cursor ring. Use it where the ring sprite is created. */
+	public static function touchCursorScale():Float
+	{
+		return pick(TOUCH_CURSOR_SIZE_VALUES, ClientPrefs.data.mobileTouchCursorSize);
+	}
+
+	/** True when the phone should vibrate on a missed note. Call this from the miss code in PlayState. */
+	public static function shouldVibrateOnMiss():Bool
+	{
+		return ClientPrefs.data.mobileVibrateOnMiss && vibrationMs() > 0;
+	}
+
+	/** True while BATTERY SAVER is on. Use it to skip heavy effects (shaders, extra particles...). */
+	public static function batterySaver():Bool
+	{
+		return ClientPrefs.data.mobileBatterySaver;
+	}
+
 	public static function loadSaved():Void
 	{
 		#if android
@@ -199,6 +235,7 @@ class AndroidOptions
 		data.mobileLaneOpacity = clampIndex(data.mobileLaneOpacity, LANE_OPACITY.length);
 		data.mobileControlsSize = clampIndex(data.mobileControlsSize, CONTROLS_SIZE.length);
 		data.mobileBrightness = clampIndex(data.mobileBrightness, BRIGHTNESS.length);
+		data.mobileTouchCursorSize = clampIndex(data.mobileTouchCursorSize, TOUCH_CURSOR_SIZE.length);
 	}
 
 	public static function applyLaneSettings():Void
@@ -251,18 +288,73 @@ class AndroidOptions
 			buttonBX = BUTTON_B_X + growth(buttonB.frameWidth, scale);
 		}
 
+		// SWAP A AND B: the two buttons trade places.
+		if (ClientPrefs.data.mobileSwapAB)
+		{
+			var tempX:Float = buttonAX;
+			var tempY:Float = buttonAY;
+
+			buttonAX = buttonBX;
+			buttonAY = buttonBY;
+			buttonBX = tempX;
+			buttonBY = tempY;
+		}
+
 		MobileControls.setPosition(arrowsX, arrowsY, buttonAX, buttonAY, buttonBX, buttonBY);
 		#end
 	}
 
+	/** Shows or hides the FPS counter (the normal showFPS pref, applied right away). */
+	public static function applyFpsCounter():Void
+	{
+		if (Main.fpsVar != null)
+			Main.fpsVar.visible = ClientPrefs.data.showFPS;
+	}
+
+	/** Hides the Android status and navigation bars while the game is open. */
+	public static function applyImmersive():Void
+	{
+		#if android
+		var wanted:Bool = ClientPrefs.data.mobileImmersive;
+
+		if (FlxG.fullscreen != wanted)
+			FlxG.fullscreen = wanted;
+		#end
+	}
+
+	/** BATTERY SAVER caps the framerate; turning it off gives the saved framerate back. */
+	public static function applyBatterySaver():Void
+	{
+		var target:Int = ClientPrefs.data.framerate;
+
+		if (ClientPrefs.data.mobileBatterySaver && target > BATTERY_SAVER_FPS)
+			target = BATTERY_SAVER_FPS;
+
+		// Same order Psych uses, so the two framerates never cross each other.
+		if (target > FlxG.drawFramerate)
+		{
+			FlxG.updateFramerate = target;
+			FlxG.drawFramerate = target;
+		}
+		else
+		{
+			FlxG.drawFramerate = target;
+			FlxG.updateFramerate = target;
+		}
+	}
+
 	public static function apply():Void
 	{
+		applyFpsCounter();
+		applyBatterySaver();
+
 		#if android
 		applyLaneSettings();
 		applyControlsLayout();
 		MobileControls.setControlsOpacity(controlsOpacity());
 		DeviceUtil.setKeepScreenOn(ClientPrefs.data.mobileKeepScreenOn);
 		DeviceUtil.setBrightness(brightness());
+		applyImmersive();
 		MobileControls.applyMobileOptions();
 		#end
 	}

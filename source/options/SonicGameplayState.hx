@@ -12,7 +12,7 @@ import backend.Paths;
 import backend.ClientPrefs;
 import backend.MobileControls;
 
-typedef GameplayOption =
+typedef SonicGameplayOption =
 {
 	var variable:String; // field name inside ClientPrefs.data
 	var isNumber:Bool; // false = checkbox, true = numeric value
@@ -27,7 +27,7 @@ typedef GameplayOption =
 
 class SonicGameplayState extends MusicBeatSubstate
 {
-	var data:Array<GameplayOption> = [];
+	var data:Array<SonicGameplayOption> = [];
 
 	var curSelected:Int = 0;
 	var canSelect:Bool = true;
@@ -82,7 +82,7 @@ class SonicGameplayState extends MusicBeatSubstate
 	// OPTION LIST  (to add a new one, just add another line)
 	// ------------------------------------------------------------
 
-	function check(variable:String, en:String, pt:String, es:String):GameplayOption
+	function check(variable:String, en:String, pt:String, es:String):SonicGameplayOption
 	{
 		return {
 			variable: variable,
@@ -97,7 +97,7 @@ class SonicGameplayState extends MusicBeatSubstate
 		};
 	}
 
-	function number(variable:String, min:Float, max:Float, step:Float, mult:Float, en:String, pt:String, es:String):GameplayOption
+	function number(variable:String, min:Float, max:Float, step:Float, mult:Float, en:String, pt:String, es:String):SonicGameplayOption
 	{
 		return {
 			variable: variable,
@@ -154,7 +154,7 @@ class SonicGameplayState extends MusicBeatSubstate
 
 	function getOptionName(index:Int):String
 	{
-		var opt:GameplayOption = data[index];
+		var opt:SonicGameplayOption = data[index];
 
 		switch (getCurrentLanguage())
 		{
@@ -190,7 +190,7 @@ class SonicGameplayState extends MusicBeatSubstate
 
 	function setDisplayValue(index:Int, value:Int):Void
 	{
-		var opt:GameplayOption = data[index];
+		var opt:SonicGameplayOption = data[index];
 
 		if (opt.mult == 1)
 			Reflect.setProperty(ClientPrefs.data, opt.variable, value);
@@ -490,7 +490,7 @@ class SonicGameplayState extends MusicBeatSubstate
 		if (closing)
 			return;
 
-		var opt:GameplayOption = data[curSelected];
+		var opt:SonicGameplayOption = data[curSelected];
 
 		if (!opt.isNumber)
 			return;

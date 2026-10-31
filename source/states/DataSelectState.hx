@@ -150,7 +150,7 @@ class DataSelectState extends MusicBeatState
 
 	// BF on the real saves
 	var bfX:Float = 22;
-	var bfY:Float = 55;
+	var bfY:Float = 54;
 
 	/** Extra offset for BF when he is centered on the otherSave (fine tuning, 0 = exact center). */
 	var bfOtherOffsetX:Float = 0;
@@ -160,10 +160,10 @@ class DataSelectState extends MusicBeatState
 	// X starts at BF's X (bfX). Y starts at BF's Y (bfY) plus the offsets below.
 
 	/** Lives row (placeholderIcon, colon, lives digits): Y offset from BF's Y. */
-	var hudLivesOffsetY:Float = 45;
+	var hudLivesOffsetY:Float = 47;
 
 	/** Continues row (placeholderContinueIcon + number): extra Y below the lives row. */
-	var hudContinueOffsetY:Float = 14;
+	var hudContinueOffsetY:Float = 16;
 
 	/** false = every used save shows the HUD (selected or not). true = only the selected save. */
 	var hudOnlySelected:Bool = false;

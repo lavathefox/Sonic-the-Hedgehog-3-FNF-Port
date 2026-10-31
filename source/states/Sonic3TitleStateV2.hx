@@ -164,7 +164,7 @@ class Sonic3TitleStateV2 extends MusicBeatState
 				return 'titlescreen3/languages/1PlayerES';
 
 			default:
-				return 'titlescreen3/languages/1Player';
+				return 'titlescreen3/1Player';
 		}
 	}
 

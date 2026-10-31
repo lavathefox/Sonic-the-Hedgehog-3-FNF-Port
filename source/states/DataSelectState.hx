@@ -163,7 +163,7 @@ class DataSelectState extends MusicBeatState
 	var hudLivesOffsetY:Float = 55;
 
 	/** Continues row (placeholderContinueIcon + number): extra Y below the lives row. */
-	var hudContinueOffsetY:Float = 65;
+	var hudContinueOffsetY:Float = 35;
 
 	/** false = every used save shows the HUD (selected or not). true = only the selected save. */
 	var hudOnlySelected:Bool = false;

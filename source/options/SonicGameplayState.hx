@@ -7,7 +7,7 @@ import flixel.tweens.FlxTween;
 import flixel.tweens.FlxEase;
 import flixel.math.FlxMath;
 import flixel.text.FlxText;
-import flixel.text.FlxTextAlign;
+import flixel.text.FlxText.FlxTextAlign;
 import flixel.util.FlxColor;
 import backend.MusicBeatSubstate;
 import backend.Paths;

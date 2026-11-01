@@ -1,239 +1,272 @@
 package backend;
 
-import openfl.utils.Assets;
-
-import haxe.Json;
+import haxe.io.Path;
+import StringTools;
+#if sys
+import sys.FileSystem;
+import sys.io.File;
+#end
 
 typedef ModsList = {
-	enabled:Array<String>,
-	disabled:Array<String>,
-	all:Array<String>
+    enabled:Array<String>,
+    disabled:Array<String>,
+    all:Array<String>
 };
 
 class Mods
 {
-	static public var currentModDirectory:String = '';
-	public static final ignoreModFolders:Array<String> = [
-		'characters',
-		'custom_events',
-		'custom_notetypes',
-		'data',
-		'songs',
-		'music',
-		'sounds',
-		'shaders',
-		'videos',
-		'images',
-		'stages',
-		'weeks',
-		'fonts',
-		'scripts',
-		'achievements'
-	];
+    public static var currentModDirectory:String = '';
+    public static var updatedOnState:Bool = false;
+    public static final ignoreModFolders:Array<String> = [
+        'characters', 'custom_events', 'custom_notetypes', 'data', 'songs',
+        'music', 'sounds', 'shaders', 'videos', 'images', 'stages',
+        'states', 'weeks', 'fonts', 'scripts', 'achievements'
+    ];
 
-	private static var globalMods:Array<String> = [];
+    private static var globalMods:Array<String> = [];
+    private static var cachedList:ModsList = null;
 
-	inline public static function getGlobalMods()
-		return globalMods;
+    public static function getGlobalMods():Array<String>
+        return globalMods.copy();
 
-	inline public static function pushGlobalMods() // prob a better way to do this but idc
-	{
-		globalMods = [];
-		for(mod in parseList().enabled)
-		{
-			var pack:Dynamic = getPack(mod);
-			if(pack != null && pack.runsGlobally) globalMods.push(mod);
-		}
-		return globalMods;
-	}
+    public static function pushGlobalMods():Array<String>
+    {
+        globalMods = [];
+        for (mod in parseList().enabled)
+        {
+            var pack:Dynamic = getPack(mod);
+            if (pack != null && Reflect.field(pack, 'runsGlobally') == true)
+                globalMods.push(mod);
+        }
+        return globalMods.copy();
+    }
 
-	inline public static function getModDirectories():Array<String>
-	{
-		var list:Array<String> = [];
-		#if MODS_ALLOWED
-		var modsFolder:String = Paths.mods();
-		if(FileSystem.exists(modsFolder)) {
-			for (folder in FileSystem.readDirectory(modsFolder))
-			{
-				var path = haxe.io.Path.join([modsFolder, folder]);
-				if (FileSystem.isDirectory(path) && !ignoreModFolders.contains(folder.toLowerCase()) && !list.contains(folder))
-					list.push(folder);
-			}
-		}
-		#end
-		return list;
-	}
-	
-	inline public static function mergeAllTextsNamed(path:String, ?defaultDirectory:String = null, allowDuplicates:Bool = false)
-	{
-		if(defaultDirectory == null) defaultDirectory = Paths.getSharedPath();
-		defaultDirectory = defaultDirectory.trim();
-		if(!defaultDirectory.endsWith('/')) defaultDirectory += '/';
-		if(!defaultDirectory.startsWith('assets/')) defaultDirectory = 'assets/$defaultDirectory';
+    public static function getModDirectories():Array<String>
+    {
+        var result:Array<String> = [];
+        #if (MODS_ALLOWED && sys)
+        var root = Paths.mods();
+        if (FileSystem.exists(root) && FileSystem.isDirectory(root))
+        {
+            for (name in FileSystem.readDirectory(root))
+            {
+                if (!validFolder(name)) continue;
+                var full = Path.join([root, name]);
+                if (FileSystem.isDirectory(full)) result.push(name);
+            }
+        }
+        result.sort(function(a, b) return Reflect.compare(a.toLowerCase(), b.toLowerCase()));
+        #end
+        return result;
+    }
 
-		var mergedList:Array<String> = [];
-		var paths:Array<String> = directoriesWithFile(defaultDirectory, path);
+    private static function validFolder(name:String):Bool
+    {
+        if (name == null || name.length == 0 || name == '.' || name == '..') return false;
+        if (name.indexOf('/') >= 0 || name.indexOf('\\') >= 0 || name.indexOf(':') >= 0) return false;
+        return !ignoreModFolders.contains(name.toLowerCase());
+    }
 
-		var defaultPath:String = defaultDirectory + path;
-		if(paths.contains(defaultPath))
-		{
-			paths.remove(defaultPath);
-			paths.insert(0, defaultPath);
-		}
+    private static function readSavedList():ModsList
+    {
+        var list:ModsList = {enabled: [], disabled: [], all: []};
+        #if (MODS_ALLOWED && sys)
+        if (FileSystem.exists('modsList.txt'))
+        {
+            try
+            {
+                for (line in File.getContent('modsList.txt').split('\n'))
+                {
+                    var parts = StringTools.trim(line).split('|');
+                    var folder = StringTools.trim(parts[0]);
+                    if (!validFolder(folder) || list.all.contains(folder)) continue;
+                    list.all.push(folder);
+                    if (parts.length > 1 && parts[1] == '0') list.disabled.push(folder);
+                    else list.enabled.push(folder);
+                }
+            }
+            catch (e:Dynamic) {}
+        }
+        #end
+        return list;
+    }
 
-		for (file in paths)
-		{
-			var list:Array<String> = CoolUtil.coolTextFile(file);
-			for (value in list)
-				if((allowDuplicates || !mergedList.contains(value)) && value.length > 0)
-					mergedList.push(value);
-		}
-		return mergedList;
-	}
+    public static function updateModList():Void
+    {
+        var saved = readSavedList();
+        var installed = getModDirectories();
+        var result:ModsList = {enabled: [], disabled: [], all: []};
+        for (folder in saved.all)
+            if (installed.contains(folder)) addEntry(result, folder, !saved.disabled.contains(folder));
+        for (folder in installed)
+            if (!result.all.contains(folder)) addEntry(result, folder, true);
+        cachedList = result;
+        updatedOnState = true;
+        saveList(result);
+    }
 
-	inline public static function directoriesWithFile(path:String, fileToFind:String, mods:Bool = true)
-	{
-		var foldersToCheck:Array<String> = [];
-		//Main folder
-		if(FileSystem.exists(path + fileToFind))
-			foldersToCheck.push(path + fileToFind);
+    private static function addEntry(list:ModsList, folder:String, enabled:Bool):Void
+    {
+        list.all.push(folder);
+        if (enabled) list.enabled.push(folder);
+        else list.disabled.push(folder);
+    }
 
-		// Week folder
-		if(Paths.currentLevel != null && Paths.currentLevel != path)
-		{
-			var pth:String = Paths.getFolderPath(fileToFind, Paths.currentLevel);
-			if(!foldersToCheck.contains(pth) && FileSystem.exists(pth))
-				foldersToCheck.push(pth);
-		}
+    public static function parseList():ModsList
+    {
+        if (!updatedOnState || cachedList == null) updateModList();
+        return {
+            enabled: cachedList.enabled.copy(),
+            disabled: cachedList.disabled.copy(),
+            all: cachedList.all.copy()
+        };
+    }
 
-		#if MODS_ALLOWED
-		if(mods)
-		{
-			// Global mods first
-			for(mod in Mods.getGlobalMods())
-			{
-				var folder:String = Paths.mods(mod + '/' + fileToFind);
-				if(FileSystem.exists(folder) && !foldersToCheck.contains(folder)) foldersToCheck.push(folder);
-			}
+    public static function saveList(list:ModsList):Bool
+    {
+        #if (MODS_ALLOWED && sys)
+        try
+        {
+            var lines:Array<String> = [];
+            var seen:Array<String> = [];
+            for (folder in list.all)
+            {
+                if (!validFolder(folder) || seen.contains(folder)) continue;
+                seen.push(folder);
+                lines.push(folder + '|' + (list.disabled.contains(folder) ? '0' : '1'));
+            }
+            File.saveContent('modsList.txt', lines.join('\n'));
+            cachedList = {all: seen, enabled: [], disabled: []};
+            for (folder in seen)
+            {
+                if (list.disabled.contains(folder)) cachedList.disabled.push(folder);
+                else cachedList.enabled.push(folder);
+            }
+            updatedOnState = true;
+            pushGlobalMods();
+            return true;
+        }
+        catch (e:Dynamic) return false;
+        #else
+        return false;
+        #end
+    }
 
-			// Then "PsychEngine/mods/" main folder
-			var folder:String = Paths.mods(fileToFind);
-			if(FileSystem.exists(folder) && !foldersToCheck.contains(folder)) foldersToCheck.push(Paths.mods(fileToFind));
+    public static function setEnabled(folder:String, enabled:Bool):Bool
+    {
+        var list = parseList();
+        if (!list.all.contains(folder)) return false;
+        list.enabled.remove(folder);
+        list.disabled.remove(folder);
+        if (enabled) list.enabled.push(folder);
+        else list.disabled.push(folder);
+        return saveList(list);
+    }
 
-			// And lastly, the loaded mod's folder
-			if(Mods.currentModDirectory != null && Mods.currentModDirectory.length > 0)
-			{
-				var folder:String = Paths.mods(Mods.currentModDirectory + '/' + fileToFind);
-				if(FileSystem.exists(folder) && !foldersToCheck.contains(folder)) foldersToCheck.push(folder);
-			}
-		}
-		#end
-		return foldersToCheck;
-	}
+    public static function moveMod(folder:String, index:Int):Bool
+    {
+        var list = parseList();
+        if (!list.all.remove(folder)) return false;
+        if (index < 0) index = 0;
+        if (index > list.all.length) index = list.all.length;
+        list.all.insert(index, folder);
+        return saveList(list);
+    }
 
-	public static function getPack(?folder:String = null):Dynamic
-	{
-		#if MODS_ALLOWED
-		if(folder == null) folder = Mods.currentModDirectory;
+    public static function refresh():Void
+    {
+        updatedOnState = false;
+        updateModList();
+        loadTopMod();
+    }
 
-		var path = Paths.mods(folder + '/pack.json');
-		if(FileSystem.exists(path)) {
-			try {
-				#if sys
-				var rawJson:String = File.getContent(path);
-				#else
-				var rawJson:String = Assets.getText(path);
-				#end
-				if(rawJson != null && rawJson.length > 0) return tjson.TJSON.parse(rawJson);
-			} catch(e:Dynamic) {
-				trace(e);
-			}
-		}
-		#end
-		return null;
-	}
+    public static function getPack(?folder:String):Dynamic
+    {
+        #if (MODS_ALLOWED && sys)
+        if (folder == null) folder = currentModDirectory;
+        if (!validFolder(folder)) return null;
+        var path = Paths.mods(folder + '/pack.json');
+        if (FileSystem.exists(path) && !FileSystem.isDirectory(path))
+        {
+            try return tjson.TJSON.parse(File.getContent(path)) catch (e:Dynamic) {}
+        }
+        #end
+        return null;
+    }
 
-	public static var updatedOnState:Bool = false;
-	inline public static function parseList():ModsList {
-		if(!updatedOnState) updateModList();
-		var list:ModsList = {enabled: [], disabled: [], all: []};
+    public static function loadTopMod():Void
+    {
+        currentModDirectory = '';
+        var enabled = parseList().enabled;
+        if (enabled.length > 0) currentModDirectory = enabled[0];
+        pushGlobalMods();
+    }
 
-		#if MODS_ALLOWED
-		try {
-			for (mod in CoolUtil.coolTextFile('modsList.txt'))
-			{
-				//trace('Mod: $mod');
-				if(mod.trim().length < 1) continue;
+    public static function directoriesWithFile(path:String, fileToFind:String, mods:Bool = true):Array<String>
+    {
+        var found:Array<String> = [];
+        #if sys
+        addIfExists(found, Path.join([path, fileToFind]));
+        if (Paths.currentLevel != null && Paths.currentLevel != path)
+            addIfExists(found, Paths.getFolderPath(fileToFind, Paths.currentLevel));
+        #if MODS_ALLOWED
+        if (mods)
+        {
+            for (folder in getGlobalMods())
+                addIfExists(found, Paths.mods(folder + '/' + fileToFind));
+            addIfExists(found, Paths.mods(fileToFind));
+            if (currentModDirectory != null && currentModDirectory.length > 0)
+                addIfExists(found, Paths.mods(currentModDirectory + '/' + fileToFind));
+        }
+        #end
+        #end
+        return found;
+    }
 
-				var dat = mod.split("|");
-				list.all.push(dat[0]);
-				if (dat[1] == "1")
-					list.enabled.push(dat[0]);
-				else
-					list.disabled.push(dat[0]);
-			}
-		} catch(e) {
-			trace(e);
-		}
-		#end
-		return list;
-	}
-	
-	private static function updateModList()
-	{
-		#if MODS_ALLOWED
-		// Find all that are already ordered
-		var list:Array<Array<Dynamic>> = [];
-		var added:Array<String> = [];
-		try {
-			for (mod in CoolUtil.coolTextFile('modsList.txt'))
-			{
-				var dat:Array<String> = mod.split("|");
-				var folder:String = dat[0];
-				if(folder.trim().length > 0 && FileSystem.exists(Paths.mods(folder)) && FileSystem.isDirectory(Paths.mods(folder)) && !added.contains(folder))
-				{
-					added.push(folder);
-					list.push([folder, (dat[1] == "1")]);
-				}
-			}
-		} catch(e) {
-			trace(e);
-		}
-		
-		// Scan for folders that aren't on modsList.txt yet
-		for (folder in getModDirectories())
-		{
-			if(folder.trim().length > 0 && FileSystem.exists(Paths.mods(folder)) && FileSystem.isDirectory(Paths.mods(folder)) &&
-			!ignoreModFolders.contains(folder.toLowerCase()) && !added.contains(folder))
-			{
-				added.push(folder);
-				list.push([folder, true]); //i like it false by default. -bb //Well, i like it True! -Shadow Mario (2022)
-				//Shadow Mario (2023): What the fuck was bb thinking
-			}
-		}
+    private static function addIfExists(list:Array<String>, path:String):Void
+    {
+        #if sys
+        if (path != null && FileSystem.exists(path) && !FileSystem.isDirectory(path) && !list.contains(path))
+            list.push(path);
+        #end
+    }
 
-		// Now save file
-		var fileStr:String = '';
-		for (values in list)
-		{
-			if(fileStr.length > 0) fileStr += '\n';
-			fileStr += values[0] + '|' + (values[1] ? '1' : '0');
-		}
+    public static function mergeAllTextsNamed(path:String, ?defaultDirectory:String, allowDuplicates:Bool = false):Array<String>
+    {
+        if (defaultDirectory == null) defaultDirectory = Paths.getSharedPath();
+        defaultDirectory = StringTools.trim(defaultDirectory);
+        if (!StringTools.startsWith(defaultDirectory, 'assets/')) defaultDirectory = 'assets/' + defaultDirectory;
+        var found = directoriesWithFile(defaultDirectory, path);
+        var result:Array<String> = [];
+        #if sys
+        for (file in found)
+        {
+            try
+            {
+                for (line in File.getContent(file).split('\n'))
+                {
+                    var value = StringTools.trim(line);
+                    if (value.length > 0 && (allowDuplicates || !result.contains(value))) result.push(value);
+                }
+            }
+            catch (e:Dynamic) {}
+        }
+        #end
+        return result;
+    }
 
-		File.saveContent('modsList.txt', fileStr);
-		updatedOnState = true;
-		//trace('Saved modsList.txt');
-		#end
-	}
-
-	public static function loadTopMod()
-	{
-		Mods.currentModDirectory = '';
-		
-		#if MODS_ALLOWED
-		var list:Array<String> = Mods.parseList().enabled;
-		if(list != null && list[0] != null)
-			Mods.currentModDirectory = list[0];
-		#end
-	}
+    public static function getStateScripts(stateName:String, ?extension:String = 'hx'):Array<String>
+    {
+        var result:Array<String> = [];
+        #if (MODS_ALLOWED && sys)
+        if (stateName == null || stateName.length == 0 || stateName.indexOf('/') >= 0 || stateName.indexOf('\\') >= 0 || stateName.indexOf('..') >= 0)
+            return result;
+        if (extension != 'hx' && extension != 'hxs') return result;
+        var file = 'states/' + stateName + '.' + extension;
+        for (mod in parseList().enabled)
+            addIfExists(result, Paths.mods(mod + '/' + file));
+        addIfExists(result, Paths.mods(file));
+        #end
+        return result;
+    }
 }

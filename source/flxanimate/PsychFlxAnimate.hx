@@ -250,9 +250,6 @@ class PsychFlxAnimate extends OriginalFlxAnimate
         if (value.charCodeAt(0) == 0xFEFF)
             return value.substr(1);
 
-        if (StringTools.startsWith(value, "\xEF\xBB\xBF"))
-            return value.substr(3);
-
         return value;
     }
 }

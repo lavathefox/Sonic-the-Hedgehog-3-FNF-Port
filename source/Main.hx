@@ -17,7 +17,14 @@ import lime.system.System;
 import states.Sonic3TitleStateV2;
 import backend.Highscore;
 import backend.Sonic3Storage;
+#if sys
 import save.Save;
+#end
+#if html5
+import external.html5.HtmlSupport;
+import js.Browser;
+import js.html.Event as BrowserEvent;
+#end
 
 #if HSCRIPT_ALLOWED
 import crowplexus.iris.Iris;
@@ -59,8 +66,13 @@ class Main extends Sprite
     public static var lastFrameTime(default, null):Float = 0;
     public static var saveEnabled(default, null):Bool = false;
 
+    #if html5
+    static var browserPageHide:BrowserEvent->Void;
+    static var browserBeforeUnload:BrowserEvent->Void;
+    #end
+
     static inline var GAME_TITLE:String = 'Sonic the Hedgehog 3 (FNF Port)';
-    #if CRASH_HANDLER
+    #if (CRASH_HANDLER && sys)
     static inline var CRASH_LOG_NAME:String = 'CRASH_LOG.txt';
     static inline var CRASH_LOG_LIMIT:Int = 512 * 1024;
     static var handlingCrash:Bool = false;
@@ -79,7 +91,7 @@ class Main extends Sprite
         startupTime = Timer.stamp();
         lastFrameTime = startupTime;
 
-        #if CRASH_HANDLER
+        #if (CRASH_HANDLER && sys)
         Lib.current.loaderInfo.uncaughtErrorEvents.addEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR, onCrash);
         #end
         #if (cpp && windows)
@@ -92,21 +104,25 @@ class Main extends Sprite
         writeLaunchLog();
         #end
 
-        #if VIDEOS_ALLOWED
+        #if (VIDEOS_ALLOWED && !html5)
         hxvlc.util.Handle.init(#if (hxvlc >= "1.8.0") ['--no-lua'] #end);
         #end
-        #if LUA_ALLOWED
+        #if (LUA_ALLOWED && cpp)
         Mods.pushGlobalMods();
         #end
         Mods.loadTopMod();
 
+        #if html5
+        FlxG.save.bind('funkin', 'sonic3-fnf-port');
+        #else
         FlxG.save.bind('funkin', CoolUtil.getSavePath());
+        #end
         Highscore.load();
 
-        #if HSCRIPT_ALLOWED
+        #if (HSCRIPT_ALLOWED && !html5)
         setupScriptLogging();
         #end
-        #if LUA_ALLOWED
+        #if (LUA_ALLOWED && cpp)
         Lua.set_callbacks_function(cpp.Callable.fromStaticFunction(psychlua.CallbackHandler.call));
         #end
         Controls.instance = new Controls();
@@ -122,6 +138,9 @@ class Main extends Sprite
         setupFPS();
         setupWindow();
         setupRuntime();
+        #if html5
+        setupBrowser();
+        #end
         registerEvents();
         initialized = true;
     }
@@ -166,13 +185,13 @@ class Main extends Sprite
     static function setupRuntime():Void
     {
         #if html5
-        FlxG.autoPause = false;
+        FlxG.autoPause = true;
         FlxG.mouse.visible = false;
         #end
         FlxG.fixedTimestep = false;
         FlxG.game.focusLostFramerate = 60;
         FlxG.keys.preventDefaultKeys = [TAB];
-        #if DISCORD_ALLOWED
+        #if (DISCORD_ALLOWED && !html5)
         DiscordClient.prepare();
         #end
     }
@@ -191,21 +210,25 @@ class Main extends Sprite
         var elapsed = now - lastFrameTime;
         lastFrameTime = now;
         if (elapsed < 0 || elapsed > 5) return;
+        #if sys
         if (saveEnabled) Save.update(elapsed);
+        #end
     }
 
     function onDeactivated(event:Event):Void
     {
         flushProgress();
-        #if sys
-        if (FlxG.save != null) FlxG.save.flush();
-        #end
+        flushFlixelSave();
     }
 
     public static function flushProgress():Bool
     {
+        #if sys
         if (!saveEnabled || !Save.dirty) return true;
         return Save.save();
+        #else
+        return true;
+        #end
     }
 
     public static function shutdownSystems():Void
@@ -213,14 +236,19 @@ class Main extends Sprite
         if (shuttingDown) return;
         shuttingDown = true;
         flushProgress();
+        flushFlixelSave();
+        #if html5
+        disposeBrowser();
+        #end
         if (instance != null)
         {
             instance.removeEventListener(Event.ENTER_FRAME, instance.onFrame);
             if (Lib.current.stage != null)
                 Lib.current.stage.removeEventListener(Event.DEACTIVATE, instance.onDeactivated);
         }
-        FlxG.signals.gameResized.remove(onGameResized);
-        #if DISCORD_ALLOWED
+        if (FlxG.signals != null)
+            FlxG.signals.gameResized.remove(onGameResized);
+        #if (DISCORD_ALLOWED && !html5)
         DiscordClient.shutdown();
         #end
         #if (windows && cpp)
@@ -228,6 +256,65 @@ class Main extends Sprite
         #end
         initialized = false;
     }
+
+    static function flushFlixelSave():Void
+    {
+        try
+        {
+            if (FlxG.save != null)
+                FlxG.save.flush();
+        }
+        catch (error:Dynamic) {}
+    }
+
+    #if html5
+    static function setupBrowser():Void
+    {
+        HtmlSupport.initialize();
+        HtmlSupport.setPageTitle(GAME_TITLE);
+        HtmlSupport.onFocusChanged = function(focused:Bool):Void
+        {
+            if (!focused)
+            {
+                flushProgress();
+                flushFlixelSave();
+            }
+        };
+        HtmlSupport.onVisibilityChanged = function(visible:Bool):Void
+        {
+            if (!visible)
+            {
+                flushProgress();
+                flushFlixelSave();
+            }
+        };
+        browserPageHide = function(_:BrowserEvent):Void
+        {
+            flushProgress();
+            flushFlixelSave();
+        };
+        browserBeforeUnload = function(_:BrowserEvent):Void
+        {
+            flushProgress();
+            flushFlixelSave();
+        };
+        Browser.window.addEventListener('pagehide', browserPageHide);
+        Browser.window.addEventListener('beforeunload', browserBeforeUnload);
+    }
+
+    static function disposeBrowser():Void
+    {
+        if (browserPageHide != null)
+            Browser.window.removeEventListener('pagehide', browserPageHide);
+        if (browserBeforeUnload != null)
+            Browser.window.removeEventListener('beforeunload', browserBeforeUnload);
+        browserPageHide = null;
+        browserBeforeUnload = null;
+        HtmlSupport.onFocusChanged = null;
+        HtmlSupport.onVisibilityChanged = null;
+        HtmlSupport.dispose();
+    }
+    #end
 
     static function setupFPS():Void
     {
@@ -277,7 +364,7 @@ class Main extends Sprite
     }
     #end
 
-    #if HSCRIPT_ALLOWED
+    #if (HSCRIPT_ALLOWED && !html5)
     static function setupScriptLogging():Void
     {
         Iris.warn = function(x, ?pos:haxe.PosInfos)
@@ -303,7 +390,7 @@ class Main extends Sprite
         var info:HScriptInfos = cast pos;
         var showLine:Bool = info.showLine != false;
         var location:String = (info.funcName != null ? '(${info.funcName}) - ' : '') + '${info.fileName}:';
-        #if LUA_ALLOWED
+        #if (LUA_ALLOWED && cpp)
         if (info.isLua == true)
         {
             location += 'HScript:';
@@ -334,7 +421,7 @@ class Main extends Sprite
         }
     }
 
-    #if CRASH_HANDLER
+    #if (CRASH_HANDLER && sys)
     static function getCrashFolder():String
     {
         #if android

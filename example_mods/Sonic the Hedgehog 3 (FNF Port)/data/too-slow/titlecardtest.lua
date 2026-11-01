@@ -1,185 +1,143 @@
-local titleCardStyle = getPropertyFromClass('backend.ClientPrefs', 'data.sonicTitleCardStyle')
-
-if titleCardStyle == nil or titleCardStyle == '' then
-	titleCardStyle = 'DEFAULT'
+local function pref(name)
+	local v = getPropertyFromClass('backend.ClientPrefs', 'data.' .. name)
+	if v == nil or v == '' then return nil end
+	return tostring(v)
 end
 
-local titleCardEnabled = titleCardStyle == 'DEFAULT'
+if (pref('sonicTitleCardStyle') or 'DEFAULT') ~= 'DEFAULT' then return end
 
-local titleText = "ANGEL ISLAND"
-local titleX = 1856
-local titleY = 330
+local speeds = {SLOW = 1.5, NORMAL = 1, FAST = 0.65}
+local speed = speeds[pref('sonicTitleCardSpeed') or 'NORMAL'] or 1
 
+local titleText = 'ANGEL ISLAND'
+local titleX, titleY = 1856, 330
 local spawnX = 662
 
-local letterScale = 3.3
-local letterOffsets = {}
+local scale = 3.3
+local spaceWidth = 16 * scale
+local offScreen = 1056
+local panelHeight = 224 * scale
+local letterFolder = 'titlecardleters/sonic3/'
 
-function clearLetters(tag)
-	if not titleCardEnabled then
-		return
-	end
+local names = {}
+local offsets = {}
+local widths = {}
 
-	for i = 1, 50 do
-		removeLuaSprite(tag .. i, true)
-	end
+local function t(seconds)
+	return seconds * speed
 end
 
-function getTextWidth(text)
-	if not titleCardEnabled then
-		return 0
+local function panel(tag, image, x, y, sx, sy)
+	makeLuaSprite(tag, image, x, y)
+	scaleObject(tag, sx or scale, sy or scale)
+	setProperty(tag .. '.antialiasing', false)
+	setObjectCamera(tag, 'hud')
+	addLuaSprite(tag)
+end
+
+local function letterWidth(char)
+	if char == ' ' then return spaceWidth end
+
+	if widths[char] == nil then
+		makeLuaSprite('tempLetter', letterFolder .. char, 0, 0)
+		scaleObject('tempLetter', scale, scale)
+		widths[char] = getProperty('tempLetter.width')
+		removeLuaSprite('tempLetter', true)
 	end
+
+	return widths[char]
+end
+
+local function drawTitle(tag, text, y)
+	text = string.upper(text)
 
 	local total = 0
-	text = string.upper(text)
-
 	for i = 1, #text do
-		local char = text:sub(i,i)
-
-		if char ~= " " then
-			local temp = 'tempLetter'..i
-			makeLuaSprite(temp, 'titlecardleters/sonic3/'..char, 0, 0)
-			scaleObject(temp, letterScale, letterScale)
-
-			total = total + getProperty(temp..'.width')
-			removeLuaSprite(temp, true)
-		else
-			total = total + (16 * letterScale)
-		end
+		total = total + letterWidth(text:sub(i, i))
 	end
 
-	return total
-end
-
-function drawTitle(tag, text, x, y)
-	if not titleCardEnabled then
-		return
-	end
-
-	clearLetters(tag)
-	letterOffsets = {}
-
-	text = string.upper(text)
-	local totalWidth = getTextWidth(text)
-
-	local offsetX = 0
-	local index = 1
+	local x = 0
 
 	for i = 1, #text do
-		local char = text:sub(i,i)
+		local char = text:sub(i, i)
 
-		if char ~= " " then
-			local name = tag .. index
+		if char ~= ' ' then
+			local name = tag .. (#names + 1)
+			local offset = x - total / 2
 
-			local relativeOffset = offsetX - totalWidth/2
-			letterOffsets[index] = relativeOffset
-
-			makeLuaSprite(name, 'titlecardleters/sonic3/'..char, titleX + relativeOffset, y)
+			makeLuaSprite(name, letterFolder .. char, titleX + offset, y)
 			setObjectCamera(name, 'hud')
-			setProperty(name..'.antialiasing', false)
-			scaleObject(name, letterScale, letterScale)
+			setProperty(name .. '.antialiasing', false)
+			scaleObject(name, scale, scale)
 			addLuaSprite(name, true)
 
-			local w = getProperty(name..'.width')
-			offsetX = offsetX + w
-			index = index + 1
-		else
-			offsetX = offsetX + (16 * letterScale)
+			names[#names + 1] = name
+			offsets[#offsets + 1] = offset
 		end
+
+		x = x + letterWidth(char)
+	end
+end
+
+local function moveLetters(prefix, target, time)
+	for i, name in ipairs(names) do
+		doTweenX(prefix .. i, name, target + offsets[i], time, 'linear')
+	end
+end
+
+local function cleanup()
+	for _, name in ipairs(names) do
+		removeLuaSprite(name, true)
+	end
+
+	names, offsets = {}, {}
+
+	for _, tag in ipairs({'titlescreenback', 'titlescreen1', 'titlescreen3', 'titlescreen4'}) do
+		removeLuaSprite(tag, true)
 	end
 end
 
 function onCreate()
-	if not titleCardEnabled then
-		return
-	end
+	panel('titlescreenback', 'fnf5', 0, 0, 3.4, 3.3)
+	panel('titlescreen1', 'fnf1', 0, -panelHeight)
 
-	makeLuaSprite('titlescreenback', 'fnf5', 0, 0)
-	scaleObject('titlescreenback', 3.4, 3.3)
-	setProperty('titlescreenback.antialiasing', false)
-	setObjectCamera('titlescreenback', 'hud')
-	addLuaSprite('titlescreenback')
+	drawTitle('titlescreen2', titleText, titleY)
 
-	makeLuaSprite('titlescreen1', 'fnf1', 0, -224*3.3)
-	scaleObject('titlescreen1', 3.3, 3.3)
-	setProperty('titlescreen1.antialiasing', false)
-	setObjectCamera('titlescreen1', 'hud')
-	addLuaSprite('titlescreen1')
+	panel('titlescreen3', 'fnf3', offScreen, 0)
+	panel('titlescreen4', 'fnf4', offScreen, 0)
 
-	drawTitle('titlescreen2', titleText, titleX, titleY)
-
-	makeLuaSprite('titlescreen3', 'fnf3', 1056, 0)
-	scaleObject('titlescreen3', 3.3, 3.3)
-	setProperty('titlescreen3.antialiasing', false)
-	setObjectCamera('titlescreen3', 'hud')
-	addLuaSprite('titlescreen3')
-
-	makeLuaSprite('titlescreen4', 'fnf4', 1056, 0)
-	scaleObject('titlescreen4', 3.3, 3.3)
-	setProperty('titlescreen4.antialiasing', false)
-	setObjectCamera('titlescreen4', 'hud')
-	addLuaSprite('titlescreen4')
-
-	runTimer('blacktransitionthingshit', 1)
+	runTimer('blacktransitionthingshit', t(1))
 end
 
 function onTimerCompleted(tag)
-	if not titleCardEnabled then
-		return
-	end
-
 	if tag == 'blacktransitionthingshit' then
-		doTweenY('tt1', 'titlescreen1', 0, 0.3)
-		runTimer('tt2incoming', 0.1)
-	end
-
-	if tag == 'tt2incoming' then
-		for i = 1, 50 do
-			if letterOffsets[i] ~= nil then
-				local name = 'titlescreen2'..i
-				doTweenX('tt2_'..i, name, spawnX + letterOffsets[i], 0.3)
-			end
-		end
-
-		runTimer('tt3incoming', 0.1)
-	end
-
-	if tag == 'tt3incoming' then
-		doTweenX('tt3', 'titlescreen3', 0, 0.3)
-		runTimer('tt4incoming', 0.1)
-	end
-
-	if tag == 'tt4incoming' then
-		doTweenX('tt4', 'titlescreen4', 0, 0.3)
-		runTimer('out', 2.5)
-		runTimer('out1', 2.6)
-		runTimer('out2', 2.7)
-		runTimer('out3', 2.8)
-		runTimer('blackscreenout', 0.8)
-	end
-
-	if tag == 'blackscreenout' then
-		doTweenAlpha('tt5', 'titlescreenback', 0, 0.2)
-	end
-
-	if tag == 'out' then
-		doTweenY('tt1', 'titlescreen1', -224*3.3, 0.2)
-	end
-
-	if tag == 'out1' then
-		for i = 1, 50 do
-			if letterOffsets[i] ~= nil then
-				local name = 'titlescreen2'..i
-				doTweenX('tt2out_'..i, name, titleX + 1056 + letterOffsets[i], 0.2)
-			end
-		end
-	end
-
-	if tag == 'out2' then
-		doTweenX('tt3', 'titlescreen3', 1056, 0.2)
-	end
-
-	if tag == 'out3' then
-		doTweenX('tt4', 'titlescreen4', 1056, 0.2)
+		doTweenY('tt1', 'titlescreen1', 0, t(0.3))
+		runTimer('tt2incoming', t(0.1))
+	elseif tag == 'tt2incoming' then
+		moveLetters('tt2_', spawnX, t(0.3))
+		runTimer('tt3incoming', t(0.1))
+	elseif tag == 'tt3incoming' then
+		doTweenX('tt3', 'titlescreen3', 0, t(0.3))
+		runTimer('tt4incoming', t(0.1))
+	elseif tag == 'tt4incoming' then
+		doTweenX('tt4', 'titlescreen4', 0, t(0.3))
+		runTimer('blackscreenout', t(0.8))
+		runTimer('out', t(2.5))
+		runTimer('out1', t(2.6))
+		runTimer('out2', t(2.7))
+		runTimer('out3', t(2.8))
+		runTimer('cleanup', t(3.1))
+	elseif tag == 'blackscreenout' then
+		doTweenAlpha('tt5', 'titlescreenback', 0, t(0.2))
+	elseif tag == 'out' then
+		doTweenY('tt1', 'titlescreen1', -panelHeight, t(0.2))
+	elseif tag == 'out1' then
+		moveLetters('tt2out_', titleX + offScreen, t(0.2))
+	elseif tag == 'out2' then
+		doTweenX('tt3', 'titlescreen3', offScreen, t(0.2))
+	elseif tag == 'out3' then
+		doTweenX('tt4', 'titlescreen4', offScreen, t(0.2))
+	elseif tag == 'cleanup' then
+		cleanup()
 	end
 end

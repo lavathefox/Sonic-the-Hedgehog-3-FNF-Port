@@ -5,6 +5,8 @@ import flixel.FlxSprite;
 import flixel.FlxState;
 import flixel.text.FlxText;
 import flixel.util.FlxColor;
+import flixel.tweens.FlxTween;
+import flixel.tweens.FlxEase;
 import backend.Mods;
 import backend.Sonic3Storage;
 
@@ -12,7 +14,7 @@ class PermissionState extends FlxState
 {
     static inline var POLL_INTERVAL:Float = 0.4;
     static inline var REQUEST_COOLDOWN:Float = 1.5;
-    static inline var SETUP_DELAY:Float = 0.12;
+    static inline var SETUP_DELAY:Float = 0.35;
 
     var background:FlxSprite;
     var panel:FlxSprite;
@@ -33,12 +35,17 @@ class PermissionState extends FlxState
     var grantCooldown:Float = 0;
     var setupTimer:Float = 0;
     var uiScale:Float = 1;
+    var animationTime:Float = 0;
+    var entranceDone:Bool = false;
+    var grantBaseY:Float = 0;
+    var skipBaseY:Float = 0;
 
     override public function create():Void
     {
         super.create();
         FlxG.mouse.visible = true;
         buildInterface();
+        animateEntrance();
         if (hasStoragePermission())
             beginFinish(true);
     }
@@ -97,6 +104,8 @@ class PermissionState extends FlxState
             "ENTER: grant    ESC: continue", fontSize(12));
         hintText.setFormat(null, fontSize(12), FlxColor.fromRGB(158, 177, 213), CENTER);
         add(hintText);
+        grantBaseY = grantButton.y;
+        skipBaseY = skipButton.y;
     }
 
     function fontSize(base:Int):Int
@@ -127,21 +136,53 @@ class PermissionState extends FlxState
         catch (e:Dynamic) return false;
     }
 
+    function animateEntrance():Void
+    {
+        var items:Array<FlxSprite> = [panel, titleText, bodyText, grantButton, grantLabel,
+            skipButton, skipLabel, statusText, hintText];
+        for (i in 0...items.length)
+        {
+            var item = items[i];
+            var targetY = item.y;
+            item.y = targetY + 25 * uiScale;
+            item.alpha = 0;
+            FlxTween.tween(item, {y: targetY, alpha: 1}, 0.42,
+                {ease: FlxEase.quadOut, startDelay: i * 0.045});
+        }
+        FlxTween.tween(background, {alpha: 1}, 0.3,
+            {onComplete: function(_) entranceDone = true});
+    }
+
     function tapped(target:FlxSprite):Bool
     {
-        if (target == null || !target.visible) return false;
-        if (FlxG.mouse.justPressed && FlxG.mouse.overlaps(target)) return true;
+        if (target == null || !target.visible || !target.exists) return false;
+
         #if FLX_TOUCH
         for (touch in FlxG.touches.list)
-            if (touch != null && touch.justPressed && touch.overlaps(target)) return true;
+        {
+            if (touch != null && touch.justPressed && touch.overlaps(target))
+            {
+                return true;
+            }
+        }
         #end
-        return false;
+
+        return FlxG.mouse.justPressed && FlxG.mouse.overlaps(target);
+    }
+
+    function buttonFeedback(button:FlxSprite, label:FlxText, baseY:Float, hover:Bool):Void
+    {
+        var offset = hover ? 2 * uiScale : 0;
+        button.y = baseY + offset;
+        label.y = button.y + (button.height - label.size * 1.35) / 2;
+        button.alpha = hover ? 0.82 : 0.95 + Math.sin(animationTime * 2.8) * 0.05;
     }
 
     override public function update(elapsed:Float):Void
     {
         super.update(elapsed);
         if (finished) return;
+        animationTime += elapsed;
 
         if (finishing)
         {
@@ -170,14 +211,20 @@ class PermissionState extends FlxState
             }
         }
 
-        var grantHover:Bool = FlxG.mouse.overlaps(grantButton);
-        var skipHover:Bool = FlxG.mouse.overlaps(skipButton);
-        grantButton.alpha = grantHover ? 0.8 : 1;
-        skipButton.alpha = skipHover ? 0.8 : 1;
+        var grantTap = tapped(grantButton);
+        var skipTap = !grantTap && tapped(skipButton);
 
-        if (tapped(grantButton) || FlxG.keys.justPressed.ENTER)
+        if (entranceDone)
+        {
+            buttonFeedback(grantButton, grantLabel, grantBaseY,
+                grantTap || FlxG.mouse.overlaps(grantButton));
+            buttonFeedback(skipButton, skipLabel, skipBaseY,
+                skipTap || FlxG.mouse.overlaps(skipButton));
+        }
+
+        if (grantTap || FlxG.keys.justPressed.ENTER)
             onGrantPressed();
-        else if (tapped(skipButton) || FlxG.keys.justPressed.ESCAPE)
+        else if (skipTap || FlxG.keys.justPressed.ESCAPE)
             beginFinish(false);
     }
 
@@ -209,12 +256,13 @@ class PermissionState extends FlxState
         finishing = true;
         grantedAccess = granted;
         setupTimer = 0;
-        grantButton.visible = false;
-        grantLabel.visible = false;
-        skipButton.visible = false;
-        skipLabel.visible = false;
-        hintText.visible = false;
+        for (item in [grantButton, grantLabel, skipButton, skipLabel, hintText])
+        {
+            FlxTween.cancelTweensOf(item);
+            item.visible = false;
+        }
         statusText.text = granted ? "Preparing mod folders..." : "Using private app storage...";
+        statusText.alpha = 1;
     }
 
     function finish():Void

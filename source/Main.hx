@@ -58,6 +58,7 @@ class Main extends Sprite
 	};
 
 	public static var fpsVar:FPSCounter;
+	static var mainInstance:Main;
 	static var lastProgressTick:Float = 0;
 	static var shuttingDown:Bool = false;
 	static var resizing:Bool = false;
@@ -75,6 +76,7 @@ class Main extends Sprite
 	public function new()
 	{
 		super();
+		mainInstance = this;
 
 		#if CRASH_HANDLER
 		Lib.current.loaderInfo.uncaughtErrorEvents.addEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR, onCrash);
@@ -200,9 +202,13 @@ class Main extends Sprite
 		shuttingDown = true;
 		if (S3.loaded && !S3.save())
 			Sys.println("Could not save Sonic 3 progress: " + S3.lastError);
-		removeEventListener(Event.ENTER_FRAME, onProgressFrame);
-		if (Lib.current.stage != null)
-			Lib.current.stage.removeEventListener(Event.DEACTIVATE, onAppDeactivated);
+		if (mainInstance != null)
+		{
+			mainInstance.removeEventListener(Event.ENTER_FRAME, mainInstance.onProgressFrame);
+			if (Lib.current != null && Lib.current.stage != null)
+				Lib.current.stage.removeEventListener(Event.DEACTIVATE, mainInstance.onAppDeactivated);
+			mainInstance = null;
+		}
 		FlxG.signals.gameResized.remove(onGameResized);
 		Audio.dispose();
 		SonicAPI.shutdown();

@@ -2,6 +2,7 @@ package options;
 
 import flixel.FlxG;
 import flixel.FlxSprite;
+import flixel.graphics.FlxGraphic;
 import flixel.math.FlxMath;
 import flixel.tweens.FlxEase;
 import flixel.tweens.FlxTween;
@@ -16,24 +17,31 @@ import backend.Paths;
 import sys.FileSystem;
 #end
 
+typedef SonicOption =
+{
+	var name:String;
+	var key:String;
+	var type:String;
+	var values:Array<String>;
+	var defaultValue:String;
+	var action:String;
+}
+
 class SonicPreferencesSubstate extends MusicBeatSubstate
 {
-	var options:Array<String> = [];
-	var optionTypes:Array<String> = [];
-	var optionValues:Array<Array<String>> = [];
+	var options:Array<SonicOption> = [];
 
-	var curSelected:Int = 1;
-	var curValue:Int = 0;
+	var curSelected:Int = 0;
 
-	var optionSprites:Array<Array<FlxSprite>> = [];
+	var labelSprites:Array<Array<FlxSprite>> = [];
 	var valueSprites:Array<Array<FlxSprite>> = [];
+	var rowY:Array<Float> = [];
 
 	var selectedArrow:FlxSprite;
 
 	var optionY:Float = 40;
 	var optionSpacing:Float = 19;
 	var optionX:Float = 117;
-
 	var valueX:Float = 250;
 
 	var letterScale:Float = 1;
@@ -41,6 +49,13 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 
 	var cursorX:Float = 17;
 	var cursorTweenTime:Float = 0.15;
+	var scrollSpeed:Float = 14;
+
+	var letterCache:Map<String, FlxGraphic> = new Map();
+	var widthCache:Map<String, Float> = new Map();
+	var luaCache:Map<String, String> = new Map();
+
+	var settingsDirty:Bool = false;
 
 	override public function create():Void
 	{
@@ -48,7 +63,7 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 
 		createOptions();
 		createCursor();
-		updateSelection(false);
+		updateRows(0, true);
 
 		MobileControls.setVisible(true);
 		MobileControls.setEnabled(true);
@@ -63,153 +78,108 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 		if (options.length <= 0)
 			return;
 
+		updateRows(elapsed, false);
+
 		if (controls.UI_UP_P || MobileControls.upJustPressed)
 		{
 			changeOption(-1);
-			return;
 		}
 		else if (controls.UI_DOWN_P || MobileControls.downJustPressed)
 		{
 			changeOption(1);
-			return;
 		}
 		else if (controls.UI_LEFT_P || MobileControls.leftJustPressed)
 		{
 			changeValue(-1);
-			return;
 		}
 		else if (controls.UI_RIGHT_P || MobileControls.rightJustPressed)
 		{
 			changeValue(1);
-			return;
+		}
+		else if (FlxG.mouse.wheel != 0)
+		{
+			changeOption(-FlxG.mouse.wheel);
 		}
 		else if (controls.ACCEPT || MobileControls.aJustPressed)
 		{
-			FlxG.sound.play(Paths.sound('confirmMenu'));
-
-			if (optionTypes[curSelected - 1] == 'titlecard')
-				applyTitleCardStyle();
-
-			return;
+			acceptOption();
 		}
 		else if (controls.BACK || MobileControls.bJustPressed)
 		{
 			FlxG.sound.play(Paths.sound('cancelMenu'));
 			MobileControls.setVisible(false);
+			saveIfDirty();
 			close();
 		}
+	}
+
+	override function destroy():Void
+	{
+		if (selectedArrow != null)
+			FlxTween.cancelTweensOf(selectedArrow);
+
+		saveIfDirty();
+
+		labelSprites = [];
+		valueSprites = [];
+		rowY = [];
+		letterCache.clear();
+		widthCache.clear();
+		luaCache.clear();
+		selectedArrow = null;
+
+		super.destroy();
+	}
+
+	function makeOption(name:String, key:String, type:String, values:Array<String>, defaultValue:String, action:String = ''):SonicOption
+	{
+		return {
+			name: name,
+			key: key,
+			type: type,
+			values: values,
+			defaultValue: defaultValue,
+			action: action
+		};
 	}
 
 	function createOptions():Void
 	{
 		options = [
-			'Title Card Styles',
-			'HUD Styles'
+			makeOption('Title Card Styles', 'sonicTitleCardStyle', 'string', ['DEFAULT', 'SONIC CD'], 'DEFAULT', 'preview'),
+			makeOption('Title Card Speed', 'sonicTitleCardSpeed', 'string', ['SLOW', 'NORMAL', 'FAST'], 'NORMAL'),
+			makeOption('HUD Styles', 'sonicHUDStyle', 'string', ['DEFAULT', 'SONIC 1/CD', 'SONIC 2'], 'DEFAULT'),
+			makeOption('Time Format', 'sonicTimeFormat', 'string', ['MM:SS', 'MM:SS:MS'], 'MM:SS'),
+			makeOption('Show Score', 'sonicShowScore', 'bool', ['OFF', 'ON'], 'ON'),
+			makeOption('Show Lives', 'sonicShowLives', 'bool', ['OFF', 'ON'], 'ON'),
+			makeOption('Ring Blink', 'sonicRingBlink', 'bool', ['OFF', 'ON'], 'ON'),
+			makeOption('Reset Options', '', 'string', [''], '', 'reset')
 		];
 
-		optionTypes = [
-			'titlecard',
-			'hud'
-		];
-
-		optionValues = [
-			[
-				'DEFAULT',
-				'SONIC CD'
-			],
-			[
-				'DEFAULT'
-			]
-		];
-
-		optionSprites = [];
+		labelSprites = [];
 		valueSprites = [];
+		rowY = [];
 
 		for (i in 0...options.length)
-			createOption(options[i], i + 1);
-	}
-
-	function createOption(text:String, optionIndex:Int):Void
-	{
-		text = text.toUpperCase();
-
-		var totalWidth:Float = getTextWidth(text);
-		var offsetX:Float = -totalWidth / 2;
-
-		var sprites:Array<FlxSprite> = [];
-		var y:Float = optionY + (optionIndex - 1) * optionSpacing;
-
-		for (i in 0...text.length)
 		{
-			var char:String = text.charAt(i);
+			rowY[i] = optionY + (i - curSelected) * optionSpacing;
 
-			if (char == ' ')
-			{
-				offsetX += letterSpacing;
-				continue;
-			}
-
-			var letter:FlxSprite = new FlxSprite(optionX + offsetX, y);
-			letter.loadGraphic(Paths.image(getLetterPath(char)));
-			letter.scale.set(letterScale, letterScale);
-			letter.updateHitbox();
-			letter.antialiasing = false;
-			letter.visible = true;
-			letter.alpha = 1;
-
-			add(letter);
-			sprites.push(letter);
-
-			offsetX += letter.width;
+			labelSprites[i] = buildText(options[i].name, optionX, rowY[i]);
+			valueSprites[i] = buildText(getCurrentValueText(i), valueX, rowY[i]);
 		}
-
-		optionSprites[optionIndex - 1] = sprites;
-
-		createValue(getCurrentValueText(optionIndex - 1), optionIndex);
-	}
-
-	function createValue(text:String, optionIndex:Int):Void
-	{
-		text = text.toUpperCase();
-
-		var totalWidth:Float = getTextWidth(text);
-		var offsetX:Float = -totalWidth / 2;
-
-		var sprites:Array<FlxSprite> = [];
-		var y:Float = optionY + (optionIndex - 1) * optionSpacing;
-
-		for (i in 0...text.length)
-		{
-			var char:String = text.charAt(i);
-
-			if (char == ' ')
-			{
-				offsetX += letterSpacing;
-				continue;
-			}
-
-			var letter:FlxSprite = new FlxSprite(valueX + offsetX, y);
-			letter.loadGraphic(Paths.image(getLetterPath(char)));
-			letter.scale.set(letterScale, letterScale);
-			letter.updateHitbox();
-			letter.antialiasing = false;
-			letter.visible = true;
-			letter.alpha = 1;
-
-			add(letter);
-			sprites.push(letter);
-
-			offsetX += letter.width;
-		}
-
-		valueSprites[optionIndex - 1] = sprites;
 	}
 
 	function createCursor():Void
 	{
 		selectedArrow = new FlxSprite(cursorX, optionY);
 
-		selectedArrow.loadGraphic(Paths.image('pauseMenuEXE/selectedArrow'));
+		var graphic:FlxGraphic = Paths.image('pauseMenuEXE/selectedArrow');
+
+		if (graphic != null)
+			selectedArrow.loadGraphic(graphic);
+		else
+			selectedArrow.makeGraphic(8, 8, 0xFFFFFFFF);
+
 		selectedArrow.scale.set(1, 1);
 		selectedArrow.updateHitbox();
 		selectedArrow.antialiasing = false;
@@ -219,24 +189,42 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 
 	function getLetterPath(char:String):String
 	{
+		switch (char.toUpperCase())
+		{
+			case ':':
+				return 'hud/letershud/colon2';
+			case '/':
+				return 'hud/letershud/slash';
+			default:
+				return 'hud/letershud/' + char.toUpperCase();
+		}
+	}
+
+	function getLetterGraphic(char:String):FlxGraphic
+	{
 		char = char.toUpperCase();
 
-		if (char == ':')
-			return 'hud/letershud/colon2';
+		if (letterCache.exists(char))
+			return letterCache.get(char);
 
-		return 'hud/letershud/' + char;
+		var graphic:FlxGraphic = Paths.image(getLetterPath(char));
+
+		letterCache.set(char, graphic);
+		return graphic;
 	}
 
 	function getLetterWidth(char:String):Float
 	{
-		var letter:FlxSprite = new FlxSprite();
+		char = char.toUpperCase();
 
-		letter.loadGraphic(Paths.image(getLetterPath(char)));
-		letter.antialiasing = false;
-		letter.scale.set(letterScale, letterScale);
-		letter.updateHitbox();
+		if (widthCache.exists(char))
+			return widthCache.get(char);
 
-		return letter.width;
+		var graphic:FlxGraphic = getLetterGraphic(char);
+		var w:Float = (graphic != null) ? graphic.width * letterScale : 0;
+
+		widthCache.set(char, w);
+		return w;
 	}
 
 	function getTextWidth(text:String):Float
@@ -258,75 +246,42 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 		return total;
 	}
 
-	function getTitleCardStyle():String
+	function buildText(text:String, centerX:Float, y:Float):Array<FlxSprite>
 	{
-		if (ClientPrefs.data.sonicTitleCardStyle == null || ClientPrefs.data.sonicTitleCardStyle == '')
-			return 'DEFAULT';
+		var sprites:Array<FlxSprite> = [];
 
-		return ClientPrefs.data.sonicTitleCardStyle;
-	}
+		text = text.toUpperCase();
 
-	function getHUDStyle():String
-	{
-		if (ClientPrefs.data.sonicHUDStyle == null || ClientPrefs.data.sonicHUDStyle == '')
-			return 'DEFAULT';
+		var offsetX:Float = -getTextWidth(text) / 2;
 
-		return ClientPrefs.data.sonicHUDStyle;
-	}
-
-	function getCurrentValueIndex(index:Int):Int
-	{
-		if (index < 0 || index >= optionTypes.length)
-			return 0;
-
-		var currentValue:String = '';
-
-		switch (optionTypes[index])
+		for (i in 0...text.length)
 		{
-			case 'titlecard':
-				currentValue = getTitleCardStyle();
+			var char:String = text.charAt(i);
 
-			case 'hud':
-				currentValue = getHUDStyle();
+			if (char == ' ')
+			{
+				offsetX += letterSpacing;
+				continue;
+			}
+
+			var graphic:FlxGraphic = getLetterGraphic(char);
+
+			if (graphic == null)
+				continue;
+
+			var letter:FlxSprite = new FlxSprite(centerX + offsetX, y);
+			letter.loadGraphic(graphic);
+			letter.scale.set(letterScale, letterScale);
+			letter.updateHitbox();
+			letter.antialiasing = false;
+
+			add(letter);
+			sprites.push(letter);
+
+			offsetX += letter.width;
 		}
 
-		for (i in 0...optionValues[index].length)
-		{
-			if (optionValues[index][i] == currentValue)
-				return i;
-		}
-
-		return 0;
-	}
-
-	function getCurrentValueText(index:Int):String
-	{
-		if (index < 0 || index >= optionValues.length)
-			return '';
-
-		var values:Array<String> = optionValues[index];
-
-		if (values.length <= 0)
-			return '';
-
-		var selected:Int = getCurrentValueIndex(index);
-
-		if (selected < 0 || selected >= values.length)
-			selected = 0;
-
-		return values[selected];
-	}
-
-	function setTitleCardStyle(style:String):Void
-	{
-		ClientPrefs.data.sonicTitleCardStyle = style;
-		ClientPrefs.saveSettings();
-	}
-
-	function setHUDStyle(style:String):Void
-	{
-		ClientPrefs.data.sonicHUDStyle = style;
-		ClientPrefs.saveSettings();
+		return sprites;
 	}
 
 	function destroySprites(sprites:Array<FlxSprite>):Void
@@ -344,121 +299,222 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 		}
 	}
 
+	function getRawValue(option:SonicOption):String
+	{
+		if (option.key == '')
+			return '';
+
+		var value:Dynamic = Reflect.getProperty(ClientPrefs.data, option.key);
+
+		if (option.type == 'bool')
+		{
+			if (value == null)
+				return option.defaultValue;
+
+			return (value == true) ? 'ON' : 'OFF';
+		}
+
+		if (value == null || Std.string(value) == '')
+			return option.defaultValue;
+
+		return Std.string(value);
+	}
+
+	function setRawValue(option:SonicOption, value:String):Void
+	{
+		if (option.key == '')
+			return;
+
+		if (option.type == 'bool')
+			Reflect.setProperty(ClientPrefs.data, option.key, value == 'ON');
+		else
+			Reflect.setProperty(ClientPrefs.data, option.key, value);
+
+		settingsDirty = true;
+	}
+
+	function saveIfDirty():Void
+	{
+		if (!settingsDirty)
+			return;
+
+		ClientPrefs.saveSettings();
+		settingsDirty = false;
+	}
+
+	function getCurrentValueIndex(index:Int):Int
+	{
+		if (index < 0 || index >= options.length)
+			return 0;
+
+		var option:SonicOption = options[index];
+		var current:String = getRawValue(option);
+		var found:Int = option.values.indexOf(current);
+
+		if (found >= 0)
+			return found;
+
+		var def:Int = option.values.indexOf(option.defaultValue);
+		return def >= 0 ? def : 0;
+	}
+
+	function getCurrentValueText(index:Int):String
+	{
+		if (index < 0 || index >= options.length)
+			return '';
+
+		var values:Array<String> = options[index].values;
+
+		if (values.length <= 0)
+			return '';
+
+		return values[getCurrentValueIndex(index)];
+	}
+
 	function refreshValue(index:Int):Void
 	{
 		if (index < 0 || index >= valueSprites.length)
 			return;
 
 		destroySprites(valueSprites[index]);
+		valueSprites[index] = buildText(getCurrentValueText(index), valueX, rowY[index]);
 
-		valueSprites[index] = [];
-
-		createValue(getCurrentValueText(index), index + 1);
+		applyRowVisuals(index);
 	}
 
-	function updatePositions():Void
+	function applyRowVisuals(i:Int):Void
 	{
-		for (i in 0...optionSprites.length)
+		var selected:Bool = (i == curSelected);
+		var alpha:Float = selected ? 1 : 0.6;
+		var onScreen:Bool = rowY[i] > -optionSpacing && rowY[i] < FlxG.height;
+		var y:Float = rowY[i];
+
+		for (letter in labelSprites[i])
 		{
-			var offset:Int = i - (curSelected - 1);
-			var y:Float = optionY + offset * optionSpacing;
+			letter.y = y;
+			letter.alpha = alpha;
+			letter.visible = onScreen;
+		}
 
-			for (letter in optionSprites[i])
-			{
-				letter.y = y;
-				letter.alpha = i == curSelected - 1 ? 1 : 0.6;
-			}
-
-			for (letter in valueSprites[i])
-			{
-				letter.y = y;
-				letter.alpha = i == curSelected - 1 ? 1 : 0.6;
-			}
+		for (letter in valueSprites[i])
+		{
+			letter.y = y;
+			letter.alpha = alpha;
+			letter.visible = onScreen;
 		}
 	}
 
-	function updateSelection(playTween:Bool):Void
+	function updateRows(elapsed:Float, snap:Bool):Void
 	{
-		updatePositions();
+		for (i in 0...options.length)
+		{
+			var target:Float = optionY + (i - curSelected) * optionSpacing;
 
+			if (snap)
+				rowY[i] = target;
+			else
+				rowY[i] = FlxMath.lerp(rowY[i], target, FlxMath.bound(elapsed * scrollSpeed, 0, 1));
+
+			applyRowVisuals(i);
+		}
+	}
+
+	function nudgeCursor():Void
+	{
 		if (selectedArrow == null)
 			return;
 
-		var targetY:Float = optionY;
-
 		FlxTween.cancelTweensOf(selectedArrow);
 
-		if (playTween)
-		{
-			FlxTween.tween(selectedArrow, {y: targetY}, cursorTweenTime, {
-				ease: FlxEase.quadOut
-			});
-		}
-		else
-		{
-			selectedArrow.y = targetY;
-		}
+		selectedArrow.x = cursorX - 4;
+		FlxTween.tween(selectedArrow, {x: cursorX}, cursorTweenTime, {
+			ease: FlxEase.quadOut
+		});
 	}
 
 	function changeOption(change:Int):Void
 	{
-		if (options.length <= 0)
+		if (options.length <= 0 || change == 0)
 			return;
 
 		curSelected += change;
 
-		if (curSelected < 1)
-			curSelected = options.length;
-		else if (curSelected > options.length)
-			curSelected = 1;
+		if (curSelected < 0)
+			curSelected = options.length - 1;
+		else if (curSelected >= options.length)
+			curSelected = 0;
 
 		FlxG.sound.play(Paths.sound('dataselectswitch'));
 
-		updateSelection(true);
+		nudgeCursor();
 	}
 
 	function changeValue(change:Int):Void
 	{
-		var index:Int = curSelected - 1;
+		var index:Int = curSelected;
 
-		if (index < 0 || index >= optionValues.length)
+		if (index < 0 || index >= options.length)
 			return;
 
-		var values:Array<String> = optionValues[index];
+		var option:SonicOption = options[index];
 
-		if (values.length <= 1)
+		if (option.values.length <= 1)
 			return;
 
-		curValue = getCurrentValueIndex(index);
-		curValue = FlxMath.wrap(curValue + change, 0, values.length - 1);
+		var next:Int = FlxMath.wrap(getCurrentValueIndex(index) + change, 0, option.values.length - 1);
 
-		var selectedValue:String = values[curValue];
-
-		switch (optionTypes[index])
-		{
-			case 'titlecard':
-				setTitleCardStyle(selectedValue);
-
-			case 'hud':
-				setHUDStyle(selectedValue);
-		}
-
+		setRawValue(option, option.values[next]);
 		refreshValue(index);
 
 		FlxG.sound.play(Paths.sound('dataselectswitch'));
 	}
 
+	function acceptOption():Void
+	{
+		var option:SonicOption = options[curSelected];
+
+		FlxG.sound.play(Paths.sound('confirmMenu'));
+
+		switch (option.action)
+		{
+			case 'preview':
+				applyTitleCardStyle();
+
+			case 'reset':
+				resetAllOptions();
+
+			default:
+				changeValue(1);
+		}
+	}
+
+	function resetAllOptions():Void
+	{
+		for (i in 0...options.length)
+		{
+			var option:SonicOption = options[i];
+
+			if (option.key == '')
+				continue;
+
+			setRawValue(option, option.defaultValue);
+			refreshValue(i);
+		}
+
+		saveIfDirty();
+	}
+
 	function findLuaRecursive(directory:String, fileName:String):String
 	{
 		#if MODS_ALLOWED
-		if (!FileSystem.exists(directory))
+		if (!FileSystem.exists(directory) || !FileSystem.isDirectory(directory))
 			return '';
 
 		try
 		{
 			for (file in FileSystem.readDirectory(directory))
 			{
-				var path:String = '$directory/$file';
+				var path:String = directory + '/' + file;
 
 				if (FileSystem.isDirectory(path))
 				{
@@ -475,6 +531,7 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 		}
 		catch (e:Dynamic)
 		{
+			trace('Erro ao ler pasta "' + directory + '": ' + e);
 		}
 		#end
 
@@ -483,19 +540,24 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 
 	function findLuaFile(fileName:String):String
 	{
+		if (luaCache.exists(fileName))
+			return luaCache.get(fileName);
+
+		var result:String = '';
+
 		#if MODS_ALLOWED
 		var searchDirectories:Array<String> = [];
 
-		var modsPath:String = Paths.getSharedPath();
+		var sharedPath:String = Paths.getSharedPath();
 
-		if (modsPath != null && modsPath != '')
-			searchDirectories.push(modsPath);
+		if (sharedPath != null && sharedPath != '')
+			searchDirectories.push(sharedPath);
 
 		var currentMod:String = Mods.currentModDirectory;
 
 		if (currentMod != null && currentMod != '')
 		{
-			var currentModPath:String = Paths.mods('$currentMod/');
+			var currentModPath:String = Paths.mods(currentMod + '/');
 
 			if (currentModPath != null && currentModPath != '')
 				searchDirectories.push(currentModPath);
@@ -503,14 +565,15 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 
 		for (directory in searchDirectories)
 		{
-			var found:String = findLuaRecursive(directory, fileName);
+			result = findLuaRecursive(directory, fileName);
 
-			if (found != '')
-				return found;
+			if (result != '')
+				break;
 		}
 		#end
 
-		return '';
+		luaCache.set(fileName, result);
+		return result;
 	}
 
 	function findTitleCardScript(style:String):String
@@ -527,35 +590,12 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 
 	function applyTitleCardStyle():Void
 	{
-		var style:String = getTitleCardStyle();
+		var style:String = getRawValue(options[curSelected]);
 		var scriptPath:String = findTitleCardScript(style);
 
 		if (scriptPath != '')
 			trace('Sonic Title Card: ' + style + ' -> ' + scriptPath);
 		else
 			trace('Sonic Title Card: Script not found for ' + style);
-	}
-
-	override function destroy():Void
-	{
-		FlxTween.cancelTweensOf(selectedArrow);
-
-
-		for (sprites in optionSprites)
-			destroySprites(sprites);
-
-		for (sprites in valueSprites)
-			destroySprites(sprites);
-
-		optionSprites = [];
-		valueSprites = [];
-
-		if (selectedArrow != null)
-		{
-			selectedArrow.destroy();
-			selectedArrow = null;
-		}
-
-		super.destroy();
 	}
 }

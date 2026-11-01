@@ -831,7 +831,7 @@ class Paths
 		//trace(folderOrImg);
 		//trace(spriteJson);
 		//trace(animationJson);
-		spr.loadAtlasEx(folderOrImg, spriteJson, animationJson);
+		spr.loadAtlas(folderOrImg, spriteJson, animationJson);
 	}
 	#end
 }

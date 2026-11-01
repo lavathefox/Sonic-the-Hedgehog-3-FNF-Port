@@ -13,6 +13,11 @@ import save.Save;
 {
     public var sonicTitleCardStyle:String = 'DEFAULT';
     public var sonicHUDStyle:String = 'DEFAULT';
+    public var sonicTitleCardSpeed:String = 'NORMAL';
+    public var sonicTimeFormat:String = 'MM:SS';
+    public var sonicShowScore:Bool = true;
+    public var sonicShowLives:Bool = true;
+    public var sonicRingBlink:Bool = true;
     public var mobileShowHitbox:Bool = false;
     public var mobilePauseButton:Bool = true;
     public var mobileTouchCursor:Bool = false;

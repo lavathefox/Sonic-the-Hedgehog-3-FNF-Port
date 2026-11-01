@@ -159,6 +159,8 @@ class ModsMenuState extends MusicBeatState
         if (selected >= scrollTop + visibleRows) scrollTop = selected - visibleRows + 1;
         if (scrollTop < 0) scrollTop = 0;
 
+        for (row in rows.members)
+            if (row != null) row.destroy();
         rows.clear();
         var max = Std.int(Math.min(items.length, scrollTop + visibleRows));
         for (i in scrollTop...max)
@@ -313,7 +315,11 @@ class ModsMenuState extends MusicBeatState
             exitMenu();
             return;
         }
-        if (FlxG.keys.justPressed.R) reload();
+        if (FlxG.keys.justPressed.R)
+        {
+            reload();
+            return;
+        }
         if (items.length > 0)
         {
             if (controls.UI_DOWN_P) { selected = (selected + 1) % items.length; refresh(); }
@@ -366,7 +372,10 @@ class AirModEntry
             if (pack.restart == true) mustRestart = true;
             if (pack.color != null)
             {
-                try bgColor = FlxColor.fromRGB(pack.color[0], pack.color[1], pack.color[2]);
+                try
+                {
+                    bgColor = FlxColor.fromRGB(Std.int(pack.color[0]), Std.int(pack.color[1]), Std.int(pack.color[2]));
+                }
                 catch (e:Dynamic) {}
             }
         }
@@ -376,7 +385,10 @@ class AirModEntry
         var settingsPath = Paths.mods(folder + '/data/settings.json');
         if (FileSystem.exists(settingsPath))
         {
-            try settings = tjson.TJSON.parse(File.getContent(settingsPath));
+            try
+            {
+                settings = tjson.TJSON.parse(File.getContent(settingsPath));
+            }
             catch (e:Dynamic) {}
         }
     }

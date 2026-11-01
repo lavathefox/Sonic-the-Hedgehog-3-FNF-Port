@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="LiveNotes.png">
+	<!-- Created using the Spritesheet and XML generator -->
+	<!-- https://uncertainprod.github.io/FNF-Spritesheet-XML-generator-Web -->
+	<SubTexture name="lifeIdle0000" x="0" y="0" width="32" height="36" frameX="2" frameY="2" frameWidth="28" frameHeight="32"/>
+	<SubTexture name="lifeIdle0001" x="32" y="0" width="32" height="36" frameX="2" frameY="2" frameWidth="28" frameHeight="32"/>
+</TextureAtlas>

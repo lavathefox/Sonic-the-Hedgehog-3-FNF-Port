@@ -55,9 +55,9 @@ class DataSelectState extends MusicBeatState
 	static inline var ARROW_IMAGE_LARGE:String = 'dataSelectArrowLarge';
 
 	// ---- HUD (lives / continues) image names (without folder, without .png) ----
-	static inline var HUD_LIFE_ICON:String = 'placeholderIcon';
+	static inline var HUD_LIFE_ICON:String = 'bfLifeIcon';
 	static inline var HUD_COLON:String = 'colon';
-	static inline var HUD_CONT_ICON:String = 'placeholderContinueIcon';
+	static inline var HUD_CONT_ICON:String = 'bfContinueIcon';
 	/** Digit images are HUD_NUMBER_PREFIX + 0..9 (number0, number1, ... number9). */
 	static inline var HUD_NUMBER_PREFIX:String = 'number';
 

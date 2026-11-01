@@ -1,11 +1,11 @@
 package external.windows;
 
 #if (windows && cpp)
-import cpp.Lib;
-#end
+@:cppFileCode('
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
 
-#if (windows && cpp)
-@:headerCode('
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -18,69 +18,196 @@ import cpp.Lib;
 #pragma comment(lib, "kernel32.lib")
 #pragma comment(lib, "psapi.lib")
 
-static std::wstring winapi_utf16(const char* text)
+namespace SonicWinAPI
 {
-    if (text == nullptr)
-        return L"";
-
-    int length = MultiByteToWideChar(
-        CP_UTF8, 0, text, -1, nullptr, 0
-    );
-
-    if (length <= 0)
-        return L"";
-
-    std::wstring result(length, L\'\\0\');
-
-    MultiByteToWideChar(
-        CP_UTF8, 0, text, -1,
-        &result[0], length
-    );
-
-    result.resize(length - 1);
-    return result;
-}
-
-static HWND winapi_window()
-{
-    DWORD pid = GetCurrentProcessId();
-    HWND result = nullptr;
-
-    struct WindowData
+    static std::wstring toWide(const char* text)
     {
-        DWORD pid;
+        if (text == nullptr)
+            return L"";
+
+        int length = MultiByteToWideChar(
+            CP_UTF8, 0, text, -1, nullptr, 0
+        );
+
+        if (length <= 0)
+            return L"";
+
+        std::wstring result(length, L\'\\0\');
+
+        if (!MultiByteToWideChar(
+            CP_UTF8, 0, text, -1, &result[0], length
+        ))
+            return L"";
+
+        result.resize(length - 1);
+        return result;
+    }
+
+    struct WindowSearch
+    {
+        DWORD processId;
         HWND window;
     };
 
-    WindowData data = {pid, nullptr};
-
-    EnumWindows([](HWND hwnd, LPARAM param) -> BOOL
+    static BOOL CALLBACK findWindow(HWND hwnd, LPARAM param)
     {
-        WindowData* data =
-            reinterpret_cast<WindowData*>(param);
+        WindowSearch* search =
+            reinterpret_cast<WindowSearch*>(param);
 
-        DWORD windowPid = 0;
-        GetWindowThreadProcessId(hwnd, &windowPid);
+        DWORD processId = 0;
 
-        if (windowPid == data->pid &&
-            GetWindow(hwnd, GW_OWNER) == nullptr &&
-            IsWindowVisible(hwnd))
+        GetWindowThreadProcessId(hwnd, &processId);
+
+        if (processId != search->processId)
+            return TRUE;
+
+        if (GetWindow(hwnd, GW_OWNER) != nullptr)
+            return TRUE;
+
+        if (!IsWindowVisible(hwnd))
+            return TRUE;
+
+        search->window = hwnd;
+        return FALSE;
+    }
+
+    static HWND getWindow()
+    {
+        WindowSearch search = {
+            GetCurrentProcessId(),
+            nullptr
+        };
+
+        EnumWindows(
+            findWindow,
+            reinterpret_cast<LPARAM>(&search)
+        );
+
+        return search.window;
+    }
+
+    static bool setTitle(const char* title)
+    {
+        HWND hwnd = getWindow();
+
+        if (hwnd == nullptr)
+            return false;
+
+        std::wstring value = toWide(title);
+
+        return SetWindowTextW(
+            hwnd, value.c_str()
+        ) != 0;
+    }
+
+    static bool isFocused()
+    {
+        HWND hwnd = getWindow();
+
+        return hwnd != nullptr &&
+            GetForegroundWindow() == hwnd;
+    }
+
+    static double getMemory()
+    {
+        PROCESS_MEMORY_COUNTERS_EX info = {};
+
+        info.cb = sizeof(info);
+
+        if (!GetProcessMemoryInfo(
+            GetCurrentProcess(),
+            reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&info),
+            sizeof(info)
+        ))
+            return 0.0;
+
+        return static_cast<double>(info.WorkingSetSize);
+    }
+
+    static std::string getVersion()
+    {
+        typedef LONG (WINAPI *VersionFunction)(
+            OSVERSIONINFOW*
+        );
+
+        HMODULE module = GetModuleHandleW(L"ntdll.dll");
+
+        if (module == nullptr)
+            return "Windows";
+
+        VersionFunction function =
+            reinterpret_cast<VersionFunction>(
+                GetProcAddress(module, "RtlGetVersion")
+            );
+
+        if (function == nullptr)
+            return "Windows";
+
+        OSVERSIONINFOEXW info = {};
+        info.dwOSVersionInfoSize = sizeof(info);
+
+        if (function(
+            reinterpret_cast<OSVERSIONINFOW*>(&info)
+        ) != 0)
+            return "Windows";
+
+        std::string name = "Windows ";
+
+        if (info.dwMajorVersion == 10)
         {
-            data->window = hwnd;
-            return FALSE;
+            name += info.dwBuildNumber >= 22000
+                ? "11"
+                : "10";
+        }
+        else
+        {
+            name += std::to_string(info.dwMajorVersion);
+            name += ".";
+            name += std::to_string(info.dwMinorVersion);
         }
 
-        return TRUE;
-    }, reinterpret_cast<LPARAM>(&data));
+        name += " (Build ";
+        name += std::to_string(info.dwBuildNumber);
+        name += ")";
 
-    result = data.window;
-    return result;
+        return name;
+    }
+
+    static bool showMessage(
+        const char* title,
+        const char* message,
+        bool error
+    )
+    {
+        std::wstring nativeTitle = toWide(title);
+        std::wstring nativeMessage = toWide(message);
+
+        UINT flags = MB_OK |
+            (error ? MB_ICONERROR : MB_ICONINFORMATION);
+
+        return MessageBoxW(
+            getWindow(),
+            nativeMessage.c_str(),
+            nativeTitle.c_str(),
+            flags
+        ) != 0;
+    }
+
+    static bool preventSleep(bool enabled)
+    {
+        EXECUTION_STATE flags = enabled
+            ? ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+            : ES_CONTINUOUS;
+
+        return SetThreadExecutionState(flags) != 0;
+    }
 }
 ')
 #end
 class WinAPI
 {
     public static var performanceMode(default, null):Bool = false;
+    public static var sleepPrevention(default, null):Bool = false;
 
     private static var previousPriority:Int = 0;
 
@@ -114,7 +241,7 @@ class WinAPI
     public static function isWindowFocused():Bool
     {
         #if (windows && cpp)
-        return nativeWindowFocused();
+        return nativeIsFocused();
         #else
         return false;
         #end
@@ -123,7 +250,7 @@ class WinAPI
     public static function getMemoryUsage():Float
     {
         #if (windows && cpp)
-        return nativeMemoryUsage();
+        return nativeGetMemory();
         #else
         return 0;
         #end
@@ -137,7 +264,7 @@ class WinAPI
     public static function getWindowsVersion():String
     {
         #if (windows && cpp)
-        return nativeWindowsVersion();
+        return nativeGetVersion();
         #else
         return "Unsupported";
         #end
@@ -167,15 +294,17 @@ class WinAPI
             return true;
 
         #if (windows && cpp)
-        previousPriority = getPriority();
+        var priority:Int = getPriority();
 
-        if (previousPriority == 0)
+        if (priority == 0)
             return false;
 
         if (!nativeEnablePerformance())
             return false;
 
+        previousPriority = priority;
         performanceMode = true;
+
         return true;
         #else
         return false;
@@ -192,7 +321,21 @@ class WinAPI
 
         performanceMode = false;
         previousPriority = 0;
+
         return true;
+    }
+
+    public static function setSleepPrevention(enabled:Bool):Bool
+    {
+        #if (windows && cpp)
+        if (!nativePreventSleep(enabled))
+            return false;
+
+        sleepPrevention = enabled;
+        return true;
+        #else
+        return false;
+        #end
     }
 
     public static function showMessage(
@@ -206,10 +349,19 @@ class WinAPI
         #end
     }
 
+    public static function shutdown():Void
+    {
+        if (performanceMode)
+            disablePerformanceMode();
+
+        if (sleepPrevention)
+            setSleepPrevention(false);
+    }
+
     #if (windows && cpp)
 
     @:functionCode('
-        return (int)GetCurrentProcessId();
+        return static_cast<int>(GetCurrentProcessId());
     ')
     private static function nativeProcessID():Int
     {
@@ -217,16 +369,7 @@ class WinAPI
     }
 
     @:functionCode('
-        HWND hwnd = winapi_window();
-
-        if (!hwnd)
-            return false;
-
-        std::wstring text = winapi_utf16(title.utf8_str());
-
-        return SetWindowTextW(
-            hwnd, text.c_str()
-        ) != 0;
+        return SonicWinAPI::setTitle(title.utf8_str());
     ')
     private static function nativeSetWindowTitle(
         title:String
@@ -236,91 +379,34 @@ class WinAPI
     }
 
     @:functionCode('
-        HWND hwnd = winapi_window();
-
-        return hwnd != nullptr &&
-            GetForegroundWindow() == hwnd;
+        return SonicWinAPI::isFocused();
     ')
-    private static function nativeWindowFocused():Bool
+    private static function nativeIsFocused():Bool
     {
         return false;
     }
 
     @:functionCode('
-        PROCESS_MEMORY_COUNTERS_EX memory = {};
-
-        memory.cb = sizeof(memory);
-
-        if (!GetProcessMemoryInfo(
-            GetCurrentProcess(),
-            reinterpret_cast<PROCESS_MEMORY_COUNTERS*>(&memory),
-            sizeof(memory)
-        ))
-            return 0;
-
-        return (double)memory.WorkingSetSize;
+        return SonicWinAPI::getMemory();
     ')
-    private static function nativeMemoryUsage():Float
+    private static function nativeGetMemory():Float
     {
         return 0;
     }
 
     @:functionCode('
-        OSVERSIONINFOEXW info = {};
-        info.dwOSVersionInfoSize = sizeof(info);
-
-        typedef LONG (WINAPI *RtlGetVersionFn)(
-            OSVERSIONINFOW*
-        );
-
-        HMODULE module = GetModuleHandleW(L"ntdll.dll");
-
-        if (!module)
-            return ::String("Windows");
-
-        RtlGetVersionFn getVersion =
-            reinterpret_cast<RtlGetVersionFn>(
-                GetProcAddress(module, "RtlGetVersion")
-            );
-
-        if (!getVersion ||
-            getVersion(
-                reinterpret_cast<OSVERSIONINFOW*>(&info)
-            ) != 0)
-            return ::String("Windows");
-
-        std::string name = "Windows ";
-
-        if (info.dwMajorVersion == 10)
-        {
-            name += info.dwBuildNumber >= 22000
-                ? "11"
-                : "10";
-        }
-        else
-        {
-            name += std::to_string(info.dwMajorVersion);
-            name += ".";
-            name += std::to_string(info.dwMinorVersion);
-        }
-
-        name += " (Build ";
-        name += std::to_string(info.dwBuildNumber);
-        name += ")";
-
-        return ::String(name.c_str());
+        std::string version = SonicWinAPI::getVersion();
+        return ::String(version.c_str());
     ')
-    private static function nativeWindowsVersion():String
+    private static function nativeGetVersion():String
     {
         return "";
     }
 
     @:functionCode('
-        DWORD priority = GetPriorityClass(
-            GetCurrentProcess()
+        return static_cast<int>(
+            GetPriorityClass(GetCurrentProcess())
         );
-
-        return (int)priority;
     ')
     private static function nativeGetPriority():Int
     {
@@ -330,7 +416,7 @@ class WinAPI
     @:functionCode('
         return SetPriorityClass(
             GetCurrentProcess(),
-            (DWORD)priority
+            static_cast<DWORD>(priority)
         ) != 0;
     ')
     private static function nativeSetPriority(
@@ -352,20 +438,20 @@ class WinAPI
     }
 
     @:functionCode('
-        std::wstring nativeTitle =
-            winapi_utf16(title.utf8_str());
+        return SonicWinAPI::preventSleep(enabled);
+    ')
+    private static function nativePreventSleep(
+        enabled:Bool
+    ):Bool
+    {
+        return false;
+    }
 
-        std::wstring nativeMessage =
-            winapi_utf16(message.utf8_str());
-
-        UINT flags = MB_OK |
-            (error ? MB_ICONERROR : MB_ICONINFORMATION);
-
-        MessageBoxW(
-            winapi_window(),
-            nativeMessage.c_str(),
-            nativeTitle.c_str(),
-            flags
+    @:functionCode('
+        SonicWinAPI::showMessage(
+            title.utf8_str(),
+            message.utf8_str(),
+            error
         );
     ')
     private static function nativeShowMessage(

@@ -764,74 +764,65 @@ class Paths
 	}
 	#end
 
-	#if flxanimate
-	public static function loadAnimateAtlas(spr:FlxAnimate, folderOrImg:Dynamic, spriteJson:Dynamic = null, animationJson:Dynamic = null)
+	public static function getCacheStats():Dynamic
 	{
-		var changedAnimJson = false;
-		var changedAtlasJson = false;
-		var changedImage = false;
-		
-		if(spriteJson != null)
+		var images:Int = 0;
+		var sounds:Int = 0;
+		for (key in currentTrackedAssets.keys()) images++;
+		for (key in currentTrackedSounds.keys()) sounds++;
+		return {images: images, sounds: sounds, localReferences: localTrackedAssets.length};
+	}
+
+	public static function precacheImages(keys:Array<String>, ?parentFolder:String = null):Int
+	{
+		if (keys == null) return 0;
+		var loaded:Int = 0;
+		for (key in keys)
 		{
-			changedAtlasJson = true;
-			spriteJson = getTextFromFile(spriteJson);
+			if (key != null && key.length > 0 && image(key, parentFolder) != null) loaded++;
 		}
+		return loaded;
+	}
 
-		if(animationJson != null) 
+	public static function precacheSounds(keys:Array<String>, ?musicAssets:Bool = false):Int
+	{
+		if (keys == null) return 0;
+		var loaded:Int = 0;
+		for (key in keys)
 		{
-			changedAnimJson = true;
-			animationJson = getTextFromFile(animationJson);
+			if (key == null || key.length == 0) continue;
+			var audio:Sound = musicAssets ? music(key) : sound(key);
+			if (audio != null) loaded++;
 		}
+		return loaded;
+	}
 
-		// is folder or image path
-		if(Std.isOfType(folderOrImg, String))
+	public static function hasAsset(key:String, ?type:AssetType = TEXT, ?parentFolder:String = null):Bool
+	{
+		if (key == null || key.length == 0) return false;
+		return fileExists(normalizeKey(key), type, false, parentFolder);
+	}
+
+	public static function resetAssetDiagnostics():Void
+	{
+		reportedProblems = new Map();
+		reportedCount = 0;
+	}
+
+	#if flxanimate
+	public static function loadAnimateAtlas(spr:FlxAnimate, folderOrImg:Dynamic, spriteJson:Dynamic = null, animationJson:Dynamic = null):Void
+	{
+		if (spr == null || folderOrImg == null) return;
+		try
 		{
-			var originalPath:String = folderOrImg;
-			for (i in 0...10)
-			{
-				var st:String = '$i';
-				if(i == 0) st = '';
-
-				if(!changedAtlasJson)
-				{
-					spriteJson = getTextFromFile('images/$originalPath/spritemap$st.json');
-					if(spriteJson != null)
-					{
-						//trace('found Sprite Json');
-						changedImage = true;
-						changedAtlasJson = true;
-						folderOrImg = image('$originalPath/spritemap$st');
-						break;
-					}
-				}
-				else if(fileExists('images/$originalPath/spritemap$st.png', IMAGE))
-				{
-					//trace('found Sprite PNG');
-					changedImage = true;
-					folderOrImg = image('$originalPath/spritemap$st');
-					break;
-				}
-			}
-
-			if(!changedImage)
-			{
-				//trace('Changing folderOrImg to FlxGraphic');
-				changedImage = true;
-				folderOrImg = image(originalPath);
-			}
-
-			if(!changedAnimJson)
-			{
-				//trace('found Animation Json');
-				changedAnimJson = true;
-				animationJson = getTextFromFile('images/$originalPath/Animation.json');
-			}
+			// The installed FlxAnimate exposes a single-argument loadAtlas method.
+			// Keep the original source instead of converting a folder to FlxGraphic.
+			spr.loadAtlas(folderOrImg);
 		}
-
-		//trace(folderOrImg);
-		//trace(spriteJson);
-		//trace(animationJson);
-		spr.loadAtlas(folderOrImg, spriteJson, animationJson);
+		catch (e:Dynamic)
+		{
+			reportAssetProblem('ANIMATE', Std.string(folderOrImg), Std.string(e));
+		}
 	}
 	#end
 }

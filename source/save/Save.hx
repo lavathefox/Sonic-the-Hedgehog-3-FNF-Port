@@ -173,10 +173,24 @@ class Save
 
     public static function getBool(key:String, fallback:Bool = false):Bool
     {
-        var value = get(key);
-        if (Std.isOfType(value, Bool)) return value;
-        if (value == "true" || value == 1) return true;
-        if (value == "false" || value == 0) return false;
+        var value:Dynamic = get(key);
+        if (value == null) return fallback;
+        if (Std.isOfType(value, Bool)) return cast value;
+        if (Std.isOfType(value, Int) || Std.isOfType(value, Float))
+        {
+            var number:Float = cast value;
+            return number != 0;
+        }
+        if (Std.isOfType(value, String))
+        {
+            var text:String = StringTools.trim(cast value).toLowerCase();
+            switch (text)
+            {
+                case "true", "1", "yes", "on": return true;
+                case "false", "0", "no", "off": return false;
+                default: return fallback;
+            }
+        }
         return fallback;
     }
 

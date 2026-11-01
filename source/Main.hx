@@ -6,6 +6,10 @@ import flixel.FlxGame;
 import flixel.FlxState;
 import flixel.util.FlxColor;
 import haxe.io.Path;
+import haxe.Timer;
+import openfl.events.Event;
+import util.FullScreenRatio;
+import util.files.S3;
 import openfl.Lib;
 import openfl.display.Sprite;
 import openfl.display.StageAlign;
@@ -52,6 +56,8 @@ class Main extends Sprite
 	};
 
 	public static var fpsVar:FPSCounter;
+	static var lastProgressTick:Float = 0;
+	static var shuttingDown:Bool = false;
 
 	#if CRASH_HANDLER
 	static inline var CRASH_LOG_NAME:String = 'CRASH_LOG.txt';
@@ -76,6 +82,7 @@ class Main extends Sprite
 		#end
 
 		var needsPermission:Bool = setupStorage();
+		setupProgress();
 
 		#if (CRASH_HANDLER && android)
 		writeLaunchLog();
@@ -112,7 +119,11 @@ class Main extends Sprite
 		addChild(new FlxGame(game.width, game.height, startState, game.framerate, game.framerate, game.skipSplash, game.startFullscreen));
 
 		setupStage();
+		FullScreenRatio.initialize(game.width, game.height);
 		setupFPS();
+		lastProgressTick = Timer.stamp();
+		addEventListener(Event.ENTER_FRAME, onProgressFrame);
+		Lib.current.stage.addEventListener(Event.DEACTIVATE, onAppDeactivated);
 
 		#if (linux || mac)
 		try
@@ -143,6 +154,48 @@ class Main extends Sprite
 		#end
 
 		FlxG.signals.gameResized.add(onGameResized);
+	}
+
+	static function setupProgress():Void
+	{
+		#if sys
+		var progressFolder:String;
+		#if mobile
+		progressFolder = Path.join([System.applicationStorageDirectory, "sonic3-progress"]);
+		#else
+		progressFolder = Path.join([Sys.getCwd(), "saves"]);
+		#end
+		if (!S3.initialize(progressFolder))
+			Sys.println("Could not initialize Sonic 3 progress: " + S3.lastError);
+		#end
+	}
+
+	private function onProgressFrame(event:Event):Void
+	{
+		var now:Float = Timer.stamp();
+		var elapsed:Float = now - lastProgressTick;
+		lastProgressTick = now;
+		if (elapsed > 0 && elapsed < 5)
+			S3.update(elapsed);
+	}
+
+	private function onAppDeactivated(event:Event):Void
+	{
+		if (S3.loaded && !S3.save())
+			Sys.println("Could not save Sonic 3 progress: " + S3.lastError);
+	}
+
+	public static function shutdownSystems():Void
+	{
+		if (shuttingDown)
+			return;
+		shuttingDown = true;
+		if (S3.loaded && !S3.save())
+			Sys.println("Could not save Sonic 3 progress: " + S3.lastError);
+		FullScreenRatio.dispose();
+		#if (windows && cpp)
+		WinAPI.shutdown();
+		#end
 	}
 
 	static function setupStage():Void
@@ -258,6 +311,7 @@ class Main extends Sprite
 
 		if (FlxG.game != null)
 			resetSpriteCache(FlxG.game);
+		FullScreenRatio.apply();
 	}
 
 	static function resetSpriteCache(sprite:Sprite):Void
@@ -385,6 +439,7 @@ class Main extends Sprite
 		DiscordClient.shutdown();
 		#end
 
+		shutdownSystems();
 		Sys.exit(1);
 	}
 	#end

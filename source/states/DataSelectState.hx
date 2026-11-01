@@ -18,6 +18,7 @@ import backend.Paths;
 import backend.MobileControls;
 import backend.StageData;
 import backend.SonicFadeTransition;
+import backend.Mods;
 #if sys
 import sys.FileSystem;
 import sys.io.File;
@@ -2033,6 +2034,9 @@ class DataSelectState extends MusicBeatState
 	{
 		var errors:Array<String> = [];
 		var fileId:String = songId;
+
+		// Make sure the mod that owns this song is the current one (so its scripts are found)
+        Mods.useModForFile('data/' + songId + '/');
 
 		// A specific difficulty (e.g. 'Hard') loads songId-hard.json and sets the difficulty for PlayState.
 		if (difficulty != null)

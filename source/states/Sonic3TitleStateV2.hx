@@ -20,7 +20,6 @@ import backend.Discord;
 
 class Sonic3TitleStateV2 extends MusicBeatState
 {
-	// Current language: 'ENGLISH', 'PORTUGUESE' or 'ESPANOL'. Read from the saved options in create().
 	var LANGUAGE:String = 'ENGLISH';
 
 	var canPressStart:Bool = false;
@@ -32,20 +31,17 @@ class Sonic3TitleStateV2 extends MusicBeatState
 	var PLAYER_Y:Float = 196;
 	var OPTIONS_Y:Float = 206;
 
-	// ---- Time of day (minutes since midnight) ----
-	static inline var DAWN_START:Int = 330; // 05:30
-	static inline var DAY_START:Int = 360; // 06:00
-	static inline var SUNSET_START:Int = 1050; // 17:30
-	static inline var NIGHT_START:Int = 1110; // 18:30
+	static inline var DAWN_START:Int = 330;
+	static inline var DAY_START:Int = 360;
+	static inline var SUNSET_START:Int = 1050;
+	static inline var NIGHT_START:Int = 1110;
 
-	// The base layer is always drawn; the others are shown one at a time depending on the time.
 	var titleBg:FlxSprite;
 	var titleBgDay:FlxSprite;
 	var titleBgSunset:FlxSprite;
-	var titleBgNight:FlxSprite; // full moon
+	var titleBgNight:FlxSprite;
 	var titleBgDawn:FlxSprite;
 
-	// Night backgrounds by moon phase, found by name (see getMoonBackground).
 	var moonBackgrounds:Map<String, FlxSprite> = new Map();
 
 	var sonic:FlxSprite;
@@ -61,19 +57,21 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 	var segaIntro:FlxSprite;
 
-	// ---- Logo drop (tweak these numbers to change the animation) ----
-	// Positions are in game pixels; the screen is 320x224.
-	static inline var LOGO_APEX_Y:Float = -27; // highest point, reached at the end of the entrance
-	static inline var LOGO_REST_Y:Float = -3; // where the logo comes to rest
-	static inline var LOGO_GRAVITY:Float = 0.21875; // pixels per frame squared, like a 60 Hz console
-	static inline var LOGO_BOUNCE_DAMPING:Float = 0.45; // speed kept after each bounce (0 = no bounce)
-	static inline var LOGO_MIN_BOUNCE_SPEED:Float = 0.5; // below this speed the logo stops bouncing
-	static inline var LOGO_STEP:Float = 1 / 60; // the drop is simulated in 60 Hz steps
-	static inline var LOGO_MAX_ELAPSED:Float = 0.1; // a long frame never makes the drop run too many steps
+	static inline var LOGO_START_Y:Float = 260;
+	static inline var LOGO_APEX_Y:Float = -27;
+	static inline var LOGO_REST_Y:Float = -3;
+	static inline var LOGO_RISE_FRAMES:Int = 23;
+	static inline var LOGO_GRAVITY:Float = 0.21875;
+	static inline var LOGO_BOUNCE_DAMPING:Float = 0.45;
+	static inline var LOGO_MIN_BOUNCE_SPEED:Float = 0.5;
+	static inline var LOGO_STEP:Float = 1 / 60;
+	static inline var LOGO_MAX_ELAPSED:Float = 0.1;
 
-	var logoFalling:Bool = false;
+	var logoActive:Bool = false;
+	var logoRising:Bool = false;
 	var logoY:Float = 0;
 	var logoVelocity:Float = 0;
+	var logoRiseDecel:Float = 0;
 	var logoStepTimer:Float = 0;
 
 	override public function create():Void
@@ -118,8 +116,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		});
 	}
 
-	// ---- Language ----
-
 	function getCurrentLanguage():String
 	{
 		var language:String = StringTools.trim(Std.string(ClientPrefs.data.language).toUpperCase());
@@ -137,7 +133,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		}
 	}
 
-	/** Picks the text for the current language. */
 	function tr(en:String, pt:String, es:String):String
 	{
 		switch (LANGUAGE)
@@ -183,7 +178,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		}
 	}
 
-	/** Changes the language while the title is open (for example if a language menu is added here later). */
 	public function setLanguage(language:String):Void
 	{
 		if (language != 'PORTUGUESE' && language != 'ENGLISH' && language != 'ESPANOL')
@@ -202,8 +196,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		options = newOptions;
 	}
 
-	// ---- Sprites ----
-
 	function addBackground(path:String, prefix:String):FlxSprite
 	{
 		var sprite:FlxSprite = createAnimatedSprite(path, prefix, 12, true);
@@ -221,7 +213,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 	function createBackgrounds():Void
 	{
-		// The order matters: later sprites are drawn on top of earlier ones.
 		titleBg = addBackground('titlescreen3/titleBg', 'titleIdle');
 		titleBg.visible = true;
 
@@ -260,7 +251,7 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		sonic.animation.play('finger');
 		add(sonic);
 
-		title = new FlxSprite(0, 260);
+		title = new FlxSprite(0, LOGO_START_Y);
 		title.loadGraphic(Paths.image('titlescreen3/FNFPortTitle'));
 		title.antialiasing = false;
 		add(title);
@@ -279,7 +270,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		createOptionsSprite();
 	}
 
-	/** A menu entry ("1 PLAYER" / "OPTIONS") with an idle and a select animation. */
 	function createMenuSprite(x:Float, y:Float, path:String, idlePrefix:String, selectPrefix:String):FlxSprite
 	{
 		var sprite:FlxSprite = new FlxSprite(x, y);
@@ -292,7 +282,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		return sprite;
 	}
 
-	/** Puts the new sprite where the old one was in the draw order, so it never ends up above the fades. */
 	function replaceMenuSprite(oldSprite:FlxSprite, newSprite:FlxSprite):Void
 	{
 		newSprite.alpha = oldSprite.alpha;
@@ -351,7 +340,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 	function setupVisibility():Void
 	{
-		// Every background except the base layer starts hidden (see addBackground).
 		titleBg.alpha = 0;
 		title.alpha = 0;
 		sonic.alpha = 0;
@@ -364,8 +352,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 		blueFade.alpha = 1;
 		blackFade.alpha = 1;
 	}
-
-	// ---- Background by time of day ----
 
 	function setupTimeBackground():Void
 	{
@@ -382,7 +368,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 			setMoonBackground(getMoonBackground());
 	}
 
-	/** The 8 moon phases, from the age of the moon in days (0 = new moon, about 14.8 = full moon). */
 	function getMoonBackground():String
 	{
 		var now:Float = Date.now().getTime() / 1000;
@@ -424,11 +409,8 @@ class Sonic3TitleStateV2 extends MusicBeatState
 			background.visible = true;
 	}
 
-	// ---- Intro ----
-
 	function playSegaIntro():Void
 	{
-		// Starts the title when the SEGA animation ends.
 		segaIntro.animation.finishCallback = function(name:String)
 		{
 			segaIntro.animation.finishCallback = null;
@@ -456,39 +438,43 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 		new FlxTimer().start(0.05, function(timer:FlxTimer)
 		{
-			logoIntro();
+			startLogo();
 		});
 	}
 
-	function logoIntro():Void
+	function startLogo():Void
 	{
-		// The logo flies up from below the screen and slows down until it reaches its highest point.
-		FlxTween.tween(title, {y: LOGO_APEX_Y}, 0.39, {
-			ease: FlxEase.quadOut,
-			onUpdate: function(tween:FlxTween)
-			{
-				// Move in whole pixels, like the original hardware.
-				title.y = Math.round(title.y);
-			},
-			onComplete: function(tween:FlxTween)
-			{
-				logoDrop();
-			}
-		});
-	}
+		var distance:Float = LOGO_START_Y - LOGO_APEX_Y;
+		var riseSpeed:Float = (2 * distance) / (LOGO_RISE_FRAMES - 1);
 
-	function logoDrop():Void
-	{
-		// From here the logo falls with gravity, hits its resting place and bounces a couple of times.
-		// The movement itself is done by stepLogoDrop(), called from update() in 60 Hz steps.
-		logoY = title.y;
-		logoVelocity = 0;
+		logoY = LOGO_START_Y;
+		logoVelocity = -riseSpeed;
+		logoRiseDecel = riseSpeed / LOGO_RISE_FRAMES;
 		logoStepTimer = 0;
-		logoFalling = true;
+		logoRising = true;
+		logoActive = true;
+
+		title.y = Math.round(logoY);
 	}
 
-	function stepLogoDrop():Void
+	function stepLogo():Void
 	{
+		if (logoRising)
+		{
+			logoVelocity += logoRiseDecel;
+			logoY += logoVelocity;
+
+			if (logoVelocity >= 0)
+			{
+				logoY = LOGO_APEX_Y;
+				logoVelocity = 0;
+				logoRising = false;
+			}
+
+			title.y = Math.round(logoY);
+			return;
+		}
+
 		logoVelocity += LOGO_GRAVITY;
 		logoY += logoVelocity;
 
@@ -499,8 +485,7 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 			if (-logoVelocity < LOGO_MIN_BOUNCE_SPEED)
 			{
-				// Too slow to bounce again: the logo is at rest.
-				logoFalling = false;
+				logoActive = false;
 				title.y = LOGO_REST_Y;
 				showMenu();
 				return;
@@ -549,7 +534,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 
 		new FlxTimer().start(0.1, function(timer:FlxTimer)
 		{
-			// Once the player has picked "1 PLAYER" the menu stays locked.
 			if (!selectedStart)
 				canPressStart = true;
 		});
@@ -559,8 +543,6 @@ class Sonic3TitleStateV2 extends MusicBeatState
 			playFinger();
 		});
 	}
-
-	// ---- Menu ----
 
 	function updateMenuSelection():Void
 	{
@@ -647,15 +629,14 @@ class Sonic3TitleStateV2 extends MusicBeatState
 	{
 		super.update(elapsed);
 
-		// Logo drop: simulated in fixed 60 Hz steps so it looks the same at any frame rate.
-		if (logoFalling)
+		if (logoActive)
 		{
 			logoStepTimer += Math.min(elapsed, LOGO_MAX_ELAPSED);
 
-			while (logoFalling && logoStepTimer >= LOGO_STEP)
+			while (logoActive && logoStepTimer >= LOGO_STEP)
 			{
 				logoStepTimer -= LOGO_STEP;
-				stepLogoDrop();
+				stepLogo();
 			}
 		}
 

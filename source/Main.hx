@@ -5,36 +5,30 @@ import flixel.FlxG;
 import flixel.FlxGame;
 import flixel.FlxState;
 import flixel.util.FlxColor;
-import haxe.io.Path;
 import haxe.Timer;
-import openfl.events.Event;
-import util.FullScreenRatio;
-import api.SonicAPI;
-import audio.Audio;
-import util.files.S3;
+import haxe.io.Path;
 import openfl.Lib;
 import openfl.display.Sprite;
 import openfl.display.StageAlign;
 import openfl.display.StageScaleMode;
+import openfl.events.Event;
 import lime.app.Application;
 import lime.system.System;
 import states.Sonic3TitleStateV2;
 import backend.Highscore;
 import backend.Sonic3Storage;
+import save.Save;
 
 #if HSCRIPT_ALLOWED
 import crowplexus.iris.Iris;
 import psychlua.HScript.HScriptInfos;
 #end
-
 #if (linux || mac)
 import lime.graphics.Image;
 #end
-
 #if (windows && cpp)
 import external.windows.WinAPI;
 #end
-
 #if CRASH_HANDLER
 import openfl.events.UncaughtErrorEvent;
 import haxe.CallStack;
@@ -48,421 +42,367 @@ import sys.io.File;
 #end
 class Main extends Sprite
 {
-	public static final game = {
-		width: 959,
-		height: 670,
-		initialState: Sonic3TitleStateV2,
-		framerate: 60,
-		skipSplash: true,
-		startFullscreen: false
-	};
-
-	public static var fpsVar:FPSCounter;
-	static var mainInstance:Main;
-	static var lastProgressTick:Float = 0;
-	static var shuttingDown:Bool = false;
-	static var resizing:Bool = false;
-
-	#if CRASH_HANDLER
-	static inline var CRASH_LOG_NAME:String = 'CRASH_LOG.txt';
-	static inline var CRASH_LOG_LIMIT:Int = 512 * 1024;
-	#end
-
-	public static function main():Void
-	{
-		Lib.current.addChild(new Main());
-	}
-
-	public function new()
-	{
-		super();
-		mainInstance = this;
-
-		#if CRASH_HANDLER
-		Lib.current.loaderInfo.uncaughtErrorEvents.addEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR, onCrash);
-		#end
-
-		#if (cpp && windows)
-		backend.Native.fixScaling();
-		#end
-
-		var needsPermission:Bool = setupStorage();
-		setupProgress();
-
-		#if (CRASH_HANDLER && android)
-		writeLaunchLog();
-		#end
-
-		#if VIDEOS_ALLOWED
-		hxvlc.util.Handle.init(#if (hxvlc >= "1.8.0") ['--no-lua'] #end);
-		#end
-
-		#if LUA_ALLOWED
-		Mods.pushGlobalMods();
-		#end
-		Mods.loadTopMod();
-
-		FlxG.save.bind('funkin', CoolUtil.getSavePath());
-		Highscore.load();
-
-		#if HSCRIPT_ALLOWED
-		setupScriptLogging();
-		#end
-
-		#if LUA_ALLOWED
-		Lua.set_callbacks_function(cpp.Callable.fromStaticFunction(psychlua.CallbackHandler.call));
-		#end
-
-		Controls.instance = new Controls();
-		ClientPrefs.loadDefaultKeys();
-
-		#if ACHIEVEMENTS_ALLOWED
-		Achievements.load();
-		#end
-
-		var startState:Class<FlxState> = needsPermission ? states.PermissionState : game.initialState;
-		addChild(new FlxGame(game.width, game.height, startState, game.framerate, game.framerate, game.skipSplash, game.startFullscreen));
-
-		setupStage();
-		FullScreenRatio.initialize(game.width, game.height);
-		SonicAPI.initialize();
-		Audio.initialize();
-		setupFPS();
-		lastProgressTick = Timer.stamp();
-		addEventListener(Event.ENTER_FRAME, onProgressFrame);
-		Lib.current.stage.addEventListener(Event.DEACTIVATE, onAppDeactivated);
-
-		#if (linux || mac)
-		try
-		{
-			Lib.current.stage.window.setIcon(Image.fromFile('icon.png'));
-		}
-		catch (error:Dynamic)
-		{
-			Sys.println('Could not load window icon: ' + error);
-		}
-		#end
-
-		#if (windows && cpp)
-		WinAPI.setWindowTitle('Sonic the Hedgehog 3 (FNF Port)');
-		#end
-
-		#if html5
-		FlxG.autoPause = false;
-		FlxG.mouse.visible = false;
-		#end
-
-		FlxG.fixedTimestep = false;
-		FlxG.game.focusLostFramerate = 60;
-		FlxG.keys.preventDefaultKeys = [TAB];
-
-		#if DISCORD_ALLOWED
-		DiscordClient.prepare();
-		#end
-
-		FlxG.signals.gameResized.add(onGameResized);
-	}
-
-	static function setupProgress():Void
-	{
-		#if sys
-		var progressFolder:String;
-		#if mobile
-		progressFolder = Path.join([System.applicationStorageDirectory, "sonic3-progress"]);
-		#else
-		progressFolder = Path.join([Sys.getCwd(), "saves"]);
-		#end
-		if (!S3.initialize(progressFolder))
-			Sys.println("Could not initialize Sonic 3 progress: " + S3.lastError);
-		#end
-	}
-
-	private function onProgressFrame(event:Event):Void
-	{
-		var now:Float = Timer.stamp();
-		var elapsed:Float = now - lastProgressTick;
-		lastProgressTick = now;
-		if (elapsed > 0 && elapsed < 5)
-		{
-			S3.update(elapsed);
-			Audio.update(elapsed);
-		}
-	}
-
-	private function onAppDeactivated(event:Event):Void
-	{
-		if (S3.loaded && !S3.save())
-			Sys.println("Could not save Sonic 3 progress: " + S3.lastError);
-	}
-
-	public static function shutdownSystems():Void
-	{
-		if (shuttingDown)
-			return;
-		shuttingDown = true;
-		if (S3.loaded && !S3.save())
-			Sys.println("Could not save Sonic 3 progress: " + S3.lastError);
-		if (mainInstance != null)
-		{
-			mainInstance.removeEventListener(Event.ENTER_FRAME, mainInstance.onProgressFrame);
-			if (Lib.current != null && Lib.current.stage != null)
-				Lib.current.stage.removeEventListener(Event.DEACTIVATE, mainInstance.onAppDeactivated);
-			mainInstance = null;
-		}
-		FlxG.signals.gameResized.remove(onGameResized);
-		Audio.dispose();
-		SonicAPI.shutdown();
-		FullScreenRatio.dispose();
-		#if (windows && cpp)
-		WinAPI.shutdown();
-		#end
-	}
-
-	static function setupStage():Void
-	{
-		#if !mobile
-		Lib.current.stage.align = StageAlign.TOP_LEFT;
-		Lib.current.stage.scaleMode = StageScaleMode.NO_SCALE;
-		#end
-	}
-
-	static function setupFPS():Void
-	{
-		if (fpsVar != null)
-			return;
-
-		fpsVar = new FPSCounter(10, #if mobile 10 #else 3 #end, 0xFFFFFF);
-		fpsVar.visible = ClientPrefs.data.showFPS;
-		Lib.current.addChild(fpsVar);
-	}
-
-	public static function refreshFPSVisibility():Void
-	{
-		if (fpsVar != null)
-			fpsVar.visible = ClientPrefs.data.showFPS;
-	}
-
-	static function setupStorage():Bool
-	{
-		#if android
-		if (!Sonic3Storage.hasPermission())
-		{
-			useAppStorage();
-			return true;
-		}
-
-		if (Sonic3Storage.ensureFolders(true))
-			Sonic3Storage.syncBundledMods();
-		else
-		{
-			Sys.println('Could not use ' + Sonic3Storage.getRoot() + ', falling back to the app storage directory.');
-			useAppStorage();
-		}
-		#elseif ios
-		useAppStorage();
-		#end
-
-		return false;
-	}
-
-	#if mobile
-	static function useAppStorage():Void
-	{
-		Sys.setCwd(Path.addTrailingSlash(System.applicationStorageDirectory));
-	}
-	#end
-
-	#if HSCRIPT_ALLOWED
-	static function setupScriptLogging():Void
-	{
-		Iris.warn = function(x, ?pos:haxe.PosInfos)
-		{
-			Iris.logLevel(WARN, x, pos);
-			showScriptMessage('WARNING', x, pos, FlxColor.YELLOW);
-		};
-
-		Iris.error = function(x, ?pos:haxe.PosInfos)
-		{
-			Iris.logLevel(ERROR, x, pos);
-			showScriptMessage('ERROR', x, pos, FlxColor.RED);
-		};
-
-		Iris.fatal = function(x, ?pos:haxe.PosInfos)
-		{
-			Iris.logLevel(FATAL, x, pos);
-			showScriptMessage('FATAL', x, pos, 0xFFBB0000);
-		};
-	}
-
-	static function showScriptMessage(prefix:String, message:Dynamic, pos:haxe.PosInfos, color:FlxColor):Void
-	{
-		if (PlayState.instance == null || pos == null)
-			return;
-
-		var info:HScriptInfos = cast pos;
-		var showLine:Bool = info.showLine != false;
-		var location:String = (info.funcName != null ? '(${info.funcName}) - ' : '') + '${info.fileName}:';
-
-		#if LUA_ALLOWED
-		if (info.isLua == true)
-		{
-			location += 'HScript:';
-			showLine = false;
-		}
-		#end
-
-		if (showLine)
-			location += '${info.lineNumber}:';
-
-		PlayState.instance.addTextToDebug('$prefix: $location $message', color);
-	}
-	#end
-
-	static function onGameResized(width:Int, height:Int):Void
-	{
-		if (resizing) return;
-		resizing = true;
-		if (FlxG.cameras != null)
-		{
-			for (cam in FlxG.cameras.list)
-			{
-				if (cam != null && cam.filters != null)
-					resetSpriteCache(cam.flashSprite);
-			}
-		}
-
-		if (FlxG.game != null)
-			resetSpriteCache(FlxG.game);
-		resizing = false;
-	}
-
-	static function resetSpriteCache(sprite:Sprite):Void
-	{
-		if (sprite == null)
-			return;
-
-		@:privateAccess
-		{
-			sprite.__cacheBitmap = null;
-			sprite.__cacheBitmapData = null;
-		}
-	}
-
-	#if CRASH_HANDLER
-	static function getCrashFolder():String
-	{
-		#if android
-		if (FileSystem.exists(Sonic3Storage.getRoot()))
-			return Sonic3Storage.getRoot() + 'Crashes/';
-
-		return Path.addTrailingSlash(System.applicationStorageDirectory) + 'Sonic 3 FNF Port Crashes/';
-		#else
-		return './crash/';
-		#end
-	}
-
-	static function appendToLog(path:String, text:String):Bool
-	{
-		try
-		{
-			var folder:String = Path.directory(path);
-			if (folder.length > 0 && !FileSystem.exists(folder))
-				FileSystem.createDirectory(folder);
-
-			if (FileSystem.exists(path) && FileSystem.stat(path).size > CRASH_LOG_LIMIT)
-			{
-				var oldPath:String = path + '.old';
-				if (FileSystem.exists(oldPath))
-					FileSystem.deleteFile(oldPath);
-				FileSystem.rename(path, oldPath);
-			}
-
-			var isNew:Bool = !FileSystem.exists(path);
-			var output = File.append(path, false);
-			if (isNew)
-				output.writeString('Sonic 3 FNF Port diagnostic log.\nHaxe errors are recorded here; native crashes such as SIGSEGV may stop the process before the handler runs.\n');
-			output.writeString(text);
-			output.close();
-			return true;
-		}
-		catch (error:Dynamic)
-		{
-			Sys.println('Could not write log ' + path + ': ' + error);
-			return false;
-		}
-	}
-
-	#if android
-	static function writeLaunchLog():Void
-	{
-		var lines:Array<String> = [
-			'',
-			'=== APP STARTED: ' + Date.now().toString() + ' ===',
-			'Package: ' + Application.current.meta.get('packageName'),
-			'Version: ' + Application.current.meta.get('version'),
-			'Storage directory: ' + System.applicationStorageDirectory,
-			'Working directory: ' + Sys.getCwd(),
-			''
-		];
-
-		appendToLog(getCrashFolder() + CRASH_LOG_NAME, lines.join('\n'));
-	}
-	#end
-
-	static function buildCrashReport(error:Dynamic):String
-	{
-		var report:StringBuf = new StringBuf();
-
-		for (item in CallStack.exceptionStack(true))
-		{
-			switch (item)
-			{
-				case FilePos(Method(className, method), file, line, _):
-					report.add('$file (line $line) - $className.$method\n');
-				case FilePos(_, file, line, _):
-					report.add('$file (line $line)\n');
-				default:
-					report.add(Std.string(item) + '\n');
-			}
-		}
-
-		report.add('\nUncaught Error: ' + Std.string(error));
-
-		#if officialBuild
-		report.add('\nPlease report this error to the GitHub page: https://github.com/lavathefox/Sonic-the-Hedgehog-3-FNF-Port');
-		#end
-
-		report.add('\n\n> Crash Handler written by: sqirra-rng');
-		return report.toString();
-	}
-
-	function onCrash(e:UncaughtErrorEvent):Void
-	{
-		var message:String = buildCrashReport(e.error);
-
-		#if android
-		var path:String = getCrashFolder() + CRASH_LOG_NAME;
-		#else
-		var stamp:String = Date.now().toString().replace(' ', '_').replace(':', "'");
-		var path:String = getCrashFolder() + 'Sonic3FNF_' + stamp + '.txt';
-		#end
-
-		var header:String = '\n=== HAXE CRASH: ' + Date.now().toString() + ' ===\n';
-		if (appendToLog(path, header + message + '\n'))
-			Sys.println('Crash dump saved in ' + Path.normalize(path));
-
-		Sys.println(message);
-
-		#if !android
-		Application.current.window.alert(message, 'Error!');
-		#end
-
-		#if DISCORD_ALLOWED
-		DiscordClient.shutdown();
-		#end
-
-		shutdownSystems();
-		Sys.exit(1);
-	}
-	#end
+    public static final game = {
+        width: 959,
+        height: 670,
+        initialState: Sonic3TitleStateV2,
+        framerate: 60,
+        skipSplash: true,
+        startFullscreen: false
+    };
+
+    public static var fpsVar:FPSCounter;
+    public static var instance(default, null):Main;
+    public static var initialized(default, null):Bool = false;
+    public static var shuttingDown(default, null):Bool = false;
+    public static var startupTime(default, null):Float = 0;
+    public static var lastFrameTime(default, null):Float = 0;
+    public static var saveEnabled(default, null):Bool = false;
+
+    static inline var GAME_TITLE:String = 'Sonic the Hedgehog 3 (FNF Port)';
+    #if CRASH_HANDLER
+    static inline var CRASH_LOG_NAME:String = 'CRASH_LOG.txt';
+    static inline var CRASH_LOG_LIMIT:Int = 512 * 1024;
+    static var handlingCrash:Bool = false;
+    #end
+
+    public static function main():Void
+    {
+        Lib.current.addChild(new Main());
+    }
+
+    public function new()
+    {
+        super();
+        if (instance != null) return;
+        instance = this;
+        startupTime = Timer.stamp();
+        lastFrameTime = startupTime;
+
+        #if CRASH_HANDLER
+        Lib.current.loaderInfo.uncaughtErrorEvents.addEventListener(UncaughtErrorEvent.UNCAUGHT_ERROR, onCrash);
+        #end
+        #if (cpp && windows)
+        backend.Native.fixScaling();
+        #end
+
+        var needsPermission:Bool = setupStorage();
+        setupProgress();
+        #if (CRASH_HANDLER && android)
+        writeLaunchLog();
+        #end
+
+        #if VIDEOS_ALLOWED
+        hxvlc.util.Handle.init(#if (hxvlc >= "1.8.0") ['--no-lua'] #end);
+        #end
+        #if LUA_ALLOWED
+        Mods.pushGlobalMods();
+        #end
+        Mods.loadTopMod();
+
+        FlxG.save.bind('funkin', CoolUtil.getSavePath());
+        Highscore.load();
+
+        #if HSCRIPT_ALLOWED
+        setupScriptLogging();
+        #end
+        #if LUA_ALLOWED
+        Lua.set_callbacks_function(cpp.Callable.fromStaticFunction(psychlua.CallbackHandler.call));
+        #end
+        Controls.instance = new Controls();
+        ClientPrefs.loadDefaultKeys();
+        #if ACHIEVEMENTS_ALLOWED
+        Achievements.load();
+        #end
+
+        var startState:Class<FlxState> = needsPermission ? states.PermissionState : game.initialState;
+        addChild(new FlxGame(game.width, game.height, startState, game.framerate, game.framerate, game.skipSplash, game.startFullscreen));
+
+        setupStage();
+        setupFPS();
+        setupWindow();
+        setupRuntime();
+        registerEvents();
+        initialized = true;
+    }
+
+    static function setupProgress():Void
+    {
+        #if sys
+        var folder:String;
+        #if mobile
+        folder = Path.join([System.applicationStorageDirectory, 'sonic3-progress']);
+        #else
+        folder = Path.join([Sys.getCwd(), 'saves']);
+        #end
+        saveEnabled = Save.initialize(folder);
+        if (saveEnabled)
+            saveEnabled = Save.load(0);
+        #end
+    }
+
+    static function setupStage():Void
+    {
+        #if !mobile
+        Lib.current.stage.align = StageAlign.TOP_LEFT;
+        Lib.current.stage.scaleMode = StageScaleMode.NO_SCALE;
+        #end
+    }
+
+    static function setupWindow():Void
+    {
+        #if (linux || mac)
+        try
+        {
+            Lib.current.stage.window.setIcon(Image.fromFile('icon.png'));
+        }
+        catch (error:Dynamic) {}
+        #end
+        #if (windows && cpp)
+        WinAPI.setWindowTitle(GAME_TITLE);
+        #end
+    }
+
+    static function setupRuntime():Void
+    {
+        #if html5
+        FlxG.autoPause = false;
+        FlxG.mouse.visible = false;
+        #end
+        FlxG.fixedTimestep = false;
+        FlxG.game.focusLostFramerate = 60;
+        FlxG.keys.preventDefaultKeys = [TAB];
+        #if DISCORD_ALLOWED
+        DiscordClient.prepare();
+        #end
+    }
+
+    function registerEvents():Void
+    {
+        FlxG.signals.gameResized.add(onGameResized);
+        addEventListener(Event.ENTER_FRAME, onFrame);
+        if (Lib.current.stage != null)
+            Lib.current.stage.addEventListener(Event.DEACTIVATE, onDeactivated);
+    }
+
+    function onFrame(event:Event):Void
+    {
+        var now = Timer.stamp();
+        var elapsed = now - lastFrameTime;
+        lastFrameTime = now;
+        if (elapsed < 0 || elapsed > 5) return;
+        if (saveEnabled) Save.update(elapsed);
+    }
+
+    function onDeactivated(event:Event):Void
+    {
+        flushProgress();
+        #if sys
+        if (FlxG.save != null) FlxG.save.flush();
+        #end
+    }
+
+    public static function flushProgress():Bool
+    {
+        if (!saveEnabled || !Save.dirty) return true;
+        return Save.save();
+    }
+
+    public static function shutdownSystems():Void
+    {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        flushProgress();
+        if (instance != null)
+        {
+            instance.removeEventListener(Event.ENTER_FRAME, instance.onFrame);
+            if (Lib.current.stage != null)
+                Lib.current.stage.removeEventListener(Event.DEACTIVATE, instance.onDeactivated);
+        }
+        FlxG.signals.gameResized.remove(onGameResized);
+        #if DISCORD_ALLOWED
+        DiscordClient.shutdown();
+        #end
+        #if (windows && cpp)
+        WinAPI.shutdown();
+        #end
+        initialized = false;
+    }
+
+    static function setupFPS():Void
+    {
+        if (fpsVar != null) return;
+        fpsVar = new FPSCounter(10, #if mobile 10 #else 3 #end, 0xFFFFFF);
+        fpsVar.visible = ClientPrefs.data.showFPS;
+        Lib.current.addChild(fpsVar);
+    }
+
+    public static function refreshFPSVisibility():Void
+    {
+        if (fpsVar != null) fpsVar.visible = ClientPrefs.data.showFPS;
+    }
+
+    public static function setFPSVisible(value:Bool):Void
+    {
+        if (fpsVar != null) fpsVar.visible = value;
+    }
+
+    public static function getUptime():Float
+    {
+        return Timer.stamp() - startupTime;
+    }
+
+    static function setupStorage():Bool
+    {
+        #if android
+        if (!Sonic3Storage.hasPermission())
+        {
+            useAppStorage();
+            return true;
+        }
+        if (Sonic3Storage.ensureFolders(true))
+            Sonic3Storage.syncBundledMods();
+        else
+            useAppStorage();
+        #elseif ios
+        useAppStorage();
+        #end
+        return false;
+    }
+
+    #if mobile
+    static function useAppStorage():Void
+    {
+        Sys.setCwd(Path.addTrailingSlash(System.applicationStorageDirectory));
+    }
+    #end
+
+    #if HSCRIPT_ALLOWED
+    static function setupScriptLogging():Void
+    {
+        Iris.warn = function(x, ?pos:haxe.PosInfos)
+        {
+            Iris.logLevel(WARN, x, pos);
+            showScriptMessage('WARNING', x, pos, FlxColor.YELLOW);
+        };
+        Iris.error = function(x, ?pos:haxe.PosInfos)
+        {
+            Iris.logLevel(ERROR, x, pos);
+            showScriptMessage('ERROR', x, pos, FlxColor.RED);
+        };
+        Iris.fatal = function(x, ?pos:haxe.PosInfos)
+        {
+            Iris.logLevel(FATAL, x, pos);
+            showScriptMessage('FATAL', x, pos, 0xFFBB0000);
+        };
+    }
+
+    static function showScriptMessage(prefix:String, message:Dynamic, pos:haxe.PosInfos, color:FlxColor):Void
+    {
+        if (PlayState.instance == null || pos == null) return;
+        var info:HScriptInfos = cast pos;
+        var showLine:Bool = info.showLine != false;
+        var location:String = (info.funcName != null ? '(${info.funcName}) - ' : '') + '${info.fileName}:';
+        #if LUA_ALLOWED
+        if (info.isLua == true)
+        {
+            location += 'HScript:';
+            showLine = false;
+        }
+        #end
+        if (showLine) location += '${info.lineNumber}:';
+        PlayState.instance.addTextToDebug('$prefix: $location $message', color);
+    }
+    #end
+
+    static function onGameResized(width:Int, height:Int):Void
+    {
+        if (FlxG.cameras != null)
+            for (cam in FlxG.cameras.list)
+                if (cam != null && cam.filters != null)
+                    resetSpriteCache(cam.flashSprite);
+        if (FlxG.game != null) resetSpriteCache(FlxG.game);
+    }
+
+    static function resetSpriteCache(sprite:Sprite):Void
+    {
+        if (sprite == null) return;
+        @:privateAccess
+        {
+            sprite.__cacheBitmap = null;
+            sprite.__cacheBitmapData = null;
+        }
+    }
+
+    #if CRASH_HANDLER
+    static function getCrashFolder():String
+    {
+        #if android
+        return Path.addTrailingSlash(System.applicationStorageDirectory) + 'Crashes/';
+        #else
+        return './crash/';
+        #end
+    }
+
+    static function appendToLog(path:String, content:String):Bool
+    {
+        try
+        {
+            var folder = Path.directory(path);
+            if (folder.length > 0 && !FileSystem.exists(folder)) FileSystem.createDirectory(folder);
+            if (FileSystem.exists(path) && FileSystem.stat(path).size > CRASH_LOG_LIMIT)
+            {
+                var rotated = path + '.old';
+                if (FileSystem.exists(rotated)) FileSystem.deleteFile(rotated);
+                FileSystem.rename(path, rotated);
+            }
+            var output = File.append(path, false);
+            output.writeString(content);
+            output.close();
+            return true;
+        }
+        catch (error:Dynamic) { return false; }
+    }
+
+    #if android
+    static function writeLaunchLog():Void
+    {
+        appendToLog(getCrashFolder() + CRASH_LOG_NAME,
+            '\n=== START: ' + Date.now().toString() + ' ===\n' +
+            'Storage: ' + System.applicationStorageDirectory + '\n');
+    }
+    #end
+
+    static function buildCrashReport(error:Dynamic):String
+    {
+        var report = new StringBuf();
+        report.add('Game: ' + GAME_TITLE + '\n');
+        report.add('Date: ' + Date.now().toString() + '\n');
+        report.add('Uptime: ' + getUptime() + 's\n');
+        report.add('Error: ' + Std.string(error) + '\n\n');
+        for (item in CallStack.exceptionStack(true)) report.add(Std.string(item) + '\n');
+        report.add('\nReport: https://github.com/lavathefox/Sonic-the-Hedgehog-3-FNF-Port');
+        return report.toString();
+    }
+
+    function onCrash(e:UncaughtErrorEvent):Void
+    {
+        if (handlingCrash) return;
+        handlingCrash = true;
+        var message = buildCrashReport(e.error);
+        #if android
+        var path = getCrashFolder() + CRASH_LOG_NAME;
+        #else
+        var stamp = Date.now().toString().split(' ').join('_').split(':').join('-');
+        var path = getCrashFolder() + 'Sonic3FNF_' + stamp + '.txt';
+        #end
+        appendToLog(path, '\n=== CRASH ===\n' + message + '\n');
+        flushProgress();
+        #if !android
+        if (Application.current != null && Application.current.window != null)
+            Application.current.window.alert(message, 'Error!');
+        #end
+        Sys.exit(1);
+    }
+    #end
 }

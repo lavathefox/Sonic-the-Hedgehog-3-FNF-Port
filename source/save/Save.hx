@@ -19,6 +19,15 @@ class Save
     public static var dirty(default, null):Bool = false;
     public static var autoSaveInterval:Float = 30;
     public static var lastError(default, null):String = "";
+    public static var lastLoadUsedBackup(default, null):Bool = false;
+    public static var maxAutoSaveRetries:Int = 3;
+    public static var autoSaveRetryDelay:Float = 5;
+    public static var onSaved:Void->Void;
+    public static var onLoaded:Int->Void;
+    public static var onError:String->Void;
+
+    static var consecutiveFailures:Int = 0;
+    static var writing:Bool = false;
 
     static inline var VERSION:Int = 1;
     static var elapsedSinceSave:Float = 0;
@@ -31,8 +40,7 @@ class Save
             directory = folder != null && folder.length > 0
                 ? Path.addTrailingSlash(folder)
                 : Path.addTrailingSlash(Path.join([Sys.getCwd(), "saves"]));
-            if (!FileSystem.exists(directory))
-                FileSystem.createDirectory(directory);
+            createDirectories(directory);
             return true;
         }
         catch (e:Dynamic)
@@ -55,10 +63,14 @@ class Save
         var loaded:Dynamic = null;
         var found = FileSystem.exists(primary) || FileSystem.exists(backup);
 
+        lastLoadUsedBackup = false;
         if (FileSystem.exists(primary))
             loaded = readFile(primary);
         if (loaded == null && FileSystem.exists(backup))
+        {
             loaded = readFile(backup);
+            lastLoadUsedBackup = loaded != null;
+        }
 
         if (loaded == null && found)
             return fail("Save and backup are invalid for slot " + slot);
@@ -68,6 +80,8 @@ class Save
         dirty = false;
         elapsedSinceSave = 0;
         lastError = "";
+        consecutiveFailures = 0;
+        if (onLoaded != null) try onLoaded(slot) catch (_:Dynamic) {}
         return true;
         #else
         return false;
@@ -76,10 +90,11 @@ class Save
 
     public static function save():Bool
     {
-        if (!ready() || !validSlot(currentSlot))
+        if (!ready() || !validSlot(currentSlot) || writing)
             return false;
 
         #if sys
+        writing = true;
         var primary = slotPath(currentSlot);
         var backup = primary + ".bak";
         var temp = primary + ".tmp";
@@ -94,7 +109,7 @@ class Save
 
             File.saveContent(temp, envelope);
             if (readFile(temp) == null)
-                return fail("Temporary save failed validation");
+                throw "Temporary save failed validation";
 
             if (FileSystem.exists(primary))
             {
@@ -116,11 +131,16 @@ class Save
             FileSystem.rename(temp, primary);
             dirty = false;
             elapsedSinceSave = 0;
+            consecutiveFailures = 0;
             lastError = "";
+            writing = false;
+            if (onSaved != null) try onSaved() catch (_:Dynamic) {}
             return true;
         }
         catch (e:Dynamic)
         {
+            writing = false;
+            consecutiveFailures++;
             return fail(Std.string(e));
         }
         #else
@@ -161,8 +181,14 @@ class Save
         if (!dirty || autoSaveInterval <= 0 || elapsed <= 0)
             return;
         elapsedSinceSave += elapsed;
-        if (elapsedSinceSave >= autoSaveInterval)
+        var wait = consecutiveFailures > 0 ? autoSaveRetryDelay : autoSaveInterval;
+        if (consecutiveFailures >= maxAutoSaveRetries && maxAutoSaveRetries > 0)
+            return;
+        if (elapsedSinceSave >= wait)
+        {
+            elapsedSinceSave = 0;
             save();
+        }
     }
 
     public static function deleteSlot(slot:Int):Bool
@@ -204,6 +230,108 @@ class Save
         #end
     }
 
+    public static function saveIfDirty():Bool
+    {
+        return !dirty || save();
+    }
+
+    public static function resetData():Void
+    {
+        data = {};
+        dirty = true;
+        elapsedSinceSave = 0;
+    }
+
+    public static function setMany(values:Dynamic):Void
+    {
+        if (values == null) return;
+        for (field in Reflect.fields(values))
+            set(field, Reflect.field(values, field));
+    }
+
+    public static function getInt(key:String, fallback:Int = 0):Int
+    {
+        var value = get(key);
+        if (value == null) return fallback;
+        var parsed = Std.parseInt(Std.string(value));
+        return parsed == null ? fallback : parsed;
+    }
+
+    public static function getFloat(key:String, fallback:Float = 0):Float
+    {
+        var value = get(key);
+        if (value == null) return fallback;
+        var parsed = Std.parseFloat(Std.string(value));
+        return Math.isNaN(parsed) ? fallback : parsed;
+    }
+
+    public static function getBool(key:String, fallback:Bool = false):Bool
+    {
+        var value = get(key);
+        if (value == null) return fallback;
+        if (Std.isOfType(value, Bool)) return value;
+        return Std.string(value).toLowerCase() == "true";
+    }
+
+    public static function getString(key:String, fallback:String = ""):String
+    {
+        var value = get(key);
+        return value == null ? fallback : Std.string(value);
+    }
+
+    public static function increment(key:String, amount:Int = 1):Int
+    {
+        var result = getInt(key) + amount;
+        set(key, result);
+        return result;
+    }
+
+    public static function copySlot(source:Int, destination:Int):Bool
+    {
+        if (!validSlot(source) || !validSlot(destination) || !ready()) return false;
+        if (source == destination) return true;
+        #if sys
+        var originalSlot = currentSlot;
+        var originalData = data;
+        var originalDirty = dirty;
+        var originalElapsed = elapsedSinceSave;
+        if (!load(source)) return false;
+        var copied = Json.parse(Json.stringify(data));
+        currentSlot = destination;
+        data = copied;
+        dirty = true;
+        var result = save();
+        currentSlot = originalSlot;
+        data = originalData;
+        dirty = originalDirty;
+        elapsedSinceSave = originalElapsed;
+        return result;
+        #else
+        return false;
+        #end
+    }
+
+    public static function flush():Bool
+    {
+        return saveIfDirty();
+    }
+
+    public static function getSlotPath(slot:Int):String
+    {
+        return validSlot(slot) && ready() ? slotPath(slot) : "";
+    }
+
+    #if sys
+    static function createDirectories(path:String):Void
+    {
+        if (FileSystem.exists(path)) return;
+        var parent = Path.directory(path);
+        if (parent != null && parent != "" && parent != path && !FileSystem.exists(parent))
+            createDirectories(parent);
+        FileSystem.createDirectory(path);
+    }
+    #end
+
     static function validSlot(slot:Int):Bool
     {
         return slot >= 0 && slot <= 9999;
@@ -222,6 +350,7 @@ class Save
     static function fail(message:String):Bool
     {
         lastError = message;
+        if (onError != null) try onError(message) catch (_:Dynamic) {}
         return false;
     }
 

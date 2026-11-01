@@ -21,6 +21,8 @@ local holdGrace = 0.1
 local ratingScores = {sick = 350, good = 200, bad = 100, shit = 50}
 
 local blinkAt = 20
+local ringBonus = 10
+local maxRings = 999
 local debugMode = false
 
 local folders = {
@@ -35,17 +37,20 @@ local overrides = {
 	['SONIC 2'] = {}
 }
 
+-- Rings label/number take the place of the old misses label/number
 local pos = {
 	score = {51, 23}, time = {51, 74}, time2 = {60, 97},
-	misses = {51, 123}, misses2 = {60, 150}, life = {48, 600},
+	rings = {51, 123}, misses2 = {60, 150}, life = {48, 600},
 	scoreNum = {220, 23}, timeNum = {172, 72},
-	missNum = {220, 120}, lifeNum = {140, 628}
+	ringNum = {220, 120}, lifeNum = {140, 628}
 }
 
 local folder = 'hud/'
 local cdTime, showScore, showLives, ringBlink = false, true, true, true
 
 local lives = startLives
+local rings = 0
+local ringsLabel = false
 local dead, goPending, goStarted, effects = false, false, false, false
 local goLength, goClock, tries = 0, 0, 0
 local frozenAt = nil
@@ -449,9 +454,12 @@ function onCreate()
 	hudSprite('score', 'score', pos.score, true, 1)
 	hudSprite('time', 'time', pos.time, false, 1)
 	hudSprite('time2', 'time2', pos.time2, false, 0)
-	hudSprite('misses', 'misses', pos.misses, true, 0)
 	hudSprite('misses2', 'misses2', pos.misses2, true, 0)
 	hudSprite('hudlife', 'bf_hud-life', pos.life, true)
+
+	-- Rings label replaces the old misses label (same position, same fade-in)
+	ringsLabel = hasImage(folder .. 'rings') or hasImage('hud/rings')
+	if ringsLabel then hudSprite('ringshud', 'rings', pos.rings, true, 0) end
 
 	setProperty('time2.visible', false)
 	setProperty('score.visible', showScore)
@@ -522,24 +530,36 @@ function onUpdate(elapsed)
 		introDone = true
 		doTweenAlpha('scoreFade', 'score', 1, 0.7, 'linear')
 		doTweenAlpha('timeFade', 'time', 1, 0.7, 'linear')
-		doTweenAlpha('missFade', 'misses', 1, 0.7, 'linear')
 		doTweenAlpha('lifeFade', 'hudlife', 1, 0.7, 'linear')
+		if ringsLabel then doTweenAlpha('ringsFade', 'ringshud', 1, 0.7, 'linear') end
 	end
 
+	-- Misses are still counted internally (used by the blink), but no longer shown
 	local misses = math.min(getProperty('songMisses'), 99)
 
 	updateLife()
-	setText('sonicmisses', misses, pos.missNum, numFont)
+	setText('sonicrings', rings, pos.ringNum, numFont)
 	setText('sonictime', cdTime and cdString() or getTextString('timeTxt'), pos.timeNum, numFont)
 	updateScore(elapsed)
 
-	if ringBlink and not blinking and misses >= blinkAt then
+	if ringBlink and ringsLabel and not blinking and misses >= blinkAt then
 		blinking, blinkOn = true, false
-		setProperty('misses.alpha', 0)
+		setProperty('ringshud.alpha', 0)
 		runTimer('blink1', 0.2, 0)
 	end
 
 	setTextString('botplayTxt', '')
+end
+
+function onMonitorCollected(kind)
+	if dead then return end
+
+	if kind == 'ring' then
+		rings = math.min(rings + ringBonus, maxRings)
+	elseif kind == 'life' then
+		lives = math.min(lives + 1, maxLives)
+		saveLives(lives)
+	end
 end
 
 function onGameOver()
@@ -588,7 +608,7 @@ function onTimerCompleted(tag)
 		openGameOverState()
 	elseif tag == 'blink1' and not dead then
 		blinkOn = not blinkOn
-		setProperty('misses.alpha', blinkOn and 1 or 0)
+		setProperty('ringshud.alpha', blinkOn and 1 or 0)
 	end
 end
 

@@ -17,6 +17,10 @@ class Mods
 {
     public static var currentModDirectory:String = '';
     public static var updatedOnState:Bool = false;
+
+    /** Set to true to trace every folder/file found by directoriesWithFile (helps debugging scripts). */
+    public static var debugLookups:Bool = false;
+
     public static final ignoreModFolders:Array<String> = [
         'characters', 'custom_events', 'custom_notetypes', 'data', 'songs',
         'music', 'sounds', 'shaders', 'videos', 'images', 'stages',
@@ -81,7 +85,7 @@ class Mods
                     var folder = StringTools.trim(parts[0]);
                     if (!validFolder(folder) || list.all.contains(folder)) continue;
                     list.all.push(folder);
-                    if (parts.length > 1 && parts[1] == '0') list.disabled.push(folder);
+                    if (parts.length > 1 && StringTools.trim(parts[1]) == '0') list.disabled.push(folder);
                     else list.enabled.push(folder);
                 }
             }
@@ -202,31 +206,101 @@ class Mods
         pushGlobalMods();
     }
 
+    /**
+     * Returns the first ENABLED mod that contains `relPath` (a file or a folder, e.g. 'data/too-slow/'),
+     * or null if no enabled mod has it.
+     */
+    public static function findModWithFile(relPath:String):Null<String>
+    {
+        #if (MODS_ALLOWED && sys)
+        if (relPath == null || relPath.length == 0) return null;
+
+        for (mod in parseList().enabled)
+            if (FileSystem.exists(Paths.mods(mod + '/' + relPath)))
+                return mod;
+        #end
+        return null;
+    }
+
+    /**
+     * Makes `currentModDirectory` point to the mod that owns `relPath`.
+     * Use it before starting a song from a custom state (e.g. DataSelectState), so the song
+     * scripts in <mod>/data/<song>/ and <mod>/scripts/ are found even when the mod is not
+     * the first one in the list and does not have "runsGlobally" in its pack.json.
+     * If the current mod already has the path, nothing changes. Returns true if a mod was found.
+     */
+    public static function useModForFile(relPath:String):Bool
+    {
+        #if (MODS_ALLOWED && sys)
+        if (currentModDirectory != null && currentModDirectory.length > 0
+            && FileSystem.exists(Paths.mods(currentModDirectory + '/' + relPath)))
+            return true;
+
+        var mod = findModWithFile(relPath);
+        if (mod == null) return false;
+
+        currentModDirectory = mod;
+        if (debugLookups) trace('Mods: current mod set to "' + mod + '" (owns ' + relPath + ')');
+        return true;
+        #else
+        return false;
+        #end
+    }
+
+    /** Makes sure a base path ends with '/' (an empty path stays empty). */
+    private static function withSlash(path:String):String
+    {
+        if (path == null || path.length == 0) return '';
+        return StringTools.endsWith(path, '/') ? path : path + '/';
+    }
+
+    /**
+     * Returns every existing copy of `fileToFind` (a FILE or a FOLDER) in this order:
+     * base path, global mods, the main "mods/" folder, and the current mod.
+     * Folders are always returned WITH a trailing '/', because callers build paths
+     * with `folder + file` (this is how song scripts in data/<song>/ and scripts/ are loaded).
+     */
     public static function directoriesWithFile(path:String, fileToFind:String, mods:Bool = true):Array<String>
     {
         var found:Array<String> = [];
         #if sys
-        addIfExists(found, Path.join([path, fileToFind]));
-        if (Paths.currentLevel != null && Paths.currentLevel != path)
-            addIfExists(found, Paths.getFolderPath(fileToFind, Paths.currentLevel));
+        if (fileToFind == null) fileToFind = '';
+
+        // Plain concatenation (not Path.join) keeps the trailing slash of folders
+        addIfExists(found, withSlash(path) + fileToFind);
+
         #if MODS_ALLOWED
         if (mods)
         {
+            // Global mods first
             for (folder in getGlobalMods())
                 addIfExists(found, Paths.mods(folder + '/' + fileToFind));
+
+            // Then the main "mods/" folder
             addIfExists(found, Paths.mods(fileToFind));
+
+            // And lastly, the current mod
             if (currentModDirectory != null && currentModDirectory.length > 0)
                 addIfExists(found, Paths.mods(currentModDirectory + '/' + fileToFind));
         }
         #end
+
+        if (debugLookups)
+            trace('Mods.directoriesWithFile("' + fileToFind + '") -> ' + found.join(', '));
         #end
         return found;
     }
 
+    /** Adds a path if it exists. Accepts files AND folders (folders get a trailing '/'). No duplicates. */
     private static function addIfExists(list:Array<String>, path:String):Void
     {
         #if sys
-        if (path != null && FileSystem.exists(path) && !FileSystem.isDirectory(path) && !list.contains(path))
+        if (path == null || path.length == 0 || !FileSystem.exists(path)) return;
+
+        if (FileSystem.isDirectory(path))
+            path = withSlash(path);
+
+        if (!list.contains(path))
             list.push(path);
         #end
     }
@@ -234,9 +308,15 @@ class Mods
     public static function mergeAllTextsNamed(path:String, ?defaultDirectory:String, allowDuplicates:Bool = false):Array<String>
     {
         if (defaultDirectory == null) defaultDirectory = Paths.getSharedPath();
-        defaultDirectory = StringTools.trim(defaultDirectory);
+        defaultDirectory = withSlash(StringTools.trim(defaultDirectory));
         if (!StringTools.startsWith(defaultDirectory, 'assets/')) defaultDirectory = 'assets/' + defaultDirectory;
+
         var found = directoriesWithFile(defaultDirectory, path);
+
+        // The default file always comes first, mods can add to it
+        var defaultPath = defaultDirectory + path;
+        if (found.remove(defaultPath)) found.insert(0, defaultPath);
+
         var result:Array<String> = [];
         #if sys
         for (file in found)

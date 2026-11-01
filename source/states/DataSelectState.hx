@@ -55,6 +55,14 @@ class DataSelectState extends MusicBeatState
 	static inline var ARROW_IMAGE_NORMAL:String = 'dataselectarrow';
 	static inline var ARROW_IMAGE_LARGE:String = 'dataSelectArrowLarge';
 
+	// ---- Completed save images (inside images/dataselect/) ----
+	/** Shown on a completed save (both songs finished) while it is NOT selected. */
+	static inline var COMPLETE_IMAGE:String = 'bf_saveData';
+
+	/** Arrows shown above / below the portrait of the selected completed save. */
+	static inline var CHOICE_ARROW_UP_IMAGE:String = 'dataArrowUp';
+	static inline var CHOICE_ARROW_DOWN_IMAGE:String = 'dataArrowDown';
+
 	// ---- HUD (lives / continues) image names (without folder, without .png) ----
 	static inline var HUD_LIFE_ICON:String = 'bfLifeIcon';
 	static inline var HUD_COLON:String = 'colon';
@@ -119,6 +127,25 @@ class DataSelectState extends MusicBeatState
 		'aiz_savePortrait',
 		'aiz_savePortrait'
 	];
+
+	// ---- Completed save: song choice (UP = first entry, DOWN = second entry) ----
+	/** Portrait shown for each choice: 0 = aiz (too-slow), 1 = majin (uncontrolled-infinity). */
+	var choicePortraitImages:Array<String> = ['aiz_savePortrait', 'majin_savePortrait'];
+
+	/** Song started by each choice. */
+	var choiceSongs:Array<String> = [SONG_ID, SECRET_SONG_ID];
+
+	/** Difficulty used by each choice (null = default). */
+	var choiceDifficulties:Array<String> = [null, SECRET_SONG_DIFFICULTY];
+
+	/** Extra offset of the choice arrows (they are centered above / below the portrait). */
+	var choiceArrowUpOffsetX:Float = 0;
+	var choiceArrowUpOffsetY:Float = 0;
+	var choiceArrowDownOffsetX:Float = 0;
+	var choiceArrowDownOffsetY:Float = 0;
+
+	/** Alpha of an arrow that cannot move any further (first / last choice). */
+	var choiceArrowDisabledAlpha:Float = 0.35;
 
 	/**
 	 * Fixed position (0 = first, 1 = second, 2 = third visible slot) where the arrow and BF stay
@@ -217,6 +244,12 @@ class DataSelectState extends MusicBeatState
 	/** HUD images that could not be found (shown on screen so they are easy to fix). */
 	var hudMissingImages:Array<String> = [];
 
+	/** Completed-save images that could not be found (shown on screen so they are easy to fix). */
+	var uiMissingImages:Array<String> = [];
+
+	/** True once create() finished (missing images found later are reported right away). */
+	var uiReady:Bool = false;
+
 	// ---- Delete mode (Eggman) ----
 	/** Extra offset for Eggman when he is centered on the Delete slot (fine tuning). */
 	var eggCenterOffsetX:Float = -4;
@@ -246,6 +279,12 @@ class DataSelectState extends MusicBeatState
 
 	/** Which slots are used/created. Saved in FlxG.save, so it survives closing the game. */
 	var saveUsed:Array<Bool> = [];
+
+	/** Completed songs, as "slot:songId" keys (e.g. "3:too-slow"). Saved in FlxG.save. */
+	var completed:Array<String> = [];
+
+	/** Song choice of each slot on a completed save: 0 = aiz (too-slow), 1 = majin (uncontrolled-infinity). */
+	var slotChoice:Array<Int> = [];
 
 	// ---- Secret (FunIsInfinite) ----
 	var secretBuffer:String = '';
@@ -287,6 +326,10 @@ class DataSelectState extends MusicBeatState
 	var noSaveText:FlxSprite;
 	var deleteText:FlxSprite;
 
+	/** Arrows of the song choice (shown on the selected completed save). */
+	var choiceArrowUp:FlxSprite;
+	var choiceArrowDown:FlxSprite;
+
 	/** Arrow graphics: normal one (real saves) and the one used on the otherSave slots. */
 	var arrowGraphic:FlxGraphic;
 	var otherArrowGraphic:FlxGraphic;
@@ -294,11 +337,12 @@ class DataSelectState extends MusicBeatState
 
 	/**
 	 * saves[0] is the otherSave sprite and saves[last] is the Delete slot sprite.
-	 * portraits, statics and huds are null on those two slots (they have no portrait).
+	 * portraits, statics, completeSprites and huds are null on those two slots (they have no portrait).
 	 */
 	var saves:Array<FlxSprite> = [];
 	var portraits:Array<FlxSprite> = [];
 	var statics:Array<FlxSprite> = [];
+	var completeSprites:Array<FlxSprite> = [];
 
 	// On-screen error message (on Android the log is hard to read)
 	var errorCam:FlxCamera;
@@ -353,8 +397,14 @@ class DataSelectState extends MusicBeatState
 		// Created after BF so the HUD is drawn on top of him
 		createHuds();
 
+		// Created last so the choice arrows are drawn on top of everything
+		createChoiceArrows();
+
 		updateSelection(true);
 		layoutSlots();
+
+		uiReady = true;
+		reportMissingUiImages();
 
 		#if android
 		MobileControls.create();
@@ -382,6 +432,16 @@ class DataSelectState extends MusicBeatState
 	inline function rightPressed():Bool
 	{
 		return controls.UI_RIGHT_P || MobileControls.rightJustPressed;
+	}
+
+	inline function upPressed():Bool
+	{
+		return controls.UI_UP_P || MobileControls.upJustPressed;
+	}
+
+	inline function downPressed():Bool
+	{
+		return controls.UI_DOWN_P || MobileControls.downJustPressed;
 	}
 
 	inline function acceptPressed():Bool
@@ -441,7 +501,7 @@ class DataSelectState extends MusicBeatState
 	}
 
 	// =====================================================================
-	//  Save data (which slots are used)
+	//  Save data (which slots are used / which songs are completed)
 	// =====================================================================
 
 	function loadSaveData():Void
@@ -459,11 +519,30 @@ class DataSelectState extends MusicBeatState
 		// The otherSave slots are never real saves
 		saveUsed[0] = false;
 		saveUsed[TOTAL_SLOTS - 1] = false;
+
+		// Completed songs ("slot:songId")
+		completed = [];
+
+		var storedDone:Array<String> = FlxG.save.data.dataSelectCompleted;
+		if (storedDone != null)
+		{
+			for (key in storedDone)
+				if (completed.indexOf(key) < 0)
+					completed.push(key);
+		}
+
+		slotChoice = [for (i in 0...TOTAL_SLOTS) 0];
 	}
 
 	function storeSaveData():Void
 	{
 		FlxG.save.data.dataSelectUsedSlots = saveUsed.copy();
+		FlxG.save.flush();
+	}
+
+	function storeCompletion():Void
+	{
+		FlxG.save.data.dataSelectCompleted = completed.copy();
 		FlxG.save.flush();
 	}
 
@@ -483,14 +562,156 @@ class DataSelectState extends MusicBeatState
 		refreshHud(index);
 	}
 
-	/** Loads the right portrait image for a save: newIcon if unused, aiz_savePortrait if used. */
+	// ---- Song completion ----
+
+	static inline function completionKey(slot:Int, songId:String):String
+	{
+		return slot + ':' + songId;
+	}
+
+	/**
+	 * Remembers which save slot and which song are about to be played. The song-end script
+	 * (markSongCompleted) uses it to know which save has to be updated.
+	 */
+	static function rememberPlaying(slot:Int, songId:String):Void
+	{
+		var data:Dynamic = FlxG.save.data;
+
+		// The otherSave slots (No Save / Delete) have no progress
+		data.dataSelectCurrentSlot = (slot >= 1 && slot <= SAVE_COUNT) ? slot : -1;
+		data.dataSelectCurrentSong = songId;
+		FlxG.save.flush();
+	}
+
+	/**
+	 * Called by the song-end script (scripts/dataSelectCompletion.lua) when a song ends.
+	 * Marks the song as completed on the save it was started from. Returns true if it was saved.
+	 * (@:keep so the function is still there when the Lua script calls it by name.)
+	 */
+	@:keep
+	public static function markSongCompleted(songName:String):Bool
+	{
+		var data:Dynamic = FlxG.save.data;
+
+		var slot:Int = (data.dataSelectCurrentSlot != null) ? data.dataSelectCurrentSlot : -1;
+		var current:String = data.dataSelectCurrentSong;
+		var songId:String = Paths.formatToSongPath(songName);
+
+		// Only count the song that was started from the Data Select, on a real save
+		if (slot < 1 || slot > SAVE_COUNT || current != songId)
+			return false;
+
+		var list:Array<String> = (data.dataSelectCompleted != null) ? data.dataSelectCompleted : [];
+		var key:String = completionKey(slot, songId);
+
+		if (list.indexOf(key) < 0)
+		{
+			list.push(key);
+			data.dataSelectCompleted = list;
+			FlxG.save.flush();
+		}
+
+		return true;
+	}
+
+	inline function isSongDone(slot:Int, songId:String):Bool
+	{
+		return completed.indexOf(completionKey(slot, songId)) >= 0;
+	}
+
+	/** True when a real, used save has finished both too-slow and uncontrolled-infinity. */
+	function isSlotComplete(index:Int):Bool
+	{
+		if (index < 1 || index > SAVE_COUNT || !saveUsed[index])
+			return false;
+
+		return isSongDone(index, SONG_ID) && isSongDone(index, SECRET_SONG_ID);
+	}
+
+	/** Forgets the progress of one save (used when the save is deleted). */
+	function clearSlotCompletion(index:Int):Void
+	{
+		var prefix:String = index + ':';
+
+		completed = completed.filter(function(key:String):Bool
+		{
+			return key.indexOf(prefix) != 0;
+		});
+
+		slotChoice[index] = 0;
+		storeCompletion();
+	}
+
+	/** Loads the right portrait image for a save: newIcon if unused, aiz_savePortrait if used, or the chosen one if completed. */
 	function refreshPortrait(index:Int):Void
 	{
 		if (portraits[index] == null)
 			return;
 
-		var name:String = saveUsed[index] ? usedPortraitImages[index - 1] : newPortraitImages[index - 1];
-		portraits[index].loadGraphic(Paths.image('dataselect/' + name));
+		var name:String;
+
+		if (isSlotComplete(index))
+			name = choicePortraitImages[slotChoice[index]];
+		else
+			name = saveUsed[index] ? usedPortraitImages[index - 1] : newPortraitImages[index - 1];
+
+		var graphic:FlxGraphic = Paths.image('dataselect/' + name);
+
+		if (graphic == null)
+		{
+			trace('Data Select: image dataselect/' + name + ' not found');
+			reportMissingUiImage(name);
+
+			if (uiReady)
+				reportMissingUiImages();
+
+			return;
+		}
+
+		portraits[index].loadGraphic(graphic);
+	}
+
+	// ---- Missing completed-save images ----
+
+	function reportMissingUiImage(name:String):Void
+	{
+		if (uiMissingImages.indexOf(name) < 0)
+			uiMissingImages.push(name);
+	}
+
+	function reportMissingUiImages():Void
+	{
+		if (uiMissingImages.length == 0)
+			return;
+
+		var previous:String = (errorText != null && errorText.text != '') ? errorText.text + '\n\n' : '';
+
+		showError(
+			previous
+			+ 'Completed save images not found (images/dataselect/):\n'
+			+ uiMissingImages.join(', ')
+		);
+	}
+
+	/** UP / DOWN on a completed save: picks aiz (too-slow) or majin (uncontrolled-infinity). */
+	function changeChoice(direction:Int):Void
+	{
+		var index:Int = selection - 1;
+
+		if (!isSlotComplete(index))
+			return;
+
+		var next:Int = Std.int(Math.max(0, Math.min(choicePortraitImages.length - 1, slotChoice[index] + direction)));
+
+		if (next == slotChoice[index])
+			return;
+
+		slotChoice[index] = next;
+		refreshPortrait(index);
+
+		FlxG.sound.play(
+			Paths.sound('dataselectswitch')
+		);
 	}
 
 	// =====================================================================
@@ -824,6 +1045,7 @@ class DataSelectState extends MusicBeatState
 
 				portraits.push(null);
 				statics.push(null);
+				completeSprites.push(null);
 
 				if (isOtherSave(i))
 				{
@@ -876,7 +1098,74 @@ class DataSelectState extends MusicBeatState
 
 			add(staticSprite);
 			statics.push(staticSprite);
+
+			// bf_saveData: shown instead of the static on a completed save while it is NOT selected
+			var completeSprite:FlxSprite = new FlxSprite(
+				x + portraitX,
+				y + portraitOffsetY()
+			);
+
+			var completeGraphic:FlxGraphic = Paths.image('dataselect/' + COMPLETE_IMAGE);
+
+			if (completeGraphic != null)
+			{
+				completeSprite.loadGraphic(completeGraphic);
+			}
+			else
+			{
+				// Visible fallback box (image not found)
+				completeSprite.makeGraphic(32, 32, FlxColor.YELLOW);
+				reportMissingUiImage(COMPLETE_IMAGE);
+			}
+
+			completeSprite.visible = false;
+
+			add(completeSprite);
+			completeSprites.push(completeSprite);
 		}
+	}
+
+	/** Creates the up / down arrows of the song choice (one pair, moved to the selected completed save). */
+	function createChoiceArrows():Void
+	{
+		var upGraphic:FlxGraphic = Paths.image('dataselect/' + CHOICE_ARROW_UP_IMAGE);
+		var downGraphic:FlxGraphic = Paths.image('dataselect/' + CHOICE_ARROW_DOWN_IMAGE);
+
+		choiceArrowUp = new FlxSprite(0, 0);
+
+		if (upGraphic != null)
+		{
+			choiceArrowUp.loadGraphic(upGraphic);
+		}
+		else
+		{
+			choiceArrowUp.makeGraphic(9, 6, FlxColor.WHITE);
+			reportMissingUiImage(CHOICE_ARROW_UP_IMAGE);
+		}
+
+		choiceArrowDown = new FlxSprite(0, 0);
+
+		if (downGraphic != null)
+		{
+			choiceArrowDown.loadGraphic(downGraphic);
+		}
+		else if (upGraphic != null)
+		{
+			// No dataArrowDown image: reuse the up arrow flipped vertically
+			trace('Data Select: image dataselect/' + CHOICE_ARROW_DOWN_IMAGE + ' not found, using the up arrow flipped');
+			choiceArrowDown.loadGraphic(upGraphic);
+			choiceArrowDown.flipY = true;
+		}
+		else
+		{
+			choiceArrowDown.makeGraphic(9, 6, FlxColor.WHITE);
+		}
+
+		choiceArrowUp.visible = false;
+		choiceArrowDown.visible = false;
+
+		add(choiceArrowUp);
+		add(choiceArrowDown);
 	}
 
 	function createEggman():Void
@@ -1194,15 +1483,21 @@ class DataSelectState extends MusicBeatState
 			if (portraits[i] != null)
 			{
 				var selected:Bool = (i == selection - 1);
+				var complete:Bool = isSlotComplete(i);
 
-				// Selected: portrait (newIcon or aiz_savePortrait). Not selected + used: static.
+				// Selected: portrait (newIcon, aiz_savePortrait or the chosen one on a completed save).
+				// Not selected + used: static, or bf_saveData if the save is completed.
 				portraits[i].x = x + portraitX;
 				var portraitInside:Bool = clipToWindow(portraits[i]);
 				portraits[i].visible = selected && portraitInside;
 
 				statics[i].x = x + portraitX;
 				var staticInside:Bool = clipToWindow(statics[i]);
-				statics[i].visible = saveUsed[i] && !selected && staticInside;
+				statics[i].visible = saveUsed[i] && !selected && !complete && staticInside;
+
+				completeSprites[i].x = x + portraitX;
+				var completeInside:Bool = clipToWindow(completeSprites[i]);
+				completeSprites[i].visible = complete && !selected && completeInside;
 
 				// Lives / continues HUD: X from BF's X, Y from BF's Y + the row offsets.
 				// Shown only on created saves (selected or not) unless hudOnlySelected is true.
@@ -1265,6 +1560,43 @@ class DataSelectState extends MusicBeatState
 				eggman.visible = clipToWindow(eggman);
 			}
 		}
+
+		updateChoiceArrows();
+	}
+
+	/**
+	 * Shows the up / down arrows above and below the portrait of the selected completed save.
+	 * An arrow that cannot move any further (first / last choice) is dimmed.
+	 */
+	function updateChoiceArrows():Void
+	{
+		if (choiceArrowUp == null || choiceArrowDown == null)
+			return;
+
+		var index:Int = selection - 1;
+		var show:Bool = isSlotComplete(index) && !deleteMode && !confirming && !secretActive;
+
+		if (!show)
+		{
+			choiceArrowUp.visible = false;
+			choiceArrowDown.visible = false;
+			return;
+		}
+
+		var portrait:FlxSprite = portraits[index];
+		var choice:Int = slotChoice[index];
+
+		choiceArrowUp.x = portrait.x + (portrait.width - choiceArrowUp.width) / 2 + choiceArrowUpOffsetX;
+		choiceArrowUp.y = portrait.y - choiceArrowUp.height + choiceArrowUpOffsetY;
+
+		choiceArrowDown.x = portrait.x + (portrait.width - choiceArrowDown.width) / 2 + choiceArrowDownOffsetX;
+		choiceArrowDown.y = portrait.y + portrait.height + choiceArrowDownOffsetY;
+
+		choiceArrowUp.alpha = (choice > 0) ? 1 : choiceArrowDisabledAlpha;
+		choiceArrowDown.alpha = (choice < choicePortraitImages.length - 1) ? 1 : choiceArrowDisabledAlpha;
+
+		choiceArrowUp.visible = clipToWindow(choiceArrowUp);
+		choiceArrowDown.visible = clipToWindow(choiceArrowDown);
 	}
 
 	/** Crops a sprite to the visible window. Returns false if it is completely outside. */
@@ -1394,6 +1726,7 @@ class DataSelectState extends MusicBeatState
 				{
 					portraits[i].y = y + portraitOffsetY();
 					statics[i].y = y + portraitOffsetY();
+					completeSprites[i].y = y + portraitOffsetY();
 				}
 			}
 			else
@@ -1404,6 +1737,7 @@ class DataSelectState extends MusicBeatState
 				{
 					tweenY(portraits[i], y + portraitOffsetY());
 					tweenY(statics[i], y + portraitOffsetY());
+					tweenY(completeSprites[i], y + portraitOffsetY());
 				}
 			}
 		}
@@ -1474,6 +1808,16 @@ class DataSelectState extends MusicBeatState
 			return;
 		}
 
+		// Normal saves start too-slow. A completed save starts the song picked with UP / DOWN.
+		var songId:String = SONG_ID;
+		var songDifficulty:String = null;
+
+		if (isSlotComplete(index))
+		{
+			songId = choiceSongs[slotChoice[index]];
+			songDifficulty = choiceDifficulties[slotChoice[index]];
+		}
+
 		confirming = true;
 		isMoving = true;
 		doFlicker = false;
@@ -1494,7 +1838,7 @@ class DataSelectState extends MusicBeatState
 			{
 				// A real save becomes used/created when the game starts from it
 				markSlotUsed(index);
-				startLevel(SONG_ID);
+				startLevel(songId, songDifficulty);
 			}
 		};
 	}
@@ -1614,6 +1958,9 @@ class DataSelectState extends MusicBeatState
 
 		saveUsed[index] = false;
 		storeSaveData();
+
+		// The progress of the save is deleted too
+		clearSlotCompletion(index);
 		refreshPortrait(index);
 
 		deleteConfirm = false;
@@ -2036,7 +2383,7 @@ class DataSelectState extends MusicBeatState
 		var fileId:String = songId;
 
 		// Make sure the mod that owns this song is the current one (so its scripts are found)
-        Mods.useModForFile('data/' + songId + '/');
+		Mods.useModForFile('data/' + songId + '/');
 
 		// A specific difficulty (e.g. 'Hard') loads songId-hard.json and sets the difficulty for PlayState.
 		if (difficulty != null)
@@ -2060,6 +2407,9 @@ class DataSelectState extends MusicBeatState
 			failToStart('Could not load the chart "' + fileId + '".\n\n' + errors.join('\n'));
 			return;
 		}
+
+		// Remember which save started this song, so finishing it can mark that save as completed
+		rememberPlaying(selection - 1, songId);
 
 		try
 		{
@@ -2161,6 +2511,15 @@ class DataSelectState extends MusicBeatState
 		else if (rightPressed())
 		{
 			selectNext();
+		}
+
+		// Completed save: UP picks the aiz portrait (too-slow), DOWN picks the majin one (uncontrolled-infinity)
+		if (!isMoving && !deleteMode)
+		{
+			if (upPressed())
+				changeChoice(-1);
+			else if (downPressed())
+				changeChoice(1);
 		}
 
 		if (acceptPressed())

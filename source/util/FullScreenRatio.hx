@@ -1,6 +1,7 @@
 package util;
 
 import flixel.FlxG;
+import flixel.system.scaleModes.RatioScaleMode;
 import lime.app.Application;
 import lime.ui.Window;
 
@@ -11,30 +12,20 @@ class FullScreenRatio
     public static var ratio(default, null):Float = 959 / 670;
     public static var enabled(default, null):Bool = false;
 
-    private static var window:Window;
-    private static var initialized:Bool = false;
-    private static var applying:Bool = false;
+    static var window:Window;
+    static var initialized:Bool = false;
 
     public static function initialize(?width:Int = 959, ?height:Int = 670):Bool
     {
-        if (width <= 0 || height <= 0)
-            return false;
-
-        window = Application.current != null ? Application.current.window : null;
-        if (window == null)
+        if (width <= 0 || height <= 0 || FlxG.game == null)
             return false;
 
         designWidth = width;
         designHeight = height;
         ratio = width / height;
-
-        if (!initialized)
-        {
-            window.onResize.add(onResize);
-            initialized = true;
-        }
-
+        window = Application.current != null ? Application.current.window : null;
         enabled = true;
+        initialized = true;
         apply();
         return true;
     }
@@ -44,8 +35,6 @@ class FullScreenRatio
         if (width <= 0 || height <= 0)
             return false;
 
-        designWidth = width;
-        designHeight = height;
         ratio = width / height;
         apply();
         return true;
@@ -53,7 +42,7 @@ class FullScreenRatio
 
     public static function useOriginal():Void
     {
-        setRatio(959, 670);
+        setRatio(designWidth, designHeight);
     }
 
     public static function useWidescreen():Void
@@ -68,67 +57,42 @@ class FullScreenRatio
 
     public static function setFullscreen(value:Bool):Void
     {
-        if (window == null)
-            window = Application.current != null ? Application.current.window : null;
-
+        #if !mobile
+        if (window == null && Application.current != null)
+            window = Application.current.window;
         if (window != null)
             window.fullscreen = value;
+        #end
     }
 
     public static function toggleFullscreen():Void
     {
-        if (window == null)
-            window = Application.current != null ? Application.current.window : null;
-
+        #if !mobile
+        if (window == null && Application.current != null)
+            window = Application.current.window;
         if (window != null)
             window.fullscreen = !window.fullscreen;
+        #end
     }
 
     public static function apply():Void
     {
-        if (!enabled || applying || window == null || FlxG.game == null)
+        if (!enabled || FlxG.game == null)
             return;
 
-        var width:Int = window.width;
-        var height:Int = window.height;
+        FlxG.game.x = 0;
+        FlxG.game.y = 0;
+        FlxG.game.scaleX = 1;
+        FlxG.game.scaleY = 1;
 
-        if (width <= 0 || height <= 0)
-            return;
+        if (!Std.isOfType(FlxG.scaleMode, RatioScaleMode))
+            FlxG.scaleMode = new RatioScaleMode();
 
-        applying = true;
-
-        var targetWidth:Int = width;
-        var targetHeight:Int = Std.int(Math.round(width / ratio));
-
-        if (targetHeight > height)
-        {
-            targetHeight = height;
-            targetWidth = Std.int(Math.round(height * ratio));
-        }
-
-        if (targetWidth < 1)
-            targetWidth = 1;
-        if (targetHeight < 1)
-            targetHeight = 1;
-
-        FlxG.game.scaleX = targetWidth / FlxG.width;
-        FlxG.game.scaleY = targetHeight / FlxG.height;
-        FlxG.game.x = (width - targetWidth) * 0.5;
-        FlxG.game.y = (height - targetHeight) * 0.5;
-
-        applying = false;
-    }
-
-    private static function onResize(width:Int, height:Int):Void
-    {
-        apply();
+        FlxG.resizeGame(FlxG.width, FlxG.height);
     }
 
     public static function dispose():Void
     {
-        if (initialized && window != null)
-            window.onResize.remove(onResize);
-
         initialized = false;
         enabled = false;
         window = null;

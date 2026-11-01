@@ -1,74 +1,126 @@
 package debug;
 
 import flixel.FlxG;
+import flixel.util.FlxStringUtil;
 import openfl.text.TextField;
 import openfl.text.TextFormat;
+import openfl.text.TextFieldAutoSize;
 import openfl.system.System;
+import haxe.Timer;
 
-/**
-	The FPS class provides an easy-to-use monitor to display
-	the current frame rate of an OpenFL project
-**/
+#if cpp
+import cpp.vm.Gc;
+#end
+
 class FPSCounter extends TextField
 {
-	/**
-		The current frame rate, expressed using frames-per-second
-	**/
-	public var currentFPS(default, null):Int;
-
-	/**
-		The current memory usage (WARNING: this is NOT your total program memory usage, rather it shows the garbage collector memory)
-	**/
+	public var currentFPS(default, null):Int = 0;
 	public var memoryMegas(get, never):Float;
+	public var taskTime(default, null):Float = 0;
 
-	@:noCompletion private var times:Array<Float>;
+	@:noCompletion
+	private var times:Array<Float> = [];
 
-	public function new(x:Float = 10, y:Float = 10, color:Int = 0x000000)
+	private var deltaTimeout:Float = 0;
+	private var lastFrameTime:Float = 0;
+	private var frameTimeSum:Float = 0;
+	private var frameCount:Int = 0;
+
+	public function new(x:Float = 10, y:Float = 10, color:Int = 0xFFFFFF)
 	{
 		super();
 
 		this.x = x;
 		this.y = y;
 
-		currentFPS = 0;
 		selectable = false;
 		mouseEnabled = false;
-		defaultTextFormat = new TextFormat("_sans", 14, color);
-		autoSize = LEFT;
-		multiline = true;
-		text = "FPS: ";
+		multiline = false;
+		wordWrap = false;
+		autoSize = TextFieldAutoSize.LEFT;
 
-		times = [];
+		defaultTextFormat = new TextFormat(
+			"_sans",
+			#if mobile
+			16,
+			#else
+			14,
+			#end
+			color
+		);
+
+		textColor = color;
+		text = "FPS: 0 • Memory: 0 MB • Task: 0 ms";
+
+		lastFrameTime = Timer.stamp() * 1000;
 	}
 
-	var deltaTimeout:Float = 0.0;
-
-	// Event Handlers
 	private override function __enterFrame(deltaTime:Float):Void
 	{
-		final now:Float = haxe.Timer.stamp() * 1000;
+		super.__enterFrame(deltaTime);
+
+		final now:Float = Timer.stamp() * 1000;
+		final frameDelta:Float = now - lastFrameTime;
+
+		lastFrameTime = now;
+
 		times.push(now);
-		while (times[0] < now - 1000) times.shift();
-		// prevents the overlay from updating every frame, why would you need to anyways @crowplexus
-		if (deltaTimeout < 50) {
-			deltaTimeout += deltaTime;
-			return;
+
+		while (times.length > 0 && times[0] <= now - 1000)
+		{
+			times.shift();
 		}
 
-		currentFPS = times.length < FlxG.updateFramerate ? times.length : FlxG.updateFramerate;		
+		if (frameDelta >= 0 && frameDelta < 1000)
+		{
+			frameTimeSum += frameDelta;
+			frameCount++;
+		}
+
+		deltaTimeout += deltaTime;
+
+		if (deltaTimeout < 100)
+			return;
+
+		currentFPS = times.length;
+
+		if (frameCount > 0)
+			taskTime = frameTimeSum / frameCount;
+
 		updateText();
-		deltaTimeout = 0.0;
+
+		frameTimeSum = 0;
+		frameCount = 0;
+		deltaTimeout = 0;
 	}
 
-	public dynamic function updateText():Void { // so people can override it in hscript
-		text = 'FPS: ${currentFPS}'
-		+ '\nMemory: ${flixel.util.FlxStringUtil.formatBytes(memoryMegas)}';
+	public dynamic function updateText():Void
+	{
+		final memory:Float = memoryMegas;
+		final memoryText:String = FlxStringUtil.formatBytes(memory);
 
-		textColor = 0xFFFFFFFF;
+		final taskText:String = Std.string(
+			Math.round(taskTime * 100) / 100
+		);
+
+		text = 'FPS: ${currentFPS} • Memory: ${memoryText} • Task: ${taskText} ms';
+
 		if (currentFPS < FlxG.drawFramerate * 0.5)
-			textColor = 0xFFFF0000;
+		{
+			textColor = 0xFFFF4444;
+		}
+		else
+		{
+			textColor = 0xFFFFFFFF;
+		}
 	}
 
-	inline function get_memoryMegas():Float
-		return cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_USAGE);
+	private function get_memoryMegas():Float
+	{
+		#if cpp
+		return Gc.memInfo64(Gc.MEM_INFO_USAGE);
+		#else
+		return System.totalMemory;
+		#end
+	}
 }

@@ -67,6 +67,9 @@ class DataSelectState extends MusicBeatState
 	/** Name of the file that stores the number of lives. It is searched in every folder. */
 	static inline var LIVES_FILE:String = 'lives.dat';
 
+	/** Name of the file that stores the number of continues. It is searched in every folder. */
+	static inline var CONTINUES_FILE:String = 'continues.dat';
+
 	/** Max digits shown for the lives counter. */
 	static inline var LIVES_DIGITS:Int = 2;
 
@@ -195,8 +198,11 @@ class DataSelectState extends MusicBeatState
 	var hudGap:Float = 1;
 	var hudDigitGap:Float = 0;
 
-	/** Number of continues (only 0 for now). */
+	/** Continues read from continues.dat. 0 = the file does not exist (yet) or has no number. */
 	var continuesValue:Int = 0;
+
+	/** Last path where continues.dat was found (cached). */
+	var continuesPath:String = null;
 
 	/** Lives read from lives.dat. -1 = the file does not exist (yet) or has no number. */
 	var livesValue:Int = -1;
@@ -311,6 +317,7 @@ class DataSelectState extends MusicBeatState
 		loadSaveData();
 		loadDigitGraphics();
 		reloadLives();
+		reloadContinues();
 
 		// BG and text are added first and are NEVER touched by the scroll: they stay fixed.
 		bg = new FlxSprite(0, 3);
@@ -469,8 +476,9 @@ class DataSelectState extends MusicBeatState
 		storeSaveData();
 		refreshPortrait(index);
 
-		// The save was just created: read lives.dat again and update the HUD
+		// The save was just created: read lives.dat and continues.dat again and update the HUD
 		reloadLives();
+		reloadContinues();
 		refreshHud(index);
 	}
 
@@ -485,7 +493,7 @@ class DataSelectState extends MusicBeatState
 	}
 
 	// =====================================================================
-	//  Lives (lives.dat) + HUD
+	//  Lives (lives.dat) / Continues (continues.dat) + HUD
 	// =====================================================================
 
 	/** Remembers a HUD image that was not found (no duplicates). */
@@ -557,15 +565,16 @@ class DataSelectState extends MusicBeatState
 		return null;
 	}
 
-	/** Finds lives.dat in the game folders. Returns null if it does not exist (yet). */
-	function findLivesDat():String
+	/**
+	 * Finds a .dat file in the game folders (the cached path is reused while it still exists).
+	 * Returns null if it does not exist (yet).
+	 */
+	function findDatFile(fileName:String, cached:String):String
 	{
 		#if sys
 		// Cached path still valid
-		if (livesPath != null && FileSystem.exists(livesPath))
-			return livesPath;
-
-		livesPath = null;
+		if (cached != null && FileSystem.exists(cached))
+			return cached;
 
 		var roots:Array<String> = ['data', 'mods', 'assets', 'example_mods'];
 		var cwd:String = Sys.getCwd();
@@ -574,32 +583,25 @@ class DataSelectState extends MusicBeatState
 		{
 			for (r in roots)
 			{
-				var found:String = searchFile(base + r, LIVES_FILE, 6);
+				var found:String = searchFile(base + r, fileName, 6);
 				if (found != null)
-				{
-					livesPath = found;
 					return found;
-				}
 			}
 		}
 
 		// Last try: the whole game folder
-		livesPath = searchFile(cwd, LIVES_FILE, 6);
-		return livesPath;
+		return searchFile(cwd, fileName, 6);
 		#else
 		return null;
 		#end
 	}
 
-	/** Reads the number of lives from lives.dat (first number found in the file). */
-	function reloadLives():Void
+	/** Reads the first number found in a file. Returns -1 if the file is missing or has no number. */
+	function readDatNumber(path:String):Int
 	{
-		livesValue = -1;
-
 		#if sys
-		var path:String = findLivesDat();
 		if (path == null)
-			return;
+			return -1;
 
 		try
 		{
@@ -610,14 +612,32 @@ class DataSelectState extends MusicBeatState
 			{
 				var n:Null<Int> = Std.parseInt(digits.matched(0));
 				if (n != null)
-					livesValue = n;
+					return n;
 			}
 		}
 		catch (e:Dynamic)
 		{
-			trace('Data Select (reading ' + LIVES_FILE + '): ' + e);
+			trace('Data Select (reading ' + path + '): ' + e);
 		}
 		#end
+
+		return -1;
+	}
+
+	/** Reads the number of lives from lives.dat. -1 = the file does not exist (yet). */
+	function reloadLives():Void
+	{
+		livesPath = findDatFile(LIVES_FILE, livesPath);
+		livesValue = readDatNumber(livesPath);
+	}
+
+	/** Reads the number of continues from continues.dat. 0 = the file does not exist (yet). */
+	function reloadContinues():Void
+	{
+		continuesPath = findDatFile(CONTINUES_FILE, continuesPath);
+
+		var n:Int = readDatNumber(continuesPath);
+		continuesValue = (n >= 0) ? n : 0;
 	}
 
 	/**
@@ -766,7 +786,8 @@ class DataSelectState extends MusicBeatState
 			}
 		}
 
-		// Continue icon + continue number (0 for now), on the second row
+		// Continue icon + continue number (from continues.dat, 0 if the file does not exist),
+		// on the second row
 		var contIcon:Int = 2 + LIVES_DIGITS;
 		var cx:Float = 0;
 

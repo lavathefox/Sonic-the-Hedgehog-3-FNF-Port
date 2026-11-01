@@ -5,206 +5,239 @@ import flixel.FlxSprite;
 import flixel.FlxState;
 import flixel.text.FlxText;
 import flixel.util.FlxColor;
-
 import backend.Mods;
 import backend.Sonic3Storage;
 
-/**
- * First-run screen shown on Android when the storage permission is missing.
- *
- * Flow:
- *  1. Explains why the permission is needed and where the mods folder will be.
- *  2. "GRANT ACCESS" opens the system settings screen.
- *  3. While waiting, the permission is checked twice per second, so the game
- *     continues on its own as soon as the player comes back with access enabled.
- *  4. "CONTINUE WITHOUT ACCESS" skips everything and keeps using the app's
- *     private storage.
- *
- * When access is granted it creates /storage/emulated/0/.Sonic3Funkin/mods,
- * copies any mods bundled in the APK, rescans the mods folder and opens the
- * title screen. No relaunch is needed.
- */
 class PermissionState extends FlxState
 {
-	static inline var BUTTON_WIDTH:Int = 420;
-	static inline var BUTTON_HEIGHT:Int = 76;
+    static inline var POLL_INTERVAL:Float = 0.4;
+    static inline var REQUEST_COOLDOWN:Float = 1.5;
+    static inline var SETUP_DELAY:Float = 0.12;
 
-	var titleText:FlxText;
-	var bodyText:FlxText;
-	var statusText:FlxText;
+    var background:FlxSprite;
+    var panel:FlxSprite;
+    var titleText:FlxText;
+    var bodyText:FlxText;
+    var statusText:FlxText;
+    var hintText:FlxText;
+    var grantButton:FlxSprite;
+    var grantLabel:FlxText;
+    var skipButton:FlxSprite;
+    var skipLabel:FlxText;
 
-	var grantButton:FlxSprite;
-	var grantLabel:FlxText;
-	var skipButton:FlxSprite;
-	var skipLabel:FlxText;
+    var requested:Bool = false;
+    var finishing:Bool = false;
+    var finished:Bool = false;
+    var grantedAccess:Bool = false;
+    var pollTimer:Float = 0;
+    var grantCooldown:Float = 0;
+    var setupTimer:Float = 0;
+    var uiScale:Float = 1;
 
-	var requested:Bool = false;
-	var finishing:Bool = false;
-	var grantedAccess:Bool = false;
+    override public function create():Void
+    {
+        super.create();
+        FlxG.mouse.visible = true;
+        buildInterface();
+        if (hasStoragePermission())
+            beginFinish(true);
+    }
 
-	var pollTimer:Float = 0;
-	var grantCooldown:Float = 0;
-	var finishFrames:Int = 0;
+    function buildInterface():Void
+    {
+        var w:Float = FlxG.width;
+        var h:Float = FlxG.height;
+        uiScale = Math.min(w / 959, h / 670);
+        if (uiScale <= 0) uiScale = 1;
 
-	override public function create():Void
-	{
-		super.create();
+        background = new FlxSprite();
+        background.makeGraphic(FlxG.width, FlxG.height, FlxColor.fromRGB(8, 14, 34));
+        add(background);
 
-		var background:FlxSprite = new FlxSprite(0, 0);
-		background.makeGraphic(FlxG.width, FlxG.height, FlxColor.fromRGB(8, 16, 48));
-		add(background);
+        var panelW:Int = Std.int(Math.min(w - 28 * uiScale, 820 * uiScale));
+        var panelH:Int = Std.int(Math.min(h - 20 * uiScale, 620 * uiScale));
+        panel = new FlxSprite((w - panelW) / 2, (h - panelH) / 2);
+        panel.makeGraphic(panelW, panelH, FlxColor.fromRGB(17, 29, 62));
+        add(panel);
 
-		titleText = new FlxText(0, 50, FlxG.width, 'Storage access needed', 44);
-		titleText.setFormat(null, 44, FlxColor.WHITE, CENTER);
-		add(titleText);
+        var inset:Float = 24 * uiScale;
+        var contentX:Float = panel.x + inset;
+        var contentW:Float = panelW - inset * 2;
+        var titleSize:Int = fontSize(36);
+        var bodySize:Int = fontSize(21);
+        var smallSize:Int = fontSize(17);
 
-		bodyText = new FlxText(60, 130, FlxG.width - 120, '', 26);
-		bodyText.setFormat(null, 26, FlxColor.fromRGB(210, 220, 255), CENTER);
-		bodyText.text = 'The game keeps your mods in:\n'
-			+ Sonic3Storage.getModsFolder()
-			+ '\n\nTo create this folder it needs access to all files. '
-			+ 'Tap GRANT ACCESS, turn on the switch on the next screen, then come back to the game.';
-		add(bodyText);
+        titleText = new FlxText(contentX, panel.y + 28 * uiScale, contentW, "STORAGE ACCESS", titleSize);
+        titleText.setFormat(null, titleSize, FlxColor.WHITE, CENTER);
+        add(titleText);
 
-		grantButton = createButton(350, FlxColor.fromRGB(0, 120, 255));
-		grantLabel = createLabel(grantButton, 'GRANT ACCESS', 32);
+        bodyText = new FlxText(contentX, panel.y + 98 * uiScale, contentW, "", bodySize);
+        bodyText.setFormat(null, bodySize, FlxColor.fromRGB(218, 228, 255), CENTER);
+        bodyText.text = "Mods folder:\n" + Sonic3Storage.getModsFolder()
+            + "\n\nAllow file access to use external mods. Open Android settings, enable access, and return to the game."
+            + "\n\nYou can also continue using private app storage.";
+        add(bodyText);
 
-		skipButton = createButton(460, FlxColor.fromRGB(70, 80, 110));
-		skipLabel = createLabel(skipButton, 'CONTINUE WITHOUT ACCESS', 22);
+        var buttonW:Float = Math.min(contentW, 480 * uiScale);
+        var buttonH:Float = 64 * uiScale;
+        var buttonX:Float = (w - buttonW) / 2;
+        var firstY:Float = panel.y + panelH - 220 * uiScale;
+        var secondY:Float = firstY + 78 * uiScale;
 
-		statusText = new FlxText(60, 570, FlxG.width - 120, '', 22);
-		statusText.setFormat(null, 22, FlxColor.YELLOW, CENTER);
-		add(statusText);
-	}
+        grantButton = makeButton(buttonX, firstY, buttonW, buttonH, FlxColor.fromRGB(24, 116, 240));
+        grantLabel = makeLabel(grantButton, "GRANT ACCESS", fontSize(25));
+        skipButton = makeButton(buttonX, secondY, buttonW, buttonH, FlxColor.fromRGB(68, 81, 112));
+        skipLabel = makeLabel(skipButton, "CONTINUE WITHOUT ACCESS", fontSize(19));
 
-	function createButton(y:Float, color:FlxColor):FlxSprite
-	{
-		var button:FlxSprite = new FlxSprite((FlxG.width - BUTTON_WIDTH) / 2, y);
-		button.makeGraphic(BUTTON_WIDTH, BUTTON_HEIGHT, color);
-		add(button);
-		return button;
-	}
+        statusText = new FlxText(contentX, panel.y + panelH - 57 * uiScale, contentW, "", smallSize);
+        statusText.setFormat(null, smallSize, FlxColor.YELLOW, CENTER);
+        add(statusText);
 
-	function createLabel(button:FlxSprite, label:String, size:Int):FlxText
-	{
-		var text:FlxText = new FlxText(button.x, button.y + (BUTTON_HEIGHT - size) / 2 - 4, BUTTON_WIDTH, label, size);
-		text.setFormat(null, size, FlxColor.WHITE, CENTER);
-		add(text);
-		return text;
-	}
+        hintText = new FlxText(contentX, panel.y + panelH - 27 * uiScale, contentW,
+            "ENTER: grant    ESC: continue", fontSize(12));
+        hintText.setFormat(null, fontSize(12), FlxColor.fromRGB(158, 177, 213), CENTER);
+        add(hintText);
+    }
 
-	/** True when the target was tapped this frame (mouse or touch). */
-	function tapped(target:FlxSprite):Bool
-	{
-		if (FlxG.mouse.justPressed && FlxG.mouse.overlaps(target))
-			return true;
+    function fontSize(base:Int):Int
+    {
+        return Std.int(Math.max(10, Math.round(base * uiScale)));
+    }
 
-		// FlxG.touches only exists when touch support is compiled in (not on desktop builds).
-		#if FLX_TOUCH
-		for (touch in FlxG.touches.list)
-		{
-			if (touch.justPressed && touch.overlaps(target))
-				return true;
-		}
-		#end
+    function makeButton(x:Float, y:Float, width:Float, height:Float, color:FlxColor):FlxSprite
+    {
+        var sprite = new FlxSprite(x, y);
+        sprite.makeGraphic(Std.int(width), Std.int(height), color);
+        add(sprite);
+        return sprite;
+    }
 
-		return false;
-	}
+    function makeLabel(button:FlxSprite, caption:String, size:Int):FlxText
+    {
+        var label = new FlxText(button.x, button.y + (button.height - size * 1.35) / 2,
+            button.width, caption, size);
+        label.setFormat(null, size, FlxColor.WHITE, CENTER);
+        add(label);
+        return label;
+    }
 
-	override public function update(elapsed:Float):Void
-	{
-		super.update(elapsed);
+    function hasStoragePermission():Bool
+    {
+        try return Sonic3Storage.hasPermission()
+        catch (e:Dynamic) return false;
+    }
 
-		if (finishing)
-		{
-			// Wait a couple of frames so the "Setting up..." text is drawn
-			// before the (blocking) folder setup starts.
-			finishFrames++;
+    function tapped(target:FlxSprite):Bool
+    {
+        if (target == null || !target.visible) return false;
+        if (FlxG.mouse.justPressed && FlxG.mouse.overlaps(target)) return true;
+        #if FLX_TOUCH
+        for (touch in FlxG.touches.list)
+            if (touch != null && touch.justPressed && touch.overlaps(target)) return true;
+        #end
+        return false;
+    }
 
-			if (finishFrames == 3)
-				finish();
+    override public function update(elapsed:Float):Void
+    {
+        super.update(elapsed);
+        if (finished) return;
 
-			return;
-		}
+        if (finishing)
+        {
+            setupTimer += elapsed;
+            if (setupTimer >= SETUP_DELAY)
+            {
+                finished = true;
+                finish();
+            }
+            return;
+        }
 
-		if (grantCooldown > 0)
-			grantCooldown -= elapsed;
+        if (grantCooldown > 0) grantCooldown = Math.max(0, grantCooldown - elapsed);
 
-		// Once the system screen was opened, keep checking until access is granted.
-		if (requested)
-		{
-			pollTimer += elapsed;
+        if (requested)
+        {
+            pollTimer += elapsed;
+            if (pollTimer >= POLL_INTERVAL)
+            {
+                pollTimer = 0;
+                if (hasStoragePermission())
+                {
+                    beginFinish(true);
+                    return;
+                }
+            }
+        }
 
-			if (pollTimer >= 0.5)
-			{
-				pollTimer = 0;
+        var grantHover:Bool = FlxG.mouse.overlaps(grantButton);
+        var skipHover:Bool = FlxG.mouse.overlaps(skipButton);
+        grantButton.alpha = grantHover ? 0.8 : 1;
+        skipButton.alpha = skipHover ? 0.8 : 1;
 
-				if (Sonic3Storage.hasPermission())
-				{
-					beginFinish(true);
-					return;
-				}
-			}
-		}
+        if (tapped(grantButton) || FlxG.keys.justPressed.ENTER)
+            onGrantPressed();
+        else if (tapped(skipButton) || FlxG.keys.justPressed.ESCAPE)
+            beginFinish(false);
+    }
 
-		if (tapped(grantButton) || FlxG.keys.justPressed.ENTER)
-			onGrantPressed();
-		else if (tapped(skipButton))
-			beginFinish(false);
-	}
+    function onGrantPressed():Void
+    {
+        if (finishing || grantCooldown > 0) return;
+        if (hasStoragePermission())
+        {
+            beginFinish(true);
+            return;
+        }
 
-	function onGrantPressed():Void
-	{
-		// Ignore repeated taps (mouse and touch can both fire for the same tap).
-		if (grantCooldown > 0)
-			return;
+        grantCooldown = REQUEST_COOLDOWN;
+        requested = true;
+        pollTimer = 0;
+        statusText.text = "Waiting for Android storage permission...";
 
-		grantCooldown = 1.5;
-		requested = true;
-		pollTimer = 0;
+        try Sonic3Storage.requestPermission()
+        catch (e:Dynamic)
+        {
+            requested = false;
+            statusText.text = "Could not open settings. Try again or continue without access.";
+        }
+    }
 
-		statusText.text = 'Waiting for access... enable the switch, then come back to the game.';
-		Sonic3Storage.requestPermission();
-	}
+    function beginFinish(granted:Bool):Void
+    {
+        if (finishing || finished) return;
+        finishing = true;
+        grantedAccess = granted;
+        setupTimer = 0;
+        grantButton.visible = false;
+        grantLabel.visible = false;
+        skipButton.visible = false;
+        skipLabel.visible = false;
+        hintText.visible = false;
+        statusText.text = granted ? "Preparing mod folders..." : "Using private app storage...";
+    }
 
-	function beginFinish(granted:Bool):Void
-	{
-		if (finishing)
-			return;
+    function finish():Void
+    {
+        if (grantedAccess)
+        {
+            var ready:Bool = false;
+            try ready = Sonic3Storage.ensureFolders(true)
+            catch (e:Dynamic) ready = false;
 
-		finishing = true;
-		grantedAccess = granted;
-		finishFrames = 0;
-
-		grantButton.visible = false;
-		grantLabel.visible = false;
-		skipButton.visible = false;
-		skipLabel.visible = false;
-
-		statusText.text = granted ? 'Setting up folders...' : 'Continuing with private storage...';
-	}
-
-	function finish():Void
-	{
-		if (grantedAccess)
-		{
-			if (Sonic3Storage.ensureFolders(true))
-			{
-				var copied:Int = Sonic3Storage.syncBundledMods();
-				trace('PermissionState: copied ' + copied + ' bundled mod file(s)');
-
-				// The working directory changed, so scan the mods folder again.
-				#if LUA_ALLOWED
-				Mods.pushGlobalMods();
-				#end
-				Mods.loadTopMod();
-			}
-			else
-			{
-				trace('PermissionState: access was granted but the folders could not be created.');
-			}
-		}
-
-		FlxG.switchState(new Sonic3TitleStateV2());
-	}
+            if (ready)
+            {
+                try Sonic3Storage.syncBundledMods() catch (e:Dynamic) {}
+                try
+                {
+                    #if LUA_ALLOWED
+                    Mods.pushGlobalMods();
+                    #end
+                    Mods.loadTopMod();
+                }
+                catch (e:Dynamic) {}
+            }
+        }
+        FlxG.switchState(new Sonic3TitleStateV2());
+    }
 }

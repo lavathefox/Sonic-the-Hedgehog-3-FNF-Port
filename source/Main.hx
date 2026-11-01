@@ -1,11 +1,14 @@
 package;
 
 import debug.FPSCounter;
+import flixel.FlxG;
 import flixel.FlxGame;
 import flixel.FlxState;
+import flixel.util.FlxColor;
 import haxe.io.Path;
 import openfl.Lib;
 import openfl.display.Sprite;
+import openfl.display.StageAlign;
 import openfl.display.StageScaleMode;
 import lime.app.Application;
 import lime.system.System;
@@ -22,8 +25,8 @@ import psychlua.HScript.HScriptInfos;
 import lime.graphics.Image;
 #end
 
-#if desktop
-import backend.ALSoftConfig;
+#if (windows && cpp)
+import external.windows.WinAPI;
 #end
 
 #if CRASH_HANDLER
@@ -108,16 +111,22 @@ class Main extends Sprite
 		var startState:Class<FlxState> = needsPermission ? states.PermissionState : game.initialState;
 		addChild(new FlxGame(game.width, game.height, startState, game.framerate, game.framerate, game.skipSplash, game.startFullscreen));
 
-		#if !mobile
-		fpsVar = new FPSCounter(10, 3, 0xFFFFFF);
-		fpsVar.visible = ClientPrefs.data.showFPS;
-		addChild(fpsVar);
-		Lib.current.stage.align = 'tl';
-		Lib.current.stage.scaleMode = StageScaleMode.NO_SCALE;
-		#end
+		setupStage();
+		setupFPS();
 
 		#if (linux || mac)
-		Lib.current.stage.window.setIcon(Image.fromFile('icon.png'));
+		try
+		{
+			Lib.current.stage.window.setIcon(Image.fromFile('icon.png'));
+		}
+		catch (error:Dynamic)
+		{
+			Sys.println('Could not load window icon: ' + error);
+		}
+		#end
+
+		#if (windows && cpp)
+		WinAPI.setWindowTitle('Sonic the Hedgehog 3 (FNF Port)');
 		#end
 
 		#if html5
@@ -134,6 +143,30 @@ class Main extends Sprite
 		#end
 
 		FlxG.signals.gameResized.add(onGameResized);
+	}
+
+	static function setupStage():Void
+	{
+		#if !mobile
+		Lib.current.stage.align = StageAlign.TOP_LEFT;
+		Lib.current.stage.scaleMode = StageScaleMode.NO_SCALE;
+		#end
+	}
+
+	static function setupFPS():Void
+	{
+		if (fpsVar != null)
+			return;
+
+		fpsVar = new FPSCounter(10, #if mobile 10 #else 3 #end, 0xFFFFFF);
+		fpsVar.visible = ClientPrefs.data.showFPS;
+		Lib.current.addChild(fpsVar);
+	}
+
+	public static function refreshFPSVisibility():Void
+	{
+		if (fpsVar != null)
+			fpsVar.visible = ClientPrefs.data.showFPS;
 	}
 
 	static function setupStorage():Bool
@@ -173,19 +206,19 @@ class Main extends Sprite
 		{
 			Iris.logLevel(WARN, x, pos);
 			showScriptMessage('WARNING', x, pos, FlxColor.YELLOW);
-		}
+		};
 
 		Iris.error = function(x, ?pos:haxe.PosInfos)
 		{
 			Iris.logLevel(ERROR, x, pos);
 			showScriptMessage('ERROR', x, pos, FlxColor.RED);
-		}
+		};
 
 		Iris.fatal = function(x, ?pos:haxe.PosInfos)
 		{
 			Iris.logLevel(FATAL, x, pos);
 			showScriptMessage('FATAL', x, pos, 0xFFBB0000);
-		}
+		};
 	}
 
 	static function showScriptMessage(prefix:String, message:Dynamic, pos:haxe.PosInfos, color:FlxColor):Void
@@ -229,6 +262,9 @@ class Main extends Sprite
 
 	static function resetSpriteCache(sprite:Sprite):Void
 	{
+		if (sprite == null)
+			return;
+
 		@:privateAccess
 		{
 			sprite.__cacheBitmap = null;
@@ -310,7 +346,7 @@ class Main extends Sprite
 				case FilePos(_, file, line, _):
 					report.add('$file (line $line)\n');
 				default:
-					Sys.println(item);
+					report.add(Std.string(item) + '\n');
 			}
 		}
 

@@ -55,7 +55,7 @@ class FPSCounter extends TextField
 		lastFrameTime = Timer.stamp() * 1000;
 	}
 
-	private override function __enterFrame(deltaTime:Float):Void
+	private override function __enterFrame(deltaTime:Int):Void
 	{
 		super.__enterFrame(deltaTime);
 

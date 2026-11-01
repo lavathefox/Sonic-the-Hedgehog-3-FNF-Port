@@ -9,6 +9,8 @@ import haxe.io.Path;
 import haxe.Timer;
 import openfl.events.Event;
 import util.FullScreenRatio;
+import api.SonicAPI;
+import audio.Audio;
 import util.files.S3;
 import openfl.Lib;
 import openfl.display.Sprite;
@@ -58,6 +60,7 @@ class Main extends Sprite
 	public static var fpsVar:FPSCounter;
 	static var lastProgressTick:Float = 0;
 	static var shuttingDown:Bool = false;
+	static var resizing:Bool = false;
 
 	#if CRASH_HANDLER
 	static inline var CRASH_LOG_NAME:String = 'CRASH_LOG.txt';
@@ -120,6 +123,8 @@ class Main extends Sprite
 
 		setupStage();
 		FullScreenRatio.initialize(game.width, game.height);
+		SonicAPI.initialize();
+		Audio.initialize();
 		setupFPS();
 		lastProgressTick = Timer.stamp();
 		addEventListener(Event.ENTER_FRAME, onProgressFrame);
@@ -176,7 +181,10 @@ class Main extends Sprite
 		var elapsed:Float = now - lastProgressTick;
 		lastProgressTick = now;
 		if (elapsed > 0 && elapsed < 5)
+		{
 			S3.update(elapsed);
+			Audio.update(elapsed);
+		}
 	}
 
 	private function onAppDeactivated(event:Event):Void
@@ -192,6 +200,12 @@ class Main extends Sprite
 		shuttingDown = true;
 		if (S3.loaded && !S3.save())
 			Sys.println("Could not save Sonic 3 progress: " + S3.lastError);
+		removeEventListener(Event.ENTER_FRAME, onProgressFrame);
+		if (Lib.current.stage != null)
+			Lib.current.stage.removeEventListener(Event.DEACTIVATE, onAppDeactivated);
+		FlxG.signals.gameResized.remove(onGameResized);
+		Audio.dispose();
+		SonicAPI.shutdown();
 		FullScreenRatio.dispose();
 		#if (windows && cpp)
 		WinAPI.shutdown();
@@ -300,6 +314,8 @@ class Main extends Sprite
 
 	static function onGameResized(width:Int, height:Int):Void
 	{
+		if (resizing) return;
+		resizing = true;
 		if (FlxG.cameras != null)
 		{
 			for (cam in FlxG.cameras.list)
@@ -311,7 +327,7 @@ class Main extends Sprite
 
 		if (FlxG.game != null)
 			resetSpriteCache(FlxG.game);
-		FullScreenRatio.apply();
+		resizing = false;
 	}
 
 	static function resetSpriteCache(sprite:Sprite):Void

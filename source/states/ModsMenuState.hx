@@ -184,12 +184,12 @@ class ModsMenuState extends MusicBeatState
         description.text = current.desc + (current.mustRestart ? '\n\nChanges to this mod require a restart.' : '');
         bg.color = current.bgColor;
         actions[0].label.text = current.enabled ? 'DISABLE' : 'ENABLE';
-        actions[1].active = selected > 0;
-        actions[2].active = selected < items.length - 1;
-        actions[3].active = current.settings != null && current.settings.length > 0;
-        actions[4].active = countEnabled() < items.length;
-        actions[5].active = countEnabled() > 0;
-        actions[0].active = true;
+        actions[1].buttonEnabled = selected > 0;
+        actions[2].buttonEnabled = selected < items.length - 1;
+        actions[3].buttonEnabled = current.settings != null && current.settings.length > 0;
+        actions[4].buttonEnabled = countEnabled() < items.length;
+        actions[5].buttonEnabled = countEnabled() > 0;
+        actions[0].buttonEnabled = true;
         icon.makeGraphic(96, 96, 0xFF334765);
         var path = current.iconPath;
         if (path != null)
@@ -416,7 +416,7 @@ class AirModRow extends FlxSpriteGroup
 class AirMenuButton extends FlxSpriteGroup
 {
     public var label:FlxText;
-    public var active:Bool = true;
+    public var buttonEnabled:Bool = true;
     var callback:Void->Void;
     var bg:FlxSprite;
 
@@ -436,8 +436,8 @@ class AirMenuButton extends FlxSpriteGroup
     override function update(elapsed:Float)
     {
         super.update(elapsed);
-        alpha = active ? 1 : 0.35;
-        if (active && visible && FlxG.mouse.overlaps(this))
+        alpha = buttonEnabled ? 1 : 0.35;
+        if (buttonEnabled && visible && FlxG.mouse.overlaps(this))
         {
             bg.color = 0xFF608BC0;
             if (FlxG.mouse.justPressed && callback != null) callback();

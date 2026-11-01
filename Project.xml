@@ -1,211 +1,132 @@
 <?xml version="1.0" encoding="utf-8"?>
 <project>
-	<!-- _________________________ Application Settings _________________________ -->
+    <!-- Application -->
+    <app title="Sonic the Hedgehog 3 (FNF Port)" file="Sonic the Hedgehog 3 FNF Port" packageName="me.funkin.sonic3" package="me.funkin.sonic3" main="Main" version="0.2.8" company="ShadowMario" unless="mobile" />
+    <app title="Sonic 3 (FNF Port)" file="Sonic3Funkin" packageName="me.funkin.sonic3" package="me.funkin.sonic3" main="Main" version="0.2.8" company="ShadowMario" if="mobile" />
+    <app preloader="flixel.system.FlxPreloader" />
+    <set name="APP_ID" value="0x0100f6c013bbc000" />
+    <set name="SWF_VERSION" value="11.8" />
 
-	<!-- Default / Desktop Settings -->
-	<app title="Sonic the Hedgehog 3 (FNF Port)" file="Sonic the Hedgehog 3 FNF Port" packageName="me.funkin.sonic3" package="me.funkin.sonic3" main="Main" version="0.2.8" company="ShadowMario" unless="mobile" />
-
-	<!-- Mobile-specific Settings -->
-	<app title="Sonic 3 (FNF Port)" file="Sonic3Funkin" packageName="me.funkin.sonic3" package="me.funkin.sonic3" main="Main" version="0.2.8" company="ShadowMario" if="mobile" />
-
-	<!--Switch Export with Unique ApplicationID and Icon-->
-	<set name="APP_ID" value="0x0100f6c013bbc000" />
-
-	<!-- NOTE TO SELF: DISABLE THIS IF ISSUES ARE FOUND -->
-	<haxedef name="LINC_LUA_RELATIVE_DYNAMIC_LIB"/> <!-- stable luas PUT AFTER FIRST LINE WITH APP NAME AND ETC -->
-
-	<!--The flixel preloader is not accurate in Chrome. You can use it regularly if you embed the swf into a html file
-		or you can set the actual size of your file manually at "FlxPreloaderBase-onUpdate-bytesTotal"-->
-	<!-- <app preloader="Preloader" resizable="true" /> -->
-	<app preloader="flixel.system.FlxPreloader" />
-
-	<!--Minimum without FLX_NO_GAMEPAD: 11.8, without FLX_NO_NATIVE_CURSOR: 11.2-->
-	<set name="SWF_VERSION" value="11.8" />
-	
-	<!-- ______________________ PSYCH ENGINE CUSTOMIZATION ______________________ -->
-
+    <!-- Engine features -->
     <define name="MODS_ALLOWED" if="desktop || android" />
-	<define name="HSCRIPT_ALLOWED" if="desktop || mobile" />
-	<define name="LUA_ALLOWED" if="desktop || mobile" />
-	<define name="ACHIEVEMENTS_ALLOWED" />
-	<define name="DISCORD_ALLOWED" if="desktop" />
-	<define name="TRANSLATIONS_ALLOWED" />
-	<define name="IRIS_DEBUG"/>
-	
-	<define name="MULTITHREADED_LOADING" if="desktop" /> <!-- Keep threaded asset loading on desktop only; Android can crash while loading gameplay. -->
-	<define name="SHOW_LOADING_SCREEN" />
-	<define name="PSYCH_WATERMARKS"/> <!-- DELETE THIS TO REMOVE THE PSYCH LOGO FROM LOADING SCREEN -->
+    <define name="HSCRIPT_ALLOWED" if="desktop || mobile" />
+    <define name="LUA_ALLOWED" if="desktop || mobile" />
+    <define name="ACHIEVEMENTS_ALLOWED" />
+    <define name="DISCORD_ALLOWED" if="desktop" />
+    <define name="TRANSLATIONS_ALLOWED" />
+    <define name="IRIS_DEBUG" if="debug" />
+    <define name="MULTITHREADED_LOADING" if="desktop" />
+    <define name="SHOW_LOADING_SCREEN" />
+    <define name="PSYCH_WATERMARKS" />
+    <define name="CRASH_HANDLER" if="release" unless="html5" />
+    <define name="CHECK_FOR_UPDATES" if="desktop officialBuild" />
+    <haxedef name="LINC_LUA_RELATIVE_DYNAMIC_LIB" if="LUA_ALLOWED" />
 
-	<section if="officialBuild">
-		<define name="TITLE_SCREEN_EASTER_EGG"/>
-		<define name="BASE_GAME_FILES" />
-		<define name="VIDEOS_ALLOWED" if="windows || linux || android || mac" unless="32bits"/> <!-- IF YOU WANT TO USE VIDEOS ON YOUR SOURCE MOD, GET THIS LINE OUTSIDE OF THE SECTION -->
-	</section>
+    <section if="officialBuild">
+        <define name="TITLE_SCREEN_EASTER_EGG" />
+        <define name="BASE_GAME_FILES" />
+        <define name="VIDEOS_ALLOWED" if="windows || linux || android || mac" unless="32bits" />
+    </section>
 
-	<!-- ____________________________ Window Settings ___________________________ -->
+    <!-- Display -->
+    <window width="959" height="670" fps="60" background="#000000" hardware="true" vsync="false" allow-high-dpi="true" />
+    <window if="html5" resizable="true" />
+    <window if="desktop" orientation="landscape" fullscreen="false" resizable="true" vsync="false" />
+    <window if="mobile" orientation="landscape" fullscreen="true" width="0" height="0" resizable="false" />
+    <window if="switch" orientation="landscape" fullscreen="true" width="0" height="0" resizable="true" />
 
-	<!--These window settings apply to all targets-->
-	<window width="959" height="670" fps="60" background="#000000" hardware="true" vsync="false" allow-high-dpi="true" />
+    <!-- Android -->
+    <android permission="android.permission.INTERNET" />
+    <android permission="android.permission.VIBRATE" />
+    <android permission="android.permission.READ_EXTERNAL_STORAGE" />
+    <android permission="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <android permission="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <template path="project/StorageHelper.java" rename="app/src/main/java/me/funkin/sonic3/StorageHelper.java" if="android" />
+    <template path="project/DeviceHelper.java" rename="app/src/main/java/me/funkin/sonic3/DeviceHelper.java" if="android" />
 
-	<!--HTML5-specific-->
-	<window if="html5" resizable="true" />
+    <!-- Output -->
+    <set name="BUILD_DIR" value="export/debug" if="debug" />
+    <set name="BUILD_DIR" value="export/release" unless="debug" />
+    <set name="BUILD_DIR" value="export/32bit" if="32bits" />
+    <classpath name="source" />
+    <classpath name="source_html5" if="html5" />
 
-	<!--Desktop-specific-->
-	<window if="desktop" orientation="landscape" fullscreen="false" resizable="true" vsync="false"/>
+    <!-- Core assets -->
+    <assets path="assets/fonts" />
+    <assets path="assets/shared" exclude="*.ogg" if="web" />
+    <assets path="assets/shared" exclude="*.mp3" unless="web" />
+    <assets path="assets/embed" exclude="*.ogg" if="web" embed="true" />
+    <assets path="assets/embed" exclude="*.mp3" unless="web" embed="true" />
+    <assets path="assets/videos" if="VIDEOS_ALLOWED" />
+    <assets path="assets/songs" exclude="*.ogg" if="web" />
+    <assets path="assets/songs" exclude="*.mp3" unless="web" />
+    <assets path="assets/week_assets" rename="assets" exclude="*.ogg" if="web" />
+    <assets path="assets/week_assets" rename="assets" exclude="*.mp3" unless="web" />
 
-	<!--Mobile-specific-->
-	<window if="mobile" orientation="landscape" fullscreen="true" width="0" height="0" resizable="false"/>
+    <section if="TITLE_SCREEN_EASTER_EGG">
+        <assets path="assets/secrets" rename="assets/shared" exclude="*.ogg" if="web" />
+        <assets path="assets/secrets" rename="assets/shared" exclude="*.mp3" unless="web" />
+    </section>
+    <section if="TRANSLATIONS_ALLOWED">
+        <assets path="assets/translations" rename="assets" exclude="*.ogg" if="web" />
+        <assets path="assets/translations" rename="assets" exclude="*.mp3" unless="web" />
+    </section>
+    <section if="BASE_GAME_FILES">
+        <assets path="assets/base_game" rename="assets" exclude="*.ogg" if="web" />
+        <assets path="assets/base_game" rename="assets" exclude="*.mp3" unless="web" />
+        <haxelib name="grig.audio" />
+        <haxelib name="funkin.vis" />
+    </section>
+    <section if="html5">
+        <assets path="html5_stage/shared" rename="assets/shared" exclude="*.ogg" />
+        <assets path="html5_stage/songs" rename="assets/songs" exclude="*.ogg" />
+        <assets path="html5_stage/fonts" rename="assets/fonts" exclude="*.ogg" />
+    </section>
+    <section if="MODS_ALLOWED">
+        <assets path="example_mods" rename="mods" embed="false" type="template" if="desktop" unless="mac" />
+        <assets path="example_mods" rename="mods" embed="false" if="mac" />
+        <assets path="example_mods" rename="mods" embed="false" if="android" />
+        <assets path="list.txt" rename="modsList.txt" />
+    </section>
+    <section if="desktop">
+        <assets path="alsoft.txt" rename="plugins/alsoft.ini" type="text" if="windows" />
+        <assets path="alsoft.txt" rename="plugins/alsoft.conf" type="text" unless="windows" />
+    </section>
 
-	<!--Switch-specific-->
-	<window if="switch" orientation="landscape" fullscreen="true" width="0" height="0" resizable="true" />
+    <!-- Libraries -->
+    <haxelib name="flixel" version="5.6.1" />
+    <haxelib name="flixel-addons" version="3.2.2" />
+    <haxelib name="tjson" version="1.4.0" />
+    <haxelib name="linc_luajit" if="LUA_ALLOWED" />
+    <haxelib name="hscript-iris" version="1.1.3" if="HSCRIPT_ALLOWED" />
+    <haxelib name="hxvlc" version="2.0.1" if="VIDEOS_ALLOWED" />
+    <haxelib name="hxdiscord_rpc" version="1.2.4" if="DISCORD_ALLOWED" />
+    <haxelib name="flxanimate" />
+    <haxelib name="hxcpp-debug-server" if="debug" />
 
-	<!-- _____________________________ Android Permissions ___________________________ -->
+    <!-- Compiler flags -->
+    <haxedef name="DISCORD_DISABLE_IO_THREAD" if="hxdiscord_rpc" />
+    <haxedef name="NO_PRECOMPILED_HEADERS" if="linux" />
+    <haxedef name="HXC_LIBVLC_LOGGING" if="VIDEOS_ALLOWED debug" />
+    <haxedef name="HXVLC_NO_SHARE_DIRECTORY" if="VIDEOS_ALLOWED" />
+    <haxedef name="x86_BUILD" if="32bits" />
+    <haxedef name="FLX_NO_FOCUS_LOST_SCREEN" />
+    <haxedef name="HXC_DEBUG_TRACE" if="debug" />
+    <haxedef name="FLX_NO_DEBUG" unless="debug" />
+    <haxedef name="NAPE_RELEASE_BUILD" unless="debug" />
+    <haxedef name="HXCPP_CHECK_POINTER" if="CRASH_HANDLER" />
+    <haxedef name="HXCPP_STACK_LINE" if="CRASH_HANDLER" />
+    <haxedef name="HXCPP_STACK_TRACE" if="CRASH_HANDLER" />
+    <haxedef name="no-deprecation-warnings" />
+    <haxedef name="message.reporting" value="pretty" />
+    <haxedef name="hscriptPos" if="HSCRIPT_ALLOWED" />
+    <haxeflag name="--macro" value="allowPackage('flash')" />
+    <haxeflag name="--macro" value="include('my.pack')" />
 
-	<android permission="android.permission.INTERNET" />
-	<android permission="android.permission.VIBRATE" />
-	<android permission="android.permission.READ_EXTERNAL_STORAGE" />
-	<android permission="android.permission.WRITE_EXTERNAL_STORAGE" />
-	<android permission="android.permission.MANAGE_EXTERNAL_STORAGE" />
-
-	<!-- Java helper used by Sonic3Storage (permission check and request through JNI) -->
-	<template path="project/StorageHelper.java" rename="app/src/main/java/me/funkin/sonic3/StorageHelper.java" if="android"/>
-
-	<template path="project/DeviceHelper.java" rename="app/src/main/java/me/funkin/sonic3/DeviceHelper.java" if="android"/>
-
-	<!-- Custom manifest: keep it commented out until the app starts correctly without it. -->
-	<!-- <template path="project/AndroidManifest.xml" rename="app/src/main/AndroidManifest.xml" if="android"/> -->
-
-	<!-- _____________________________ Path Settings ____________________________ -->
-
-	<set name="BUILD_DIR" value="export/debug" if="debug" />
-	<set name="BUILD_DIR" value="export/release" unless="debug" />
-	<set name="BUILD_DIR" value="export/32bit" if="32bits" />
-
-	<classpath name="source" />
-
-	<!-- HTML5 only: files in source_html5 replace the class with the same name in source (the last classpath wins).
-		Used for classes that need threads or the file system, which browsers don't have. -->
-	<classpath name="source_html5" if="html5" />
-
-	<!-- __________________________ Game Assets & Etc. __________________________ -->
-	
-	<!-- Turn on Crash Handler (it writes files to disk, so it can't be used in the browser) -->
-	<define name="CRASH_HANDLER" if="release" unless="html5" />
-
-	<!-- Assets -->
-	<assets path="assets/fonts" />
-	<assets path="assets/shared"        exclude="*.ogg" if="web"/>
-	<assets path="assets/shared"        exclude="*.mp3" unless="web"/>
-	<assets path="assets/embed"         exclude="*.ogg" if="web" embed="true"/>
-	<assets path="assets/embed"         exclude="*.mp3" unless="web" embed="true"/>
-	<assets path="assets/videos"        if="VIDEOS_ALLOWED"/>
-	<assets path="assets/songs"         exclude="*.ogg" if="web"/>
-	<assets path="assets/songs"         exclude="*.mp3" unless="web"/>
-	<assets path="assets/week_assets"   rename="assets" exclude="*.ogg" if="web"/>
-	<assets path="assets/week_assets"   rename="assets" exclude="*.mp3" unless="web"/>
-	<section if="TITLE_SCREEN_EASTER_EGG">
-		<assets path="assets/secrets" rename="assets/shared" exclude="*.ogg" if="web"/>
-		<assets path="assets/secrets" rename="assets/shared" exclude="*.mp3"  unless="web"/>
-	</section>
-
-	<section if="TRANSLATIONS_ALLOWED">
-		<assets path="assets/translations" rename="assets" exclude="*.ogg" if="web"/>
-		<assets path="assets/translations" rename="assets" exclude="*.mp3"  unless="web"/>
-	</section>
-
-	<section if="BASE_GAME_FILES">
-		<assets path="assets/base_game" rename="assets" exclude="*.ogg" if="web"/>
-		<assets path="assets/base_game" rename="assets" exclude="*.mp3"  unless="web"/>
-		<haxelib name="grig.audio" if="BASE_GAME_FILES"/>
-		<haxelib name="funkin.vis" if="BASE_GAME_FILES"/>
-	</section>
-
-	<!-- HTML5: browsers have no mods folder, so setup/html5_stage.sh copies the mod into html5_stage/
-		using the layout of a normal (non-mods) assets folder, and that folder is bundled here.
-		Run the script before building: bash setup/html5_stage.sh -->
-	<section if="html5">
-		<assets path="html5_stage/shared" rename="assets/shared" exclude="*.ogg" />
-		<assets path="html5_stage/songs"  rename="assets/songs"  exclude="*.ogg" />
-		<assets path="html5_stage/fonts"  rename="assets/fonts"  exclude="*.ogg" />
-	</section>
-
-	<define name="CHECK_FOR_UPDATES" if="desktop officialBuild"/>
-
-	<section if="MODS_ALLOWED">
-		<assets path='example_mods' rename='mods' embed='false' type='template' if="desktop" unless="mac"/>
-		<assets path='example_mods' rename='mods' embed='false' if="mac"/>
-		<!-- Android: bundled inside the APK; Sonic3Storage copies it to .Sonic3Funkin/mods on first run -->
-		<assets path='example_mods' rename='mods' embed='false' if="android"/>
-		<assets path='list.txt' rename='modsList.txt' />
-	</section>
-
-	<!-- OpenAL config -->
-	<section if="desktop">
-		<assets path="alsoft.txt" rename="plugins/alsoft.ini" type="text" if="windows"/>
-		<assets path="alsoft.txt" rename="plugins/alsoft.conf" type="text" unless="windows"/>
-	</section>
-
-	<!-- _______________________________ Libraries ______________________________ -->
-
-	<haxelib name="flixel" version="5.6.1"/>
-	<haxelib name="flixel-addons" version="3.2.2"/>
-	<haxelib name="tjson" version="1.4.0"/>
-
-	<!--Psych stuff needed-->
-	<haxelib name="linc_luajit" if="LUA_ALLOWED"/>
-	<haxelib name="hscript-iris" if="HSCRIPT_ALLOWED" version="1.1.3"/>
-	<haxelib name="hxvlc" if="VIDEOS_ALLOWED" version="2.0.1"/>
-	<haxelib name="hxdiscord_rpc" version="1.2.4" if="DISCORD_ALLOWED"/>
-	<haxelib name="flxanimate"/>
-
-	<!-- Disable Discord IO Thread -->
-	<haxedef name="DISCORD_DISABLE_IO_THREAD" if="hxdiscord_rpc" />
-	<haxedef name="NO_PRECOMPILED_HEADERS" if="linux" />
-
-	<!-- Enables a terminal log prompt on debug builds -->
-	<haxelib name="hxcpp-debug-server" if="debug"/>
-	<haxedef name="HXC_LIBVLC_LOGGING" if="VIDEOS_ALLOWED debug" />
-	<haxedef name="HXVLC_NO_SHARE_DIRECTORY" if="VIDEOS_ALLOWED" />
-	<define name="x86_BUILD" if="32bits" />
-	
-	<!-- ______________________________ Haxedefines _____________________________ -->
-
-	<!--Disable the Flixel core focus lost screen-->
-	<haxedef name="FLX_NO_FOCUS_LOST_SCREEN" />
-	
-	<!-- Show debug traces for hxCodec -->
-	<haxedef name="HXC_DEBUG_TRACE" if="debug" />
-	
-	<!--Disable the Flixel core debugger. Automatically gets set whenever you compile in release mode!-->
-	<haxedef name="FLX_NO_DEBUG" unless="debug" />
-
-	<!--Enable this for Nape release builds for a serious peformance improvement-->
-	<haxedef name="NAPE_RELEASE_BUILD" unless="debug" />
-	
-	<!--Used for Izzy Engine's crash handler-->
-	<haxedef name="HXCPP_CHECK_POINTER" if="CRASH_HANDLER" />
-	<haxedef name="HXCPP_STACK_LINE" if="CRASH_HANDLER" />
-	<haxedef name="HXCPP_STACK_TRACE" if="CRASH_HANDLER" />
-	
-	<!--Disable deprecated warnings-->
-	<haxedef name='no-deprecation-warnings' />
-
-	<!-- Haxe 4.3.0+: Enable pretty syntax errors and stuff. -->
-	<!-- pretty (haxeflixel default), indent, classic (haxe compiler default) -->
-	<haxedef name="message.reporting" value="pretty" />
-
-	<!--Macro fixes-->
-	<haxeflag name="--macro" value="allowPackage('flash')" />
-	<haxeflag name="--macro" value="include('my.pack')" />
-
-	<haxedef name="hscriptPos" if="HSCRIPT_ALLOWED" />
-
-	<!-- _________________________________ Custom _______________________________ -->
-
-	<assets path='art/icons/iconOG.png' rename='icon.png' if="linux || mac" />
-	
-	<icon path="art/icons/icon16.png" size='16'/>
-	<icon path="art/icons/icon32.png" size='32'/>
-	<icon path="art/icons/icon64.png" size='64'/>
-	<icon path="art/icons/iconOG.png" />
+    <!-- Icons -->
+    <assets path="art/icons/iconOG.png" rename="icon.png" if="linux || mac" />
+    <icon path="art/icons/icon16.png" size="16" />
+    <icon path="art/icons/icon32.png" size="32" />
+    <icon path="art/icons/icon64.png" size="64" />
+    <icon path="art/icons/iconOG.png" />
 </project>

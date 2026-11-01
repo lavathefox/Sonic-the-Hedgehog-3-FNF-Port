@@ -1,234 +1,164 @@
-local titleCardStyle = getPropertyFromClass('backend.ClientPrefs', 'data.sonicTitleCardStyle')
-
-if titleCardStyle == nil or titleCardStyle == '' then
-	titleCardStyle = 'DEFAULT'
+local function pref(name)
+	local v = getPropertyFromClass('backend.ClientPrefs', 'data.' .. name)
+	if v == nil or v == '' then return nil end
+	return tostring(v)
 end
 
-local titleCardEnabled = titleCardStyle == 'SONIC CD'
+if pref('sonicTitleCardStyle') ~= 'SONIC CD' then return end
 
-local introBarTag = 'sonicCDIntroBar'
-local introTextTag = 'sonicCDIntroText'
+local speeds = {SLOW = 1.5, NORMAL = 1, FAST = 0.65}
+local speed = speeds[pref('sonicTitleCardSpeed') or 'NORMAL'] or 1
+
+local title1, title2 = 'Too', 'Slow'
+local title1X, title2X = 389, 389
+local bigScale1, bigScale2, smallScale = 3.1, 3.2, 3.1
+local smallOffset1, smallOffset2 = 100, 6
+local letterFolder = 'titlecardleters/soniccd/'
+
+local hide, hideY = 800, 760
+
 local blackTag = 'sonicCDIntroBlack'
+local barTag = 'sonicCDIntroBar'
+local textTag = 'sonicCDIntroText'
 
-local title1Tag = 'sonicCDTitle1'
-local title2Tag = 'sonicCDTitle2'
+local started = false
+local widths = {}
+local letters1, letters2 = {}, {}
 
-local title1 = 'Too'
-local title2 = 'Slow'
-
-local hide = 800
-local hideY = 760
-local introStarted = false
-
-local letterScale = 3.1
-local letter2Scale = 3.2
-local smallLetterScale = 3.1
-
-local title1SmallLetterY = 100
-local title2SmallLetterY = 6
-
-local title1X = 389
-local title2X = 389
-
-function clearLetters(tag)
-	if not titleCardEnabled then
-		return
-	end
-
-	for i = 1, 50 do
-		removeLuaSprite(tag .. i, true)
-	end
+local function t(seconds)
+	return seconds * speed
 end
 
-function getLetterWidth(path, scale)
-	if not titleCardEnabled then
-		return 0
+local function letterWidth(path, scale)
+	local key = path .. scale
+
+	if widths[key] == nil then
+		makeLuaSprite('sonicCDTempLetter', path, 0, 0)
+		scaleObject('sonicCDTempLetter', scale, scale)
+		widths[key] = getProperty('sonicCDTempLetter.width')
+		removeLuaSprite('sonicCDTempLetter', true)
 	end
 
-	local temp = 'sonicCDTempLetter'
-
-	makeLuaSprite(temp, path, 0, 0)
-	scaleObject(temp, scale, scale)
-
-	local width = getProperty(temp .. '.width')
-	removeLuaSprite(temp, true)
-
-	return width
+	return widths[key]
 end
 
-function drawTitle(tag, text, x, y, smallLetterY, firstLetterScale)
-	if not titleCardEnabled then
-		return
-	end
+local function hudSprite(name, scale, front)
+	setObjectCamera(name, 'hud')
+	setProperty(name .. '.antialiasing', false)
+	scaleObject(name, scale, scale)
+	addLuaSprite(name, front)
+end
 
-	clearLetters(tag)
+local function drawTitle(tag, text, x, y, smallOffset, bigScale)
+	local names = {}
+	local offset = 0
 
 	text = string.upper(text)
-
-	local offsetX = 0
-	local index = 1
 
 	for i = 1, #text do
 		local char = text:sub(i, i)
 
 		if char ~= ' ' then
-			local path
-			local scale
+			local path = letterFolder .. char
+			local scale = bigScale
 			local letterY = y
 
-			if i == 1 then
-				path = 'titlecardleters/soniccd/' .. char
-				scale = firstLetterScale
-			else
-				path = 'titlecardleters/soniccd/smallleters/' .. char
-				scale = smallLetterScale
-				letterY = y + smallLetterY
+			if i > 1 then
+				path = letterFolder .. 'smallleters/' .. char
+				scale = smallScale
+				letterY = y + smallOffset
 			end
 
-			local name = tag .. index
-			local width = getLetterWidth(path, scale)
+			local name = tag .. (#names + 1)
 
-			makeLuaSprite(name, path, x + offsetX, letterY)
-			setObjectCamera(name, 'hud')
-			setProperty(name .. '.scrollFactor.x', 1)
-			setProperty(name .. '.scrollFactor.y', 1)
-			setProperty(name .. '.antialiasing', false)
-			scaleObject(name, scale, scale)
-			addLuaSprite(name, true)
+			makeLuaSprite(name, path, x + offset + hide, letterY)
+			hudSprite(name, scale, true)
 
-			offsetX = offsetX + width
-			index = index + 1
+			names[#names + 1] = name
+			offset = offset + letterWidth(path, scale)
 		end
 	end
 
-	return offsetX
+	return names
 end
 
-function moveTitle(tag, amount, duration, tweenPrefix)
-	if not titleCardEnabled then
-		return
-	end
-
-	for i = 1, 50 do
-		local name = tag .. i
-
-		if luaSpriteExists(name) then
-			doTweenX(tweenPrefix .. i, name, getProperty(name .. '.x') + amount, duration, 'linear')
-		end
+local function moveLetters(names, amount, prefix)
+	for i, name in ipairs(names) do
+		doTweenX(prefix .. i, name, getProperty(name .. '.x') + amount, t(0.4), 'linear')
 	end
 end
 
-function onCreatePost()
-	if not titleCardEnabled then
-		return
+local function removeLetters(names)
+	for _, name in ipairs(names) do
+		removeLuaSprite(name, true)
 	end
-
-	sonicIntro()
 end
 
-function sonicIntro()
-	if not titleCardEnabled then
-		return
-	end
+local function startIntro()
+	if started then return end
+	started = true
 
-	if introStarted then
-		return
-	end
-
-	introStarted = true
+	local textY = downscroll and 123 or 199
+	local text2Y = 372
 
 	makeLuaSprite(blackTag, nil, 0, 0)
 	makeGraphic(blackTag, screenWidth * 2, screenHeight * 2, '000000')
 	setObjectCamera(blackTag, 'hud')
-	setProperty(blackTag .. '.scrollFactor.x', 0)
-	setProperty(blackTag .. '.scrollFactor.y', 0)
-	setProperty(blackTag .. '.alpha', 1)
+	setScrollFactor(blackTag, 0, 0)
 	addLuaSprite(blackTag, true)
 
-	local textY = 199
-	local text2Y = 372
+	makeLuaSprite(barTag, 'titlecard/sonicCD/intro2', 353, -hide)
+	makeLuaSprite(textTag, 'titlecard/sonicCD/intro1withoutleters', 401 + hide, textY)
+	hudSprite(barTag, 3.1, true)
+	hudSprite(textTag, 3.1, true)
 
-	if downscroll then
-		textY = 123
-	end
+	letters1 = drawTitle('sonicCDTitle1', title1, title1X, textY, smallOffset1, bigScale1)
+	letters2 = drawTitle('sonicCDTitle2', title2, title2X, text2Y, smallOffset2, bigScale2)
 
-	makeLuaSprite(introBarTag, 'titlecard/sonicCD/intro2', 353, 0)
-	makeLuaSprite(introTextTag, 'titlecard/sonicCD/intro1withoutleters', 401, textY)
+	doTweenAlpha('sonicCDBlackFade', blackTag, 0, t(0.5), 'linear')
+end
 
-	setObjectCamera(introBarTag, 'hud')
-	setObjectCamera(introTextTag, 'hud')
+local function cleanup()
+	removeLetters(letters1)
+	removeLetters(letters2)
+	letters1, letters2 = {}, {}
 
-	scaleObject(introBarTag, 3.1, 3.1)
-	scaleObject(introTextTag, 3.1, 3.1)
+	removeLuaSprite(blackTag, true)
+	removeLuaSprite(barTag, true)
+	removeLuaSprite(textTag, true)
+end
 
-	setProperty(introBarTag .. '.scrollFactor.x', 1)
-	setProperty(introBarTag .. '.scrollFactor.y', 1)
-	setProperty(introTextTag .. '.scrollFactor.x', 1)
-	setProperty(introTextTag .. '.scrollFactor.y', 1)
-
-	setProperty(introBarTag .. '.antialiasing', false)
-	setProperty(introTextTag .. '.antialiasing', false)
-
-	addLuaSprite(introBarTag, true)
-	addLuaSprite(introTextTag, true)
-
-	drawTitle(title1Tag, title1, title1X, textY, title1SmallLetterY, letterScale)
-	drawTitle(title2Tag, title2, title2X, text2Y, title2SmallLetterY, letter2Scale)
-
-	setProperty(introBarTag .. '.y', getProperty(introBarTag .. '.y') - hide)
-	setProperty(introTextTag .. '.x', getProperty(introTextTag .. '.x') + hide)
-
-	for i = 1, 50 do
-		local title1Sprite = title1Tag .. i
-		local title2Sprite = title2Tag .. i
-
-		if luaSpriteExists(title1Sprite) then
-			setProperty(title1Sprite .. '.x', getProperty(title1Sprite .. '.x') + hide)
-		end
-
-		if luaSpriteExists(title2Sprite) then
-			setProperty(title2Sprite .. '.x', getProperty(title2Sprite .. '.x') + hide)
-		end
-	end
-
-	doTweenAlpha('sonicCDBlackFade', blackTag, 0, 0.5, 'linear')
+function onCreatePost()
+	startIntro()
 end
 
 function onTweenCompleted(tag)
-	if not titleCardEnabled then
-		return
-	end
+	if tag ~= 'sonicCDBlackFade' then return end
 
-	if tag == 'sonicCDBlackFade' then
-		doTweenY('sonicCDBarIn', introBarTag, getProperty(introBarTag .. '.y') + hideY, 0.4, 'linear')
-		runTimer('sonicCDTextIn', 0.1)
-		runTimer('sonicCDTextOut', 2.2)
-		runTimer('sonicCDBarOut', 2.3)
-		runTimer('sonicCDTitleIn', 0.1)
-		runTimer('sonicCDTitleOut', 2.2)
-	end
+	doTweenY('sonicCDBarIn', barTag, getProperty(barTag .. '.y') + hideY, t(0.4), 'linear')
+
+	runTimer('sonicCDTextIn', t(0.1))
+	runTimer('sonicCDTitleIn', t(0.1))
+	runTimer('sonicCDTextOut', t(2.2))
+	runTimer('sonicCDTitleOut', t(2.2))
+	runTimer('sonicCDBarOut', t(2.3))
+	runTimer('sonicCDCleanup', t(2.9))
 end
 
 function onTimerCompleted(tag)
-	if not titleCardEnabled then
-		return
-	end
-
 	if tag == 'sonicCDTextIn' then
-		doTweenX('sonicCDTextInTween', introTextTag, getProperty(introTextTag .. '.x') - hide, 0.4, 'linear')
-
+		doTweenX('sonicCDTextInTween', textTag, getProperty(textTag .. '.x') - hide, t(0.4), 'linear')
 	elseif tag == 'sonicCDTextOut' then
-		doTweenX('sonicCDTextOutTween', introTextTag, getProperty(introTextTag .. '.x') + hide, 0.4, 'linear')
-
+		doTweenX('sonicCDTextOutTween', textTag, getProperty(textTag .. '.x') + hide, t(0.4), 'linear')
 	elseif tag == 'sonicCDBarOut' then
-		doTweenY('sonicCDBarOutTween', introBarTag, getProperty(introBarTag .. '.y') - hide, 0.4, 'linear')
-
+		doTweenY('sonicCDBarOutTween', barTag, getProperty(barTag .. '.y') - hide, t(0.4), 'linear')
 	elseif tag == 'sonicCDTitleIn' then
-		moveTitle(title1Tag, -hide, 0.4, 'sonicCDTitle1In')
-		moveTitle(title2Tag, -hide, 0.4, 'sonicCDTitle2In')
-
+		moveLetters(letters1, -hide, 'sonicCDTitle1In')
+		moveLetters(letters2, -hide, 'sonicCDTitle2In')
 	elseif tag == 'sonicCDTitleOut' then
-		moveTitle(title1Tag, hide, 0.4, 'sonicCDTitle1Out')
-		moveTitle(title2Tag, hide, 0.4, 'sonicCDTitle2Out')
+		moveLetters(letters1, hide, 'sonicCDTitle1Out')
+		moveLetters(letters2, hide, 'sonicCDTitle2Out')
+	elseif tag == 'sonicCDCleanup' then
+		cleanup()
 	end
 end

@@ -2,476 +2,423 @@ package objects;
 
 import haxe.Json;
 import openfl.utils.Assets;
+import openfl.utils.AssetType;
+import flixel.FlxG;
+import flixel.FlxSprite;
+import flixel.group.FlxSpriteGroup;
+import flixel.math.FlxMath;
+import flixel.math.FlxPoint;
+import StringTools;
+
+#if (MODS_ALLOWED && sys)
+import sys.FileSystem;
+import sys.io.File;
+#end
 
 enum Alignment
 {
-	LEFT;
-	CENTERED;
-	RIGHT;
+    LEFT;
+    CENTERED;
+    RIGHT;
 }
 
 class Alphabet extends FlxSpriteGroup
 {
-	public var text(default, set):String;
+    public var text(default, set):String = "";
+    public var bold:Bool = false;
+    public var letters:Array<AlphaCharacter> = [];
+    public var isMenuItem:Bool = false;
+    public var targetY:Int = 0;
+    public var changeX:Bool = true;
+    public var changeY:Bool = true;
+    public var alignment(default, set):Alignment = LEFT;
+    public var scaleX(default, set):Float = 1;
+    public var scaleY(default, set):Float = 1;
+    public var rows:Int = 0;
+    public var distancePerItem:FlxPoint = FlxPoint.get(20, 120);
+    public var startPosition:FlxPoint = FlxPoint.get();
+    public var wrapWidth:Float = 0;
+    public var lineHeight:Float = 85;
+    public var spaceWidth:Float = 28;
+    public var letterSpacing:Float = 2;
+    public var menuLerpSpeed:Float = 9.6;
+    public var menuVerticalMultiplier:Float = 1.3;
+    public var autoWrap:Bool = true;
+    public var image(default, set):String = "alphabet";
 
-	public var bold:Bool = false;
-	public var letters:Array<AlphaCharacter> = [];
+    public function new(x:Float, y:Float, text:String = "", ?bold:Bool = true)
+    {
+        super(x, y);
+        startPosition.set(x, y);
+        this.bold = bold;
+        if (AlphaCharacter.allLetters == null)
+            AlphaCharacter.loadAlphabetData();
+        this.text = text;
+    }
 
-	public var isMenuItem:Bool = false;
-	public var targetY:Int = 0;
-	public var changeX:Bool = true;
-	public var changeY:Bool = true;
+    public function setAlignmentFromString(align:String):Void
+    {
+        switch (StringTools.trim(align == null ? "" : align).toLowerCase())
+        {
+            case "right": alignment = RIGHT;
+            case "center", "centered", "centre": alignment = CENTERED;
+            default: alignment = LEFT;
+        }
+    }
 
-	public var alignment(default, set):Alignment = LEFT;
-	public var scaleX(default, set):Float = 1;
-	public var scaleY(default, set):Float = 1;
-	public var rows:Int = 0;
+    private function set_alignment(value:Alignment):Alignment
+    {
+        alignment = value;
+        updateAlignment();
+        return value;
+    }
 
-	public var distancePerItem:FlxPoint = new FlxPoint(20, 120);
-	public var startPosition:FlxPoint = new FlxPoint(0, 0); //for the calculations
+    private function set_image(value:String):String
+    {
+        if (value == null || value.length == 0) value = "alphabet";
+        if (image == value) return value;
+        image = value;
+        for (letter in letters)
+            letter.image = value;
+        rebuild();
+        return value;
+    }
 
-	public function new(x:Float, y:Float, text:String = "", ?bold:Bool = true)
-	{
-		super(x, y);
+    private function updateAlignment():Void
+    {
+        for (letter in letters)
+        {
+            if (letter == null) continue;
+            var amount:Float = switch (alignment)
+            {
+                case CENTERED: letter.rowWidth * 0.5;
+                case RIGHT: letter.rowWidth;
+                default: 0;
+            };
+            letter.alignOffset = amount * scaleX;
+            letter.applyOffsets();
+        }
+    }
 
-		this.startPosition.x = x;
-		this.startPosition.y = y;
-		this.bold = bold;
-		this.text = text;
-	}
+    private function set_text(value:String):String
+    {
+        if (value == null) value = "";
+        value = StringTools.replace(value, "\\n", "\n");
+        text = value;
+        rebuild();
+        return value;
+    }
 
-	public function setAlignmentFromString(align:String)
-	{
-		switch(align.toLowerCase().trim())
-		{
-			case 'right':
-				alignment = RIGHT;
-			case 'center' | 'centered':
-				alignment = CENTERED;
-			default:
-				alignment = LEFT;
-		}
-	}
+    public function rebuild():Void
+    {
+        clearLetters();
+        createLetters(text);
+        updateAlignment();
+    }
 
-	private function set_alignment(align:Alignment)
-	{
-		alignment = align;
-		updateAlignment();
-		return align;
-	}
+    public function clearLetters():Void
+    {
+        for (letter in letters)
+        {
+            if (letter == null) continue;
+            remove(letter, true);
+            letter.destroy();
+        }
+        letters = [];
+        rows = 0;
+    }
 
-	private function updateAlignment()
-	{
-		for (letter in letters)
-		{
-			var newOffset:Float = 0;
-			switch(alignment)
-			{
-				case CENTERED:
-					newOffset = letter.rowWidth / 2;
-				case RIGHT:
-					newOffset = letter.rowWidth;
-				default:
-					newOffset = 0;
-			}
-	
-			letter.offset.x -= letter.alignOffset;
-			letter.alignOffset = newOffset * scale.x;
-			letter.offset.x += letter.alignOffset;
-		}
-	}
+    public function setScale(newX:Float, newY:Null<Float> = null):Void
+    {
+        if (newY == null) newY = newX;
+        scaleX = newX;
+        scaleY = newY;
+    }
 
-	private function set_text(newText:String)
-	{
-		newText = newText.replace('\\n', '\n');
-		clearLetters();
-		createLetters(newText);
-		updateAlignment();
-		this.text = newText;
-		return newText;
-	}
+    private function set_scaleX(value:Float):Float
+    {
+        if (!Math.isFinite(value) || value <= 0) return scaleX;
+        if (scaleX == value) return value;
+        scaleX = value;
+        scale.x = value;
+        rebuild();
+        return value;
+    }
 
-	public function clearLetters()
-	{
-		var i:Int = letters.length;
-		while (i > 0)
-		{
-			--i;
-			var letter:AlphaCharacter = letters[i];
-			if(letter != null)
-			{
-				letter.kill();
-				letters.remove(letter);
-				remove(letter);
-			}
-		}
-		letters = [];
-		rows = 0;
-	}
+    private function set_scaleY(value:Float):Float
+    {
+        if (!Math.isFinite(value) || value <= 0) return scaleY;
+        if (scaleY == value) return value;
+        scaleY = value;
+        scale.y = value;
+        rebuild();
+        return value;
+    }
 
-	public function setScale(newX:Float, newY:Null<Float> = null)
-	{
-		var lastX:Float = scale.x;
-		var lastY:Float = scale.y;
-		if(newY == null) newY = newX;
-		@:bypassAccessor
-			scaleX = newX;
-		@:bypassAccessor
-			scaleY = newY;
+    public function softReloadLetters(ratioX:Float = 1, ratioY:Null<Float> = null):Void
+    {
+        if (ratioY == null) ratioY = ratioX;
+        if (!Math.isFinite(ratioX) || !Math.isFinite(ratioY)) return;
+        rebuild();
+    }
 
-		scale.x = newX;
-		scale.y = newY;
-		softReloadLetters(newX / lastX, newY / lastY);
-	}
+    override public function update(elapsed:Float):Void
+    {
+        if (isMenuItem)
+        {
+            var factor:Float = Math.exp(-Math.max(0, elapsed) * Math.max(0, menuLerpSpeed));
+            if (changeX) x = FlxMath.lerp(startPosition.x + targetY * distancePerItem.x, x, factor);
+            if (changeY) y = FlxMath.lerp(startPosition.y + targetY * menuVerticalMultiplier * distancePerItem.y, y, factor);
+        }
+        super.update(elapsed);
+    }
 
-	private function set_scaleX(value:Float)
-	{
-		if (value == scaleX) return value;
+    public function snapToPosition():Void
+    {
+        if (!isMenuItem) return;
+        if (changeX) x = startPosition.x + targetY * distancePerItem.x;
+        if (changeY) y = startPosition.y + targetY * menuVerticalMultiplier * distancePerItem.y;
+    }
 
-		var ratio:Float = value / scale.x;
-		scale.x = value;
-		scaleX = value;
-		softReloadLetters(ratio, 1);
-		return value;
-	}
+    private function createLetters(value:String):Void
+    {
+        if (value == null || value.length == 0) return;
+        var xPos:Float = 0;
+        var row:Int = 0;
+        var rowWidths:Array<Float> = [0];
+        var limit:Float = wrapWidth > 0 ? wrapWidth : (autoWrap && !bold ? FlxG.width * 0.65 : 0);
 
-	private function set_scaleY(value:Float)
-	{
-		if (value == scaleY) return value;
+        for (i in 0...value.length)
+        {
+            var character:String = value.charAt(i);
+            if (character == "\r") continue;
+            if (character == "\n")
+            {
+                rowWidths[row] = xPos;
+                row++;
+                xPos = 0;
+                rowWidths.push(0);
+                continue;
+            }
 
-		var ratio:Float = value / scale.y;
-		scale.y = value;
-		scaleY = value;
-		softReloadLetters(1, ratio);
-		return value;
-	}
+            if (character == " " || (bold && character == "_"))
+            {
+                xPos += spaceWidth * scaleX;
+                rowWidths[row] = xPos;
+                continue;
+            }
 
-	public function softReloadLetters(ratioX:Float = 1, ratioY:Null<Float> = null)
-	{
-		if(ratioY == null) ratioY = ratioX;
+            var lower:String = character.toLowerCase();
+            if (!AlphaCharacter.allLetters.exists(lower))
+                lower = "?";
 
-		for (letter in letters)
-		{
-			if(letter != null)
-			{
-				letter.setupAlphaCharacter(
-					(letter.x - x) * ratioX + x,
-					(letter.y - y) * ratioY + y
-				);
-			}
-		}
-	}
+            var letter = new AlphaCharacter();
+            letter.parent = this;
+            if (letter.image != image) letter.image = image;
+            letter.setupAlphaCharacter(xPos, row * lineHeight * scaleY, character, bold);
+            var advance:Float = letter.width + (letter.letterOffset[0] + (bold ? 0 : letterSpacing)) * scaleX;
 
-	override function update(elapsed:Float)
-	{
-		if (isMenuItem)
-		{
-			var lerpVal:Float = Math.exp(-elapsed * 9.6);
-			if(changeX)
-				x = FlxMath.lerp((targetY * distancePerItem.x) + startPosition.x, x, lerpVal);
-			if(changeY)
-				y = FlxMath.lerp((targetY * 1.3 * distancePerItem.y) + startPosition.y, y, lerpVal);
-		}
-		super.update(elapsed);
-	}
+            if (limit > 0 && xPos > 0 && xPos + advance > limit)
+            {
+                rowWidths[row] = xPos;
+                row++;
+                xPos = 0;
+                rowWidths.push(0);
+                letter.setupAlphaCharacter(0, row * lineHeight * scaleY, character, bold);
+                advance = letter.width + (letter.letterOffset[0] + (bold ? 0 : letterSpacing)) * scaleX;
+            }
 
-	public function snapToPosition()
-	{
-		if (isMenuItem)
-		{
-			if(changeX)
-				x = (targetY * distancePerItem.x) + startPosition.x;
-			if(changeY)
-				y = (targetY * 1.3 * distancePerItem.y) + startPosition.y;
-		}
-	}
+            letter.row = row;
+            add(letter);
+            letters.push(letter);
+            xPos += advance;
+            rowWidths[row] = xPos;
+        }
 
-	private static var Y_PER_ROW:Float = 85;
+        rows = row + 1;
+        for (letter in letters)
+            letter.rowWidth = rowWidths[letter.row] / scaleX;
+    }
 
-	private function createLetters(newText:String)
-	{
-		var consecutiveSpaces:Int = 0;
-
-		var xPos:Float = 0;
-		var rowData:Array<Float> = [];
-		rows = 0;
-		for (i in 0...newText.length)
-		{
-			var character:String = newText.charAt(i);
-			if(character != '\n')
-			{
-				var spaceChar:Bool = (character == " " || (bold && character == "_"));
-				if (spaceChar) consecutiveSpaces++;
-
-				var isAlphabet:Bool = AlphaCharacter.isTypeAlphabet(character.toLowerCase());
-				if (AlphaCharacter.allLetters.exists(character.toLowerCase()) && (!bold || !spaceChar))
-				{
-					if (consecutiveSpaces > 0)
-					{
-						xPos += 28 * consecutiveSpaces * scaleX;
-						rowData[rows] = xPos;
-						if(!bold && xPos >= FlxG.width * 0.65)
-						{
-							xPos = 0;
-							rows++;
-						}
-					}
-					consecutiveSpaces = 0;
-
-					var letter:AlphaCharacter = cast recycle(AlphaCharacter, true);
-					letter.scale.x = scaleX;
-					letter.scale.y = scaleY;
-					letter.rowWidth = 0;
-
-					letter.setupAlphaCharacter(xPos, rows * Y_PER_ROW * scale.y, character, bold);
-					@:privateAccess letter.parent = this;
-
-					letter.row = rows;
-					var off:Float = 0;
-					if(!bold) off = 2;
-					xPos += letter.width + (letter.letterOffset[0] + off) * scale.x;
-					rowData[rows] = xPos;
-
-					add(letter);
-					letters.push(letter);
-				}
-			}
-			else
-			{
-				xPos = 0;
-				rows++;
-			}
-		}
-
-		for (letter in letters)
-		{
-			letter.rowWidth = rowData[letter.row] / scale.x;
-		}
-
-		if(letters.length > 0) rows++;
-	}
+    override public function destroy():Void
+    {
+        clearLetters();
+        distancePerItem.put();
+        startPosition.put();
+        super.destroy();
+    }
 }
 
-
-///////////////////////////////////////////
-// ALPHABET LETTERS, SYMBOLS AND NUMBERS //
-///////////////////////////////////////////
-
-/*enum LetterType
-{
-	ALPHABET;
-	NUMBER_OR_SYMBOL;
-}*/
-
 typedef Letter = {
-	?anim:Null<String>,
-	?offsets:Array<Float>,
-	?offsetsBold:Array<Float>
+    ?anim:Null<String>,
+    ?offsets:Array<Float>,
+    ?offsetsBold:Array<Float>
 }
 
 class AlphaCharacter extends FlxSprite
 {
-	//public static var alphabet:String = "abcdefghijklmnopqrstuvwxyz";
-	//public static var numbers:String = "1234567890";
-	//public static var symbols:String = "|~#$%()*+-:;<=>@[]^_.,'!?";
+    public static var allLetters:Map<String, Null<Letter>>;
+    public static var alphabetDataPath(default, null):String = "";
 
-	public var image(default, set):String;
+    public static function loadAlphabetData(request:String = "alphabet"):Void
+    {
+        allLetters = new Map<String, Null<Letter>>();
+        var path:String = Paths.getPath('images/$request.json');
+        var fallback:String = Paths.getPath('images/alphabet.json');
+        var content:String = null;
 
-	public static var allLetters:Map<String, Null<Letter>>;
+        #if (MODS_ALLOWED && sys)
+        if (FileSystem.exists(path)) content = File.getContent(path);
+        else if (FileSystem.exists(fallback))
+        {
+            path = fallback;
+            content = File.getContent(path);
+        }
+        #end
 
-	public static function loadAlphabetData(request:String = 'alphabet')
-	{
-		var path:String = Paths.getPath('images/$request.json');
-		#if MODS_ALLOWED
-		if(!FileSystem.exists(path))
-		#else
-		if(!Assets.exists(path, TEXT))
-		#end
-			path = Paths.getPath('images/alphabet.json');
+        if (content == null)
+        {
+            if (Assets.exists(path, AssetType.TEXT)) content = Assets.getText(path);
+            else if (Assets.exists(fallback, AssetType.TEXT))
+            {
+                path = fallback;
+                content = Assets.getText(path);
+            }
+        }
 
-		allLetters = new Map<String, Null<Letter>>();
-		try
-		{
-			#if MODS_ALLOWED
-			var data:Dynamic = Json.parse(File.getContent(path));
-			#else
-			var data:Dynamic = Json.parse(Assets.getText(path));
-			#end
+        alphabetDataPath = path;
+        if (content != null)
+        {
+            try
+            {
+                var data:Dynamic = Json.parse(content);
+                var allowed:String = Reflect.field(data, "allowed");
+                if (allowed != null)
+                    for (i in 0...allowed.length)
+                    {
+                        var c = allowed.charAt(i).toLowerCase();
+                        if (c != " ") allLetters.set(c, null);
+                    }
 
-			if(data.allowed != null && data.allowed.length > 0)
-			{
-				for (i in 0...data.allowed.length)
-				{
-					var char:String = data.allowed.charAt(i);
-					if(char == ' ') continue;
-					
-					allLetters.set(char.toLowerCase(), null); //Allows character to be used in Alphabet
-				}
-			}
+                var chars:Dynamic = Reflect.field(data, "characters");
+                if (chars != null)
+                    for (key in Reflect.fields(chars))
+                    {
+                        var c = key.toLowerCase().substr(0, 1);
+                        var entry:Dynamic = Reflect.field(chars, key);
+                        if (allLetters.exists(c) && entry != null)
+                            allLetters.set(c, {
+                                anim: Reflect.field(entry, "animation"),
+                                offsets: Reflect.field(entry, "normal"),
+                                offsetsBold: Reflect.field(entry, "bold")
+                            });
+                    }
+            }
+            catch (error:Dynamic)
+            {
+                FlxG.log.error('Alphabet JSON error: ' + Std.string(error));
+            }
+        }
+        else
+            FlxG.log.warn('Alphabet JSON not found: ' + path);
 
-			if(data.characters != null)
-			{
-				for (char in Reflect.fields(data.characters))
-				{
-					var letterData = Reflect.field(data.characters, char);
-					var character:String = char.toLowerCase().substr(0, 1);
-					if((letterData.animation != null || letterData.normal != null || letterData.bold != null) && allLetters.exists(character))
-						allLetters.set(character, {anim: letterData.animation, offsets: letterData.normal, offsetsBold: letterData.bold});
-				}
-			}
-			trace('Reloaded letters successfully ($path)!');
-		}
-		catch(e:Dynamic)
-		{
-			FlxG.log.error('Error on loading alphabet data: $e');
-			trace('Error on loading alphabet data: $e');
-		}
+        if (!allLetters.exists("?")) allLetters.set("?", {anim: "question"});
+    }
 
-		if(!allLetters.exists('?'))
-			allLetters.set('?', {anim: 'question'});
-	}
+    public var parent:Alphabet;
+    public var image(default, set):String = "alphabet";
+    public var alignOffset:Float = 0;
+    public var letterOffset:Array<Float> = [0, 0];
+    public var row:Int = 0;
+    public var rowWidth:Float = 0;
+    public var character:String = "?";
+    public var curLetter:Letter = null;
+    private var baseOffsetX:Float = 0;
+    private var baseOffsetY:Float = 0;
+    private var currentBold:Bool = false;
 
-	var parent:Alphabet;
-	public var alignOffset:Float = 0; //Don't change this
-	public var letterOffset:Array<Float> = [0, 0];
+    public function new()
+    {
+        super();
+        frames = Paths.getSparrowAtlas(image);
+        antialiasing = ClientPrefs.data.antialiasing;
+    }
 
-	public var row:Int = 0;
-	public var rowWidth:Float = 0;
-	public var character:String = '?';
-	public function new()
-	{
-		super(x, y);
-		image = 'alphabet';
-		antialiasing = ClientPrefs.data.antialiasing;
-	}
-	
-	public var curLetter:Letter = null;
-	public function setupAlphaCharacter(x:Float, y:Float, ?character:String = null, ?bold:Null<Bool> = null)
-	{
-		this.x = x;
-		this.y = y;
+    public function setupAlphaCharacter(x:Float, y:Float, ?character:String = null, ?bold:Null<Bool> = null):Void
+    {
+        this.x = x;
+        this.y = y;
+        if (bold == null) bold = parent != null ? parent.bold : false;
+        currentBold = bold;
+        scale.set(parent != null ? parent.scaleX : 1, parent != null ? parent.scaleY : 1);
 
-		if(parent != null)
-		{
-			if(bold == null)
-				bold = parent.bold;
-			this.scale.x = parent.scaleX;
-			this.scale.y = parent.scaleY;
-		}
-		
-		if(character != null)
-		{
-			this.character = character;
-			curLetter = null;
-			var lowercase:String = this.character.toLowerCase();
-			if(allLetters.exists(lowercase)) curLetter = allLetters.get(lowercase);
-			else curLetter = allLetters.get('?');
+        if (character != null)
+        {
+            this.character = character;
+            var lower:String = character.toLowerCase();
+            if (allLetters == null) loadAlphabetData();
+            curLetter = allLetters.exists(lower) ? allLetters.get(lower) : allLetters.get("?");
+            var prefix:String = curLetter != null && curLetter.anim != null ? curLetter.anim : lower;
+            var postfix:String = bold ? " bold" : (isTypeAlphabet(lower) ? (lower == character ? " lowercase" : " uppercase") : " normal");
+            playLetter(prefix + postfix);
+            if (animation.curAnim == null)
+                playLetter("question" + (bold ? " bold" : " normal"));
+        }
+        updateHitbox();
+    }
 
-			var postfix:String = '';
-			if(!bold)
-			{
-				if(isTypeAlphabet(lowercase))
-				{
-					if(lowercase != this.character)
-						postfix = ' uppercase';
-					else
-						postfix = ' lowercase';
-				}
-				else postfix = ' normal';
-			}
-			else postfix = ' bold';
+    private function playLetter(name:String):Void
+    {
+        animation.addByPrefix(name, name, 24, false);
+        animation.play(name, true);
+    }
 
-			var alphaAnim:String = lowercase;
-			if(curLetter != null && curLetter.anim != null) alphaAnim = curLetter.anim;
+    public static function isTypeAlphabet(c:String):Bool
+    {
+        if (c == null || c.length == 0) return false;
+        var ascii:Int = StringTools.fastCodeAt(c, 0);
+        return (ascii >= 65 && ascii <= 90) || (ascii >= 97 && ascii <= 122)
+            || (ascii >= 192 && ascii <= 214) || (ascii >= 216 && ascii <= 246)
+            || (ascii >= 248 && ascii <= 255);
+    }
 
-			var anim:String = alphaAnim + postfix;
-			animation.addByPrefix(anim, anim, 24);
-			animation.play(anim, true);
-			if(animation.curAnim == null)
-			{
-				if(postfix != ' bold') postfix = ' normal';
-				anim = 'question' + postfix;
-				animation.addByPrefix(anim, anim, 24);
-				animation.play(anim, true);
-			}
-		}
-		updateHitbox();
-	}
+    private function set_image(value:String):String
+    {
+        if (value == null || value.length == 0) value = "alphabet";
+        if (image == value && frames != null) return value;
+        image = value;
+        frames = Paths.getSparrowAtlas(value);
+        if (parent != null)
+            setupAlphaCharacter(x, y, character, currentBold);
+        return value;
+    }
 
-	public static function isTypeAlphabet(c:String) // thanks kade
-	{
-		var ascii = StringTools.fastCodeAt(c, 0);
-		return (ascii >= 65 && ascii <= 90)
-			|| (ascii >= 97 && ascii <= 122)
-			|| (ascii >= 192 && ascii <= 214)
-			|| (ascii >= 216 && ascii <= 246)
-			|| (ascii >= 248 && ascii <= 255);
-	}
+    public function applyOffsets():Void
+    {
+        offset.set(baseOffsetX + alignOffset, baseOffsetY);
+    }
 
-	private function set_image(name:String)
-	{
-		if(frames == null) //first setup
-		{
-			image = name;
-			frames = Paths.getSparrowAtlas(name);
-			return name;
-		}
+    public function updateLetterOffset():Void
+    {
+        letterOffset[0] = 0;
+        letterOffset[1] = 0;
+        var values:Array<Float> = null;
+        if (curLetter != null)
+            values = currentBold ? curLetter.offsetsBold : curLetter.offsets;
+        if (values != null)
+        {
+            if (values.length > 0 && values[0] != null) letterOffset[0] = values[0];
+            if (values.length > 1 && values[1] != null) letterOffset[1] = values[1];
+        }
+        var baseline:Float = (currentBold ? 70 : 110) * scale.y;
+        baseOffsetX = letterOffset[0] * scale.x;
+        baseOffsetY = letterOffset[1] * scale.y - (baseline - height);
+        applyOffsets();
+    }
 
-		var lastAnim:String = null;
-		if (animation != null)
-		{
-			lastAnim = animation.name;
-		}
-		image = name;
-		frames = Paths.getSparrowAtlas(name);
-		this.scale.x = parent.scaleX;
-		this.scale.y = parent.scaleY;
-		alignOffset = 0;
-		
-		if (lastAnim != null)
-		{
-			animation.addByPrefix(lastAnim, lastAnim, 24);
-			animation.play(lastAnim, true);
-			
-			updateHitbox();
-		}
-		return name;
-	}
-
-	public function updateLetterOffset()
-	{
-		if (animation.curAnim == null)
-		{
-			trace(character);
-			return;
-		}
-
-		var add:Float = 110;
-		if(animation.curAnim.name.endsWith('bold'))
-		{
-			if(curLetter != null && curLetter.offsetsBold != null)
-			{
-				letterOffset[0] = curLetter.offsetsBold[0];
-				letterOffset[1] = curLetter.offsetsBold[1];
-			}
-			add = 70;
-		}
-		else
-		{
-			if(curLetter != null && curLetter.offsets != null)
-			{
-				letterOffset[0] = curLetter.offsets[0];
-				letterOffset[1] = curLetter.offsets[1];
-			}
-		}
-		add *= scale.y;
-		offset.x += letterOffset[0] * scale.x;
-		offset.y += letterOffset[1] * scale.y - (add - height);
-	}
-
-	override public function updateHitbox()
-	{
-		super.updateHitbox();
-		updateLetterOffset();
-	}
+    override public function updateHitbox():Void
+    {
+        super.updateHitbox();
+        updateLetterOffset();
+    }
 }

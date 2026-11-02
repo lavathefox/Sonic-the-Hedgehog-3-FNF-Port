@@ -7,78 +7,94 @@ import flixel.text.FlxText;
 import flixel.math.FlxMath;
 import flixel.math.FlxRect;
 import flixel.util.FlxColor;
+import flixel.util.FlxGradient;
+import flixel.tweens.FlxTween;
+import flixel.tweens.FlxEase;
+import flixel.graphics.FlxGraphic;
+import openfl.display.BitmapData;
+import openfl.display.BlendMode;
 
 import backend.MusicBeatState;
 import backend.ClientPrefs;
+import backend.Difficulty;
 
-/**
- * LoadingScreen (Psych Engine 1.0.4)
- *
- * Custom look for the song loading. The real loading work is still done by
- * LoadingState (threads + cache), this state only shows its progress.
- *
- * Sprites in  mods/<your mod>/images/loadingSprites/  (or assets/shared/images/loadingSprites/)
- *   - loadingNORMAL   -> background for any song
- *   - loadingCD       -> background for the "uncontrolled-infinity" song
- *   - loadingHUD      -> frame / HUD on top of the background
- *   - loadingProgress -> progress bar (revealed according to the loaded %)
- *   - loadingTravel   -> animated sprite ("loadIdle" animation) that travels along the bar
- *                        (needs loadingTravel.xml with the "loadIdle" prefix)
- *
- * The HUD and the progress bar share the same x/y and the same scale (they sit on top of each other).
- * The status text (left) and the percentage (right) share the same line, right below the bar.
- * If a sprite is missing, a simple placeholder is used so the screen never crashes.
- *
- * Usage:
- *     LoadingState.prepareToSong();                       // starts the real preloading (optional)
- *     LoadingState.loadAndSwitchState(new PlayState());   // redirects to this screen
- */
 @:access(states.LoadingState)
 class LoadingScreen extends MusicBeatState
 {
-	// ================= CONFIGURATION (adjust to your sprites) =================
 	static inline var FOLDER:String = 'loadingSprites/';
-	static inline var CD_SONG:String = 'uncontrolled-infinity';
+	static inline var DEFAULT_BG:String = 'loadingNORMAL';
+
+	static var SONG_BG:Map<String, String> = [
+		'uncontrolled-infinity' => 'loadingCD'
+	];
 
 	static inline var TRAVEL_ANIM:String = 'loadIdle';
 	static inline var TRAVEL_FPS:Int = 24;
 
-	// scale applied to BOTH the HUD and the progress bar (1 = original size)
 	static inline var UI_SCALE:Float = 1.1;
-	// position of the HUD + progress bar, top-left corner (null = centered on the screen)
+
 	static var UI_X:Null<Float> = null;
 	static var UI_Y:Null<Float> = null;
-	// fine offset applied to both (moves the HUD and the bar together)
+
 	static var UI_OFFSET_X:Float = 0;
 	static var UI_OFFSET_Y:Float = 0;
 
-	// fine offset of the travelling sprite (relative to the top of the bar)
 	static var TRAVEL_OFFSET_X:Float = 0;
 	static var TRAVEL_OFFSET_Y:Float = -10;
-	// true = travel sprite moves along with the bar; false = stays still
+
 	static var TRAVEL_FOLLOWS_BAR:Bool = true;
+	static inline var TRAVEL_BOB:Float = 4;
+	static inline var TRAVEL_BOB_SPEED:Float = 6;
 
-	// text line (status on the left, percentage on the right), placed right below the bar
 	static inline var TEXT_SIZE:Int = 28;
-	static var TEXT_OFFSET_X:Float = 0; // moves the whole line horizontally
-	static var TEXT_OFFSET_Y:Float = 10; // distance from the bottom of the bar
-	static inline var STATUS_WIDTH_RATIO:Float = 0.75; // part of the bar width used by the status text
-	static inline var MAX_STATUS_CHARS:Int = 40; // longer task names are cut with "..."
+	static var TEXT_OFFSET_X:Float = 0;
+	static var TEXT_OFFSET_Y:Float = 10;
+	static inline var STATUS_WIDTH_RATIO:Float = 0.75;
+	static inline var MAX_STATUS_CHARS:Int = 40;
+	static inline var INFO_SIZE:Int = 18;
 
-	static inline var MIN_TIME:Float = 0.6; // minimum time when there is nothing to load
+	static inline var BG_ZOOM_BASE:Float = 1.05;
+	static inline var BG_ZOOM_AMOUNT:Float = 0.02;
+	static inline var BG_ZOOM_SPEED:Float = 0.4;
+	static inline var BG_DRIFT:Float = 12;
+
+	static inline var PARTICLE_COUNT:Int = 28;
+
+	static inline var TIP_INTERVAL:Float = 4.5;
+	static inline var TIP_FADE:Float = 0.3;
+	static inline var TIP_SIZE:Int = 24;
+	static inline var TIPS_FILE:String = 'data/loadingTips.txt';
+	static var DEFAULT_TIPS:Array<String> = [
+		'Hitting notes with better timing gives you a higher rating.',
+		'You can tweak your scroll speed in the gameplay settings.',
+		'Practice mode lets you learn a song without failing.',
+		'Ghost tapping can be toggled in the options menu.',
+		'Low on performance? Try disabling some visual options.',
+		'Keep your combo going to boost your score.',
+		'Every song has its own loading screen if you add one!'
+	];
+
+	static inline var MIN_TIME:Float = 0.6;
 	static inline var END_DELAY:Float = 0.5;
-	static inline var BAR_SPEED:Float = 10; // higher = the bar catches up faster
+	static inline var FADE_OUT_TIME:Float = 0.3;
+	static inline var BAR_SPEED:Float = 10;
 	static inline var FADE_IN_TIME:Float = 0.25;
-	// =========================================================================
 
 	var bg:FlxSprite;
 	var hud:FlxSprite;
 	var progress:FlxSprite;
 	var travel:FlxSprite;
+	var glow:FlxSprite;
+	var flash:FlxSprite;
+	var particles:Array<FlxSprite> = [];
 
 	var statusText:FlxText;
 	var percentText:FlxText;
 	var songText:FlxText;
+	var diffText:FlxText;
+	var countText:FlxText;
+	var timeText:FlxText;
+	var tipText:FlxText;
 
 	var target:FlxState;
 	var stopMusic:Bool;
@@ -89,21 +105,28 @@ class LoadingScreen extends MusicBeatState
 	var targetPercent:Float = 0;
 	var shownPercent:Float = 0;
 	var lastClipWidth:Float = -1;
+	var lastPercentInt:Int = -1;
 	var finished:Bool = false;
 	var leaving:Bool = false;
 	var endTimer:Float = 0;
 
 	var songName:String;
 
+	var bgBaseX:Float = 0;
+	var bgCover:Float = 1;
+
+	var tips:Array<String> = [];
+	var tipIndex:Int = 0;
+	var tipTimer:Float = 0;
+
 	public static function go(?target:FlxState, stopMusic:Bool = false):Void
 	{
 		if (target == null) target = new PlayState();
 
-		// same preparation that LoadingState.getNextState does
 		LoadingState._startPool();
 		LoadingState.loadNextDirectory();
 
-		MusicBeatState.skipLoading = true; // avoids MusicBeatState sending us back here (infinite loop)
+		MusicBeatState.skipLoading = true;
 		MusicBeatState.switchState(new LoadingScreen(target, stopMusic));
 	}
 
@@ -118,7 +141,6 @@ class LoadingScreen extends MusicBeatState
 	{
 		songName = Paths.formatToSongPath(PlayState.SONG != null ? PlayState.SONG.song : '');
 
-		// nothing to load: show the screen for a short time anyway
 		if (LoadingState.loadMax <= 0 && LoadingState.initialThreadCompleted)
 			minTime = MIN_TIME;
 
@@ -127,20 +149,29 @@ class LoadingScreen extends MusicBeatState
 
 		var aa:Bool = ClientPrefs.data.antialiasing;
 
-		// ---------- background ----------
-		var bgKey:String = (songName == CD_SONG) ? 'loadingCD' : 'loadingNORMAL';
 		bg = new FlxSprite();
-		if (!loadImage(bg, FOLDER + bgKey))
+		if (!loadImage(bg, FOLDER + pickBackgroundKey()))
 			bg.makeGraphic(FlxG.width, FlxG.height, FlxColor.BLACK);
 		bg.antialiasing = aa;
-		// scale so the image always covers the whole screen
-		var coverScale:Float = Math.max(FlxG.width / bg.frameWidth, FlxG.height / bg.frameHeight);
-		bg.scale.set(coverScale, coverScale);
+
+		bgCover = Math.max(FlxG.width / bg.frameWidth, FlxG.height / bg.frameHeight);
+		bg.scale.set(bgCover * BG_ZOOM_BASE, bgCover * BG_ZOOM_BASE);
 		bg.updateHitbox();
 		bg.screenCenter();
+		bgBaseX = bg.x;
 		add(bg);
 
-		// ---------- HUD + progress bar (same scale, same x/y) ----------
+		var topShade:FlxSprite = FlxGradient.createGradientFlxSprite(FlxG.width, 180, [0xCC000000, 0x00000000]);
+		topShade.scrollFactor.set();
+		add(topShade);
+
+		var bottomShade:FlxSprite = FlxGradient.createGradientFlxSprite(FlxG.width, 260, [0x00000000, 0xDD000000]);
+		bottomShade.y = FlxG.height - bottomShade.height;
+		bottomShade.scrollFactor.set();
+		add(bottomShade);
+
+		createParticles();
+
 		hud = new FlxSprite();
 		if (!loadImage(hud, FOLDER + 'loadingHUD'))
 			hud.makeGraphic(1, 1, FlxColor.TRANSPARENT);
@@ -155,16 +186,22 @@ class LoadingScreen extends MusicBeatState
 		progress.scale.set(UI_SCALE, UI_SCALE);
 		progress.updateHitbox();
 
-		// one shared position for both sprites
 		hud.x = ((UI_X != null) ? UI_X : (FlxG.width - hud.width) / 2) + UI_OFFSET_X;
 		hud.y = ((UI_Y != null) ? UI_Y : (FlxG.height - hud.height) / 2) + UI_OFFSET_Y;
 		progress.setPosition(hud.x, hud.y);
 
 		applyBarClip(0);
-		add(progress); // bar first, HUD on top of it
+		add(progress);
 		add(hud);
 
-		// ---------- animated sprite ----------
+		glow = new FlxSprite();
+		glow.loadGraphic(makeGlowGraphic());
+		glow.blend = BlendMode.ADD;
+		glow.scale.set(2.2, 2.2);
+		glow.alpha = 0;
+		glow.antialiasing = aa;
+		add(glow);
+
 		travel = new FlxSprite();
 		var travelKey:String = FOLDER + 'loadingTravel';
 		if (Paths.fileExists('images/$travelKey.xml', TEXT))
@@ -175,7 +212,6 @@ class LoadingScreen extends MusicBeatState
 		}
 		else if (!loadImage(travel, travelKey))
 		{
-			// no atlas and no image: invisible placeholder
 			travel.makeGraphic(1, 1, FlxColor.TRANSPARENT);
 		}
 		travel.antialiasing = aa;
@@ -183,27 +219,69 @@ class LoadingScreen extends MusicBeatState
 		add(travel);
 		updateTravelPosition(0);
 
-		// ---------- texts ----------
-		songText = makeText(0, 30, FlxG.width, 'Preparing: ' + (PlayState.SONG != null ? PlayState.SONG.song : '???'), 32, CENTER);
+		songText = makeText(0, 10, FlxG.width, 'Preparing: ' + (PlayState.SONG != null ? PlayState.SONG.song : '???'), 32, CENTER);
+		songText.alpha = 0;
+		diffText = makeText(0, 52, FlxG.width, getDifficultyLabel(), 22, CENTER);
+		diffText.alpha = 0;
+		diffText.color = 0xFFFFD966;
 
-		// status (left) and percentage (right) on the SAME line, aligned with the edges of the bar
 		var lineX:Float = progress.x + TEXT_OFFSET_X;
 		var lineY:Float = progress.y + progress.height + TEXT_OFFSET_Y;
 		var statusW:Float = progress.width * STATUS_WIDTH_RATIO;
 		var percentW:Float = progress.width - statusW;
 
-		statusText = makeText(lineX, lineY, statusW, 'Starting...', TEXT_SIZE, LEFT);
+		statusText = makeText(lineX, lineY, statusW, 'Starting', TEXT_SIZE, LEFT);
 		percentText = makeText(lineX + statusW, lineY, percentW, '0%', TEXT_SIZE, RIGHT);
 
+		var infoY:Float = lineY + TEXT_SIZE + 8;
+		countText = makeText(lineX, infoY, statusW, '', INFO_SIZE, LEFT);
+		countText.alpha = 0.8;
+		timeText = makeText(lineX + statusW, infoY, percentW, '0.0s', INFO_SIZE, RIGHT);
+		timeText.alpha = 0.8;
+
+		loadTips();
+		tipText = makeText(40, FlxG.height - 70, FlxG.width - 80, tips[0], TIP_SIZE, CENTER);
+		tipText.wordWrap = true;
+		tipText.alpha = 0;
+
 		add(songText);
+		add(diffText);
 		add(statusText);
 		add(percentText);
+		add(countText);
+		add(timeText);
+		add(tipText);
+
+		flash = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, FlxColor.WHITE);
+		flash.alpha = 0;
+		add(flash);
+
+		FlxTween.tween(songText, {y: 30, alpha: 1}, 0.5, {ease: FlxEase.quartOut});
+		FlxTween.tween(diffText, {alpha: 1}, 0.6, {ease: FlxEase.quartOut, startDelay: 0.15});
+		FlxTween.tween(tipText, {alpha: 1}, 0.5, {ease: FlxEase.quadOut, startDelay: 0.3});
 
 		FlxG.camera.fade(FlxColor.BLACK, FADE_IN_TIME, true);
 		super.create();
 	}
 
-	// loads an image into a sprite; returns false if the file does not exist
+	function pickBackgroundKey():String
+	{
+		if (SONG_BG.exists(songName))
+			return SONG_BG.get(songName);
+
+		var custom:String = 'loading_' + songName;
+		if (songName.length > 0 && Paths.fileExists('images/' + FOLDER + custom + '.png', IMAGE))
+			return custom;
+
+		return DEFAULT_BG;
+	}
+
+	function getDifficultyLabel():String
+	{
+		var label:String = Difficulty.getString();
+		return (label != null && label.length > 0) ? 'Difficulty: ' + label : '';
+	}
+
 	function loadImage(spr:FlxSprite, key:String):Bool
 	{
 		var graphic = Paths.image(key);
@@ -221,12 +299,11 @@ class LoadingScreen extends MusicBeatState
 		var t = new FlxText(x, y, w, text, size);
 		t.setFormat(Paths.font('vcr.ttf'), size, FlxColor.WHITE, align, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
 		t.borderSize = 2;
-		t.wordWrap = false; // never break the text into a second line
+		t.wordWrap = false;
 		t.antialiasing = ClientPrefs.data.antialiasing;
 		return t;
 	}
 
-	// cuts long names so the status text never runs into the percentage
 	function fitStatus(s:String):String
 	{
 		if (s.length > MAX_STATUS_CHARS)
@@ -234,16 +311,102 @@ class LoadingScreen extends MusicBeatState
 		return s;
 	}
 
-	// ============================== UPDATE ==============================
+	function makeGlowGraphic():FlxGraphic
+	{
+		var size:Int = 64;
+		var half:Float = size / 2;
+		var bmp:BitmapData = new BitmapData(size, size, true, 0x00000000);
+		for (px in 0...size)
+		{
+			for (py in 0...size)
+			{
+				var dx:Float = px - half;
+				var dy:Float = py - half;
+				var d:Float = Math.sqrt(dx * dx + dy * dy) / half;
+				var a:Float = Math.max(0, 1 - d);
+				a = a * a;
+				bmp.setPixel32(px, py, FlxColor.fromRGBFloat(1, 0.85, 0.4, a));
+			}
+		}
+		return FlxGraphic.fromBitmapData(bmp);
+	}
+
+	function createParticles():Void
+	{
+		for (i in 0...PARTICLE_COUNT)
+		{
+			var size:Int = FlxG.random.int(2, 5);
+			var p:FlxSprite = new FlxSprite(FlxG.random.float(0, FlxG.width), FlxG.random.float(0, FlxG.height));
+			p.makeGraphic(size, size, FlxColor.WHITE);
+			p.alpha = FlxG.random.float(0.1, 0.4);
+			p.velocity.set(FlxG.random.float(-8, 8), -FlxG.random.float(15, 45));
+			p.blend = BlendMode.ADD;
+			particles.push(p);
+			add(p);
+		}
+	}
+
+	function updateParticles():Void
+	{
+		for (p in particles)
+		{
+			if (p.y < -p.height)
+			{
+				p.y = FlxG.height + FlxG.random.float(0, 40);
+				p.x = FlxG.random.float(0, FlxG.width);
+			}
+			if (p.x < -p.width) p.x = FlxG.width;
+			else if (p.x > FlxG.width) p.x = -p.width;
+		}
+	}
+
+	function loadTips():Void
+	{
+		if (Paths.fileExists(TIPS_FILE, TEXT))
+		{
+			var raw:String = Paths.getTextFromFile(TIPS_FILE);
+			if (raw != null)
+			{
+				for (line in raw.split('\n'))
+				{
+					var clean:String = StringTools.trim(line);
+					if (clean.length > 0) tips.push(clean);
+				}
+			}
+		}
+
+		if (tips.length == 0)
+			tips = DEFAULT_TIPS.copy();
+
+		FlxG.random.shuffle(tips);
+	}
+
+	function nextTip():Void
+	{
+		if (tips.length <= 1) return;
+
+		FlxTween.cancelTweensOf(tipText);
+		FlxTween.tween(tipText, {alpha: 0}, TIP_FADE, {
+			ease: FlxEase.quadIn,
+			onComplete: function(_)
+			{
+				tipIndex = (tipIndex + 1) % tips.length;
+				tipText.text = tips[tipIndex];
+				FlxTween.tween(tipText, {alpha: 1}, TIP_FADE, {ease: FlxEase.quadOut});
+			}
+		});
+	}
+
 	override function update(elapsed:Float)
 	{
 		super.update(elapsed);
+
+		var dt:Float = Math.min(elapsed, 0.1);
 
 		if (!finished)
 		{
 			timer += elapsed;
 
-			// must be called every frame: it also moves the finished bitmaps into the cache (main thread only)
 			var loadedAll:Bool = LoadingState.checkLoaded();
 
 			if (LoadingState.loadMax > 0)
@@ -252,7 +415,11 @@ class LoadingScreen extends MusicBeatState
 				targetPercent = Math.min(timer / minTime, 1);
 
 			var task:String = LoadingState.currentTask;
-			statusText.text = (task != null && task.length > 0) ? fitStatus('Loading ' + task + '...') : 'Preparing...';
+			var dots:String = ''.lpad('.', Math.floor(timer * 3) % 4);
+			statusText.text = (task != null && task.length > 0) ? fitStatus('Loading ' + task) + dots : 'Preparing' + dots;
+
+			countText.text = (LoadingState.loadMax > 0) ? 'Files: ' + LoadingState.loaded + ' / ' + LoadingState.loadMax : '';
+			timeText.text = FlxMath.roundDecimal(timer, 1) + 's';
 
 			if (loadedAll && timer >= minTime)
 			{
@@ -261,13 +428,22 @@ class LoadingScreen extends MusicBeatState
 			}
 		}
 
-		// smooth the bar (same speed on any frame rate)
-		shownPercent = FlxMath.lerp(shownPercent, targetPercent, 1 - Math.exp(-elapsed * BAR_SPEED));
+		shownPercent = FlxMath.lerp(shownPercent, targetPercent, 1 - Math.exp(-dt * BAR_SPEED));
 		if (Math.abs(shownPercent - targetPercent) < 0.002) shownPercent = targetPercent;
 
 		applyBarClip(shownPercent);
 		updateTravelPosition(shownPercent);
-		percentText.text = Math.floor(shownPercent * 100) + '%';
+		updateGlow();
+		updateBackground();
+		updateParticles();
+		updatePercentText(dt);
+
+		tipTimer += dt;
+		if (tipTimer >= TIP_INTERVAL && !leaving)
+		{
+			tipTimer = 0;
+			nextTip();
+		}
 
 		if (finished && shownPercent >= 1 && !leaving)
 		{
@@ -276,12 +452,51 @@ class LoadingScreen extends MusicBeatState
 			if (endTimer >= END_DELAY)
 			{
 				leaving = true;
-				goToTarget();
+				finishAndLeave();
 			}
 		}
 	}
 
-	// same ending as LoadingState.onLoad
+	function updateBackground():Void
+	{
+		var z:Float = BG_ZOOM_BASE + Math.sin(timer * BG_ZOOM_SPEED) * BG_ZOOM_AMOUNT;
+		bg.scale.set(bgCover * z, bgCover * z);
+		bg.x = bgBaseX + Math.sin(timer * BG_ZOOM_SPEED * 0.75) * BG_DRIFT;
+	}
+
+	function updatePercentText(dt:Float):Void
+	{
+		var pct:Int = Math.floor(shownPercent * 100);
+		if (pct != lastPercentInt)
+		{
+			lastPercentInt = pct;
+			percentText.text = pct + '%';
+			percentText.scale.set(1.18, 1.18);
+		}
+
+		var s:Float = FlxMath.lerp(percentText.scale.x, 1, 1 - Math.exp(-dt * 14));
+		percentText.scale.set(s, s);
+	}
+
+	function updateGlow():Void
+	{
+		var visible:Bool = shownPercent > 0.01 && shownPercent < 0.999;
+		var pulse:Float = 0.55 + Math.sin(timer * 7) * 0.2;
+		glow.alpha = FlxMath.lerp(glow.alpha, visible ? pulse : 0, 0.2);
+		glow.x = progress.x + progress.width * shownPercent - glow.width / 2;
+		glow.y = progress.y + progress.height / 2 - glow.height / 2;
+	}
+
+	function finishAndLeave():Void
+	{
+		flash.alpha = 0.35;
+		FlxTween.tween(flash, {alpha: 0}, 0.4, {ease: FlxEase.quadOut});
+		FlxTween.tween(travel, {alpha: 0}, 0.25);
+		FlxTween.tween(glow, {alpha: 0}, 0.25);
+
+		FlxG.camera.fade(FlxColor.BLACK, FADE_OUT_TIME, false, function() goToTarget());
+	}
+
 	function goToTarget():Void
 	{
 		LoadingState._loaded();
@@ -290,12 +505,10 @@ class LoadingScreen extends MusicBeatState
 			FlxG.sound.music.stop();
 
 		FlxG.camera.visible = false;
-		MusicBeatState.skipLoading = true; // go straight to the target (no loop)
+		MusicBeatState.skipLoading = true;
 		MusicBeatState.switchState(target);
 	}
 
-	// only creates a new clip rect when the width really changed
-	// (clipRect uses the original frame size, so the scale does not affect it)
 	function applyBarClip(pct:Float):Void
 	{
 		var w:Float = progress.frameWidth * pct;
@@ -309,7 +522,20 @@ class LoadingScreen extends MusicBeatState
 		var bx:Float = progress.x;
 		if (TRAVEL_FOLLOWS_BAR)
 			bx += progress.width * pct;
+
+		var bob:Float = (TRAVEL_BOB > 0) ? Math.sin(timer * TRAVEL_BOB_SPEED) * TRAVEL_BOB : 0;
 		travel.x = bx - travel.width / 2 + TRAVEL_OFFSET_X;
-		travel.y = progress.y - travel.height + TRAVEL_OFFSET_Y + progress.height;
+		travel.y = progress.y - travel.height + TRAVEL_OFFSET_Y + progress.height + bob;
+	}
+
+	override function destroy()
+	{
+		FlxTween.cancelTweensOf(songText);
+		FlxTween.cancelTweensOf(diffText);
+		FlxTween.cancelTweensOf(tipText);
+		FlxTween.cancelTweensOf(flash);
+		FlxTween.cancelTweensOf(travel);
+		FlxTween.cancelTweensOf(glow);
+		super.destroy();
 	}
 }

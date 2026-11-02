@@ -103,7 +103,7 @@ jobs:
         timeout-minutes: 1
         run: |
           set -euo pipefail
-          version=$(sed -n 's/.*<app[^>]*version="\([^"]*\)".*/\1/p' Project.xml | head -n 1)
+          version=$(sed -n 's/.*<app[^>]*version="\([^"]*\)".*/\1/p' project.xml | head -n 1)
           [ -n "$version" ] || version="0.0.0"
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             version="${GITHUB_REF_NAME#v}"

@@ -316,7 +316,7 @@ jobs:
           from xml.sax.saxutils import quoteattr
 
           abis, signing, keystore = sys.argv[1], sys.argv[2] == "true", sys.argv[3]
-          path = Path("Project.xml")
+          path = Path("project.xml")
           text = path.read_text(encoding="utf-8")
           text = re.sub(r'\s*<architecture\b[^>]*/>', '', text)
 
@@ -339,7 +339,7 @@ jobs:
           path.write_text(text, encoding="utf-8")
           PY
 
-          grep -E '<architecture' Project.xml
+          grep -E '<architecture' project.xml
           if [ "$signing" = true ]; then
             echo "Release signing: enabled"
           else

@@ -34,7 +34,7 @@ class Hitbox extends FlxSpriteGroup
 
     static var held:Array<Bool> = [for (i in 0...LANES) false];
     static var previous:Array<Bool> = [for (i in 0...LANES) false];
-    static var active:Hitbox;
+    static var currentHitbox:Hitbox;
 
     var lanes:Array<FlxSprite> = [];
     var lastWidth:Int = -1;
@@ -72,21 +72,21 @@ class Hitbox extends FlxSpriteGroup
     public static function setCompactness(scale:Float):Void
     {
         hitboxScale = clamp(scale, 0.25, 1.0);
-        if (active != null) active.refresh();
+        if (currentHitbox != null) currentHitbox.refresh();
     }
 
     public static function setMargins(left:Float, right:Float):Void
     {
         marginLeft = left;
         marginRight = right;
-        if (active != null) active.refresh();
+        if (currentHitbox != null) currentHitbox.refresh();
     }
 
     public static function setOffset(x:Float, y:Float):Void
     {
         offsetX = x;
         offsetY = y;
-        if (active != null) active.refresh();
+        if (currentHitbox != null) currentHitbox.refresh();
     }
 
     public static function getLaneAt(screenX:Float, screenY:Float):Int
@@ -138,8 +138,8 @@ class Hitbox extends FlxSpriteGroup
     public function new()
     {
         super();
-        if (active != null && active != this) resetInput();
-        active = this;
+        if (currentHitbox != null && currentHitbox != this) resetInput();
+        currentHitbox = this;
         scrollFactor.set(0, 0);
         for (i in 0...LANES)
         {
@@ -238,7 +238,7 @@ class Hitbox extends FlxSpriteGroup
 
     override public function update(elapsed:Float):Void
     {
-        if (active == this) pollTouches();
+        if (currentHitbox == this) pollTouches();
 
         if (lastWidth != FlxG.width || lastHeight != FlxG.height || lastLeft != areaLeft()
             || lastTop != areaTop() || lastAreaWidth != areaWidth() || lastAreaHeight != areaHeight() || lastStyle != style)
@@ -259,9 +259,9 @@ class Hitbox extends FlxSpriteGroup
 
     override public function destroy():Void
     {
-        if (active == this)
+        if (currentHitbox == this)
         {
-            active = null;
+            currentHitbox = null;
             resetInput();
         }
         lanes = [];

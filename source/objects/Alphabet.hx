@@ -407,8 +407,8 @@ class AlphaCharacter extends FlxSprite
             values = currentBold ? curLetter.offsetsBold : curLetter.offsets;
         if (values != null)
         {
-            if (values.length > 0 && values[0] != null) letterOffset[0] = values[0];
-            if (values.length > 1 && values[1] != null) letterOffset[1] = values[1];
+            if (values.length > 0) letterOffset[0] = values[0];
+            if (values.length > 1) letterOffset[1] = values[1];
         }
         var baseline:Float = (currentBold ? 70 : 110) * scale.y;
         baseOffsetX = letterOffset[0] * scale.x;

@@ -2,11 +2,27 @@ package psychlua;
 
 import flixel.FlxSprite;
 import flixel.util.FlxColor;
+import haxe.io.Bytes;
 import openfl.display.BitmapData;
+import openfl.geom.Rectangle;
+
+typedef CRect =
+{
+	var x:Float;
+	var y:Float;
+	var w:Float;
+	var h:Float;
+}
 
 class CollisionFunctions
 {
 	private static var collisions:Map<String, CollisionData> = new Map<String, CollisionData>();
+	private static var sensors:Map<String, ObjectSensors> = new Map<String, ObjectSensors>();
+	private static var maskCache:Map<String, MaskCache> = new Map<String, MaskCache>();
+	private static var defaultSensors:ObjectSensors = new ObjectSensors();
+
+	private static var lastHitX:Float = Math.NaN;
+	private static var lastHitY:Float = Math.NaN;
 
 	public static function implement(funk:FunkinLua):Void
 	{
@@ -50,6 +66,11 @@ class CollisionFunctions
 			return setPosition(tag, x, y);
 		});
 
+		funk.addLocalCallback('moveCollision', function(tag:String, dx:Float, dy:Float)
+		{
+			return moveCollision(tag, dx, dy);
+		});
+
 		funk.addLocalCallback('setCollisionSize', function(tag:String, width:Float, height:Float)
 		{
 			return setSize(tag, width, height);
@@ -58,6 +79,12 @@ class CollisionFunctions
 		funk.addLocalCallback('setCollisionType', function(tag:String, collisionType:String)
 		{
 			return setType(tag, collisionType);
+		});
+
+		funk.addLocalCallback('getCollisionType', function(tag:String)
+		{
+			var data:CollisionData = collisions.get(tag);
+			return data == null ? '' : data.collisionType;
 		});
 
 		funk.addLocalCallback('setCollisionVisible', function(tag:String, visible:Bool)
@@ -70,6 +97,22 @@ class CollisionFunctions
 			return setDebugColor(tag, color);
 		});
 
+		funk.addLocalCallback('setCollisionEnabled', function(tag:String, enabled:Bool)
+		{
+			return setEnabled(tag, enabled);
+		});
+
+		funk.addLocalCallback('isCollisionEnabled', function(tag:String)
+		{
+			var data:CollisionData = collisions.get(tag);
+			return data != null && data.enabled;
+		});
+
+		funk.addLocalCallback('collisionExists', function(tag:String)
+		{
+			return collisions.exists(tag);
+		});
+
 		funk.addLocalCallback('bindCollisionObject', function(collisionTag:String, objectTag:String)
 		{
 			return bindObject(collisionTag, objectTag);
@@ -78,6 +121,22 @@ class CollisionFunctions
 		funk.addLocalCallback('unbindCollisionObject', function(collisionTag:String)
 		{
 			return unbindObject(collisionTag);
+		});
+
+		funk.addLocalCallback('setCollisionHitbox', function(objectTag:String, offsetX:Float, offsetY:Float, width:Float, height:Float)
+		{
+			return setHitbox(objectTag, offsetX, offsetY, width, height);
+		});
+
+		funk.addLocalCallback('setCollisionSteps', function(objectTag:String, climb:Int, drop:Int, ?stepHeight:Float = 16, ?tolerance:Float = 8)
+		{
+			return setSteps(objectTag, climb, drop, stepHeight, tolerance);
+		});
+
+		funk.addLocalCallback('resetCollisionObject', function(objectTag:String)
+		{
+			sensors.remove(objectTag);
+			return true;
 		});
 
 		funk.addLocalCallback('updateCollision', function(tag:String)
@@ -96,6 +155,11 @@ class CollisionFunctions
 			return isTouchingObject(objectTag, collisionTag);
 		});
 
+		funk.addLocalCallback('getTouchingCollision', function(objectTag:String)
+		{
+			return getTouchingCollision(objectTag);
+		});
+
 		funk.addLocalCallback('isSolidAt', function(collisionTag:String, x:Float, y:Float)
 		{
 			return isSolidAt(collisionTag, x, y);
@@ -104,6 +168,11 @@ class CollisionFunctions
 		funk.addLocalCallback('isOnGround', function(objectTag:String, ?collisionTag:String = '')
 		{
 			return isOnGround(objectTag, collisionTag);
+		});
+
+		funk.addLocalCallback('getGroundCollisionTag', function(objectTag:String)
+		{
+			return getGroundCollisionTag(objectTag);
 		});
 
 		funk.addLocalCallback('getGroundY', function(objectTag:String, ?collisionTag:String = '')
@@ -121,9 +190,14 @@ class CollisionFunctions
 			return getGroundAngle(objectTag, collisionTag);
 		});
 
-		funk.addLocalCallback('getGroundAngleAt', function(collisionTag:String, x:Float)
+		funk.addLocalCallback('getGroundAngleAt', function(collisionTag:String, x:Float, ?referenceY:Float = 0)
 		{
-			return getGroundAngleAt(collisionTag, x);
+			return getGroundAngleAt(collisionTag, x, referenceY);
+		});
+
+		funk.addLocalCallback('isOnSlope', function(objectTag:String, ?minAngle:Float = 5, ?collisionTag:String = '')
+		{
+			return Math.abs(getGroundAngle(objectTag, collisionTag)) >= minAngle;
 		});
 
 		funk.addLocalCallback('getGroundDistance', function(objectTag:String, ?collisionTag:String = '')
@@ -171,6 +245,21 @@ class CollisionFunctions
 			return getWallCollision(objectTag, collisionTag);
 		});
 
+		funk.addLocalCallback('raycastCollision', function(collisionTag:String, x1:Float, y1:Float, x2:Float, y2:Float)
+		{
+			return raycast(collisionTag, x1, y1, x2, y2);
+		});
+
+		funk.addLocalCallback('getRaycastX', function()
+		{
+			return lastHitX;
+		});
+
+		funk.addLocalCallback('getRaycastY', function()
+		{
+			return lastHitY;
+		});
+
 		funk.addLocalCallback('getCollisionX', function(tag:String)
 		{
 			return getX(tag);
@@ -201,6 +290,12 @@ class CollisionFunctions
 			clearAll();
 			return true;
 		});
+
+		funk.addLocalCallback('clearCollisionMaskCache', function()
+		{
+			clearMaskCache();
+			return true;
+		});
 	}
 
 	public static function createBox(tag:String, x:Float, y:Float, width:Float, height:Float, collisionType:String = 'solid'):Bool
@@ -225,7 +320,7 @@ class CollisionFunctions
 	{
 		removeCollision(tag);
 
-		if(width <= 0 || height <= 0)
+		if (width <= 0 || height <= 0)
 		{
 			trace('CollisionFunctions: Invalid collision graphic size for "' + tag + '".');
 			return false;
@@ -244,10 +339,10 @@ class CollisionFunctions
 
 		var sprite:FlxSprite = new FlxSprite(x, y);
 		sprite.makeGraphic(width, height, data.debugColor);
-		sprite.alpha = visible ? 0.35 : 0;
-		sprite.scrollFactor.set(0, 0);
+		sprite.alpha = 0.35;
+		sprite.visible = visible;
 
-		if(PlayState.instance != null)
+		if (PlayState.instance != null)
 			PlayState.instance.add(sprite);
 
 		data.debugSprite = sprite;
@@ -261,15 +356,13 @@ class CollisionFunctions
 	{
 		removeCollision(tag);
 
-		var object:Dynamic = getLuaObject(spriteTag);
+		var sprite:FlxSprite = getSprite(spriteTag);
 
-		if(object == null || !Std.isOfType(object, FlxSprite))
+		if (sprite == null)
 		{
 			trace('CollisionFunctions: Sprite "' + spriteTag + '" was not found.');
 			return false;
 		}
-
-		var sprite:FlxSprite = cast object;
 
 		var data:CollisionData = new CollisionData(tag);
 
@@ -300,38 +393,19 @@ class CollisionFunctions
 		return true;
 	}
 
-	public static function createCollisionMask(
-		tag:String,
-		image:String,
-		x:Float,
-		y:Float,
-		collisionType:String = 'floor',
-		color:String = 'FFFFFF',
-		tolerance:Int = 20,
-		debug:Bool = false
-	):Bool
+	public static function createCollisionMask(tag:String, image:String, x:Float, y:Float, collisionType:String = 'floor', color:String = 'FFFFFF', tolerance:Int = 20, debug:Bool = false):Bool
 	{
 		removeCollision(tag);
 
-		if(image == null || image.length == 0)
+		if (image == null || image.length == 0)
 		{
 			trace('CollisionFunctions: Collision image path is empty.');
 			return false;
 		}
 
-		var graphic:Dynamic = null;
+		var graphic:Dynamic = loadMaskGraphic(image);
 
-		try
-		{
-			graphic = Paths.image(image);
-		}
-		catch(e:Dynamic)
-		{
-			trace('CollisionFunctions: Failed to load collision image "' + image + '".');
-			return false;
-		}
-
-		if(graphic == null)
+		if (graphic == null)
 		{
 			trace('CollisionFunctions: Collision image "' + image + '" was not found.');
 			return false;
@@ -343,21 +417,37 @@ class CollisionFunctions
 		{
 			bitmap = graphic.bitmap;
 		}
-		catch(e:Dynamic)
+		catch (e:Dynamic)
 		{
 			bitmap = null;
 		}
 
-		if(bitmap == null)
+		if (bitmap == null || bitmap.width <= 0 || bitmap.height <= 0)
 		{
-			trace('CollisionFunctions: Collision image "' + image + '" has no bitmap.');
+			trace('CollisionFunctions: Collision image "' + image + '" has no usable bitmap.');
 			return false;
 		}
 
-		if(bitmap.width <= 0 || bitmap.height <= 0)
+		if (tolerance < 0)
+			tolerance = 0;
+
+		var maskColor:FlxColor = parseColor(color);
+		var colorInt:Int = maskColor;
+		var cacheKey:String = image + '|' + Std.string(colorInt) + '|' + Std.string(tolerance);
+
+		var cached:MaskCache = maskCache.get(cacheKey);
+
+		if (cached == null)
 		{
-			trace('CollisionFunctions: Collision image "' + image + '" has an invalid size.');
-			return false;
+			cached = buildMask(bitmap, colorInt, tolerance);
+
+			if (cached == null)
+			{
+				trace('CollisionFunctions: Failed to read pixels of "' + image + '". If the image is cached on GPU, disable GPU caching for it.');
+				return false;
+			}
+
+			maskCache.set(cacheKey, cached);
 		}
 
 		var data:CollisionData = new CollisionData(tag);
@@ -365,90 +455,24 @@ class CollisionFunctions
 		data.kind = 'mask';
 		data.x = x;
 		data.y = y;
-		data.width = bitmap.width;
-		data.height = bitmap.height;
+		data.width = cached.width;
+		data.height = cached.height;
 		data.collisionType = normalizeType(collisionType);
 		data.maskImage = image;
-		data.maskColor = parseColor(color);
+		data.maskColor = maskColor;
 		data.maskTolerance = tolerance;
+		data.maskBits = cached.bits;
+		data.maskW = cached.width;
+		data.maskH = cached.height;
+		data.maskStride = cached.stride;
 
-		if(data.maskTolerance < 0)
-			data.maskTolerance = 0;
-
-		data.maskSolid = [];
-		data.columns = [];
-
-		var targetRed:Int = (data.maskColor >> 16) & 0xFF;
-		var targetGreen:Int = (data.maskColor >> 8) & 0xFF;
-		var targetBlue:Int = data.maskColor & 0xFF;
-
-		var pixelY:Int;
-		var pixelX:Int;
-
-		for(pixelY in 0...bitmap.height)
-		{
-			var row:Array<Bool> = [];
-
-			for(pixelX in 0...bitmap.width)
-			{
-				var pixel:UInt = bitmap.getPixel32(pixelX, pixelY);
-				var alpha:Int = Std.int((pixel >> 24) & 0xFF);
-
-				if(alpha <= 0)
-				{
-					row.push(false);
-					continue;
-				}
-
-				var red:Int = Std.int((pixel >> 16) & 0xFF);
-				var green:Int = Std.int((pixel >> 8) & 0xFF);
-				var blue:Int = Std.int(pixel & 0xFF);
-
-				var matchesColor:Bool =
-					Math.abs(red - targetRed) <= data.maskTolerance &&
-					Math.abs(green - targetGreen) <= data.maskTolerance &&
-					Math.abs(blue - targetBlue) <= data.maskTolerance;
-
-				row.push(matchesColor);
-			}
-
-			data.maskSolid.push(row);
-		}
-
-		for(pixelX in 0...bitmap.width)
-		{
-			var column:Array<Float> = [];
-
-			for(pixelY in 0...bitmap.height)
-			{
-				if(pixelY >= data.maskSolid.length)
-					continue;
-
-				if(pixelX >= data.maskSolid[pixelY].length)
-					continue;
-
-				if(data.maskSolid[pixelY][pixelX])
-				{
-					var isTop:Bool =
-						pixelY == 0 ||
-						!data.maskSolid[pixelY - 1][pixelX];
-
-					if(isTop)
-						column.push(data.y + pixelY);
-				}
-			}
-
-			data.columns.push(column);
-		}
-
-		if(debug)
+		if (debug)
 		{
 			var debugSprite:FlxSprite = new FlxSprite(x, y);
 			debugSprite.loadGraphic(graphic);
 			debugSprite.alpha = 0.35;
-			debugSprite.scrollFactor.set(0, 0);
 
-			if(PlayState.instance != null)
+			if (PlayState.instance != null)
 				PlayState.instance.add(debugSprite);
 
 			data.debugSprite = debugSprite;
@@ -457,24 +481,99 @@ class CollisionFunctions
 
 		collisions.set(tag, data);
 
-		trace(
-			'CollisionFunctions: Loaded mask "' +
-			tag +
-			'" (' +
-			bitmap.width +
-			'x' +
-			bitmap.height +
-			').'
-		);
+		trace('CollisionFunctions: Loaded mask "' + tag + '" (' + cached.width + 'x' + cached.height + ').');
 
 		return true;
+	}
+
+	private static function loadMaskGraphic(image:String):Dynamic
+	{
+		try
+		{
+			return Paths.image(image, null, false);
+		}
+		catch (e:Dynamic)
+		{
+		}
+
+		try
+		{
+			return Paths.image(image);
+		}
+		catch (e:Dynamic)
+		{
+		}
+
+		return null;
+	}
+
+	private static function buildMask(bitmap:BitmapData, colorInt:Int, tolerance:Int):MaskCache
+	{
+		var w:Int = bitmap.width;
+		var h:Int = bitmap.height;
+		var stride:Int = (w + 7) >> 3;
+		var bits:Bytes = Bytes.alloc(stride * h);
+
+		var targetRed:Int = (colorInt >> 16) & 0xFF;
+		var targetGreen:Int = (colorInt >> 8) & 0xFF;
+		var targetBlue:Int = colorInt & 0xFF;
+
+		var chunk:Int = 16;
+		var startY:Int = 0;
+
+		try
+		{
+			while (startY < h)
+			{
+				var rows:Int = Std.int(Math.min(chunk, h - startY));
+				var pixels = bitmap.getPixels(new Rectangle(0, startY, w, rows));
+				var i:Int = 0;
+
+				for (ry in 0...rows)
+				{
+					var rowBase:Int = (startY + ry) * stride;
+
+					for (px in 0...w)
+					{
+						var a:Int = pixels[i];
+						var r:Int = pixels[i + 1];
+						var g:Int = pixels[i + 2];
+						var b:Int = pixels[i + 3];
+						i += 4;
+
+						if (a > 0
+							&& Math.abs(r - targetRed) <= tolerance
+							&& Math.abs(g - targetGreen) <= tolerance
+							&& Math.abs(b - targetBlue) <= tolerance)
+						{
+							var index:Int = rowBase + (px >> 3);
+							bits.set(index, bits.get(index) | (0x80 >> (px & 7)));
+						}
+					}
+				}
+
+				startY += rows;
+			}
+		}
+		catch (e:Dynamic)
+		{
+			trace('CollisionFunctions: ' + Std.string(e));
+			return null;
+		}
+
+		return new MaskCache(bits, w, h, stride);
+	}
+
+	public static function clearMaskCache():Void
+	{
+		maskCache = new Map<String, MaskCache>();
 	}
 
 	public static function addPoint(tag:String, x:Float, y:Float):Bool
 	{
 		var data:CollisionData = collisions.get(tag);
 
-		if(data == null || data.kind != 'surface')
+		if (data == null || data.kind != 'surface')
 			return false;
 
 		data.points.push(new CollisionPoint(x, y));
@@ -487,7 +586,7 @@ class CollisionFunctions
 	{
 		var data:CollisionData = collisions.get(tag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
 		data.points = [];
@@ -499,7 +598,7 @@ class CollisionFunctions
 	{
 		var data:CollisionData = collisions.get(tag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
 		var offsetX:Float = x - data.x;
@@ -508,32 +607,42 @@ class CollisionFunctions
 		data.x = x;
 		data.y = y;
 
-		if(data.kind == 'surface')
+		if (data.kind == 'surface')
 		{
-			for(point in data.points)
+			for (point in data.points)
 			{
 				point.x += offsetX;
 				point.y += offsetY;
 			}
 		}
 
-		if(data.debugSprite != null)
+		if (data.debugSprite != null)
 			data.debugSprite.setPosition(x, y);
 
 		return true;
+	}
+
+	public static function moveCollision(tag:String, dx:Float, dy:Float):Bool
+	{
+		var data:CollisionData = collisions.get(tag);
+
+		if (data == null)
+			return false;
+
+		return setPosition(tag, data.x + dx, data.y + dy);
 	}
 
 	public static function setSize(tag:String, width:Float, height:Float):Bool
 	{
 		var data:CollisionData = collisions.get(tag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
 		data.width = width;
 		data.height = height;
 
-		if(data.debugSprite != null)
+		if (data.debugSprite != null && data.kind != 'mask')
 		{
 			data.debugSprite.setGraphicSize(Std.int(width), Std.int(height));
 			data.debugSprite.updateHitbox();
@@ -546,7 +655,7 @@ class CollisionFunctions
 	{
 		var data:CollisionData = collisions.get(tag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
 		data.collisionType = normalizeType(collisionType);
@@ -558,13 +667,13 @@ class CollisionFunctions
 	{
 		var data:CollisionData = collisions.get(tag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
 		data.visible = visible;
 
-		if(data.debugSprite != null)
-			data.debugSprite.alpha = visible ? 0.35 : 0;
+		if (data.debugSprite != null)
+			data.debugSprite.visible = visible;
 
 		return true;
 	}
@@ -573,13 +682,25 @@ class CollisionFunctions
 	{
 		var data:CollisionData = collisions.get(tag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
 		data.debugColor = parseColor(color);
 
-		if(data.debugSprite != null)
+		if (data.debugSprite != null)
 			data.debugSprite.color = data.debugColor;
+
+		return true;
+	}
+
+	public static function setEnabled(tag:String, enabled:Bool):Bool
+	{
+		var data:CollisionData = collisions.get(tag);
+
+		if (data == null)
+			return false;
+
+		data.enabled = enabled;
 
 		return true;
 	}
@@ -588,12 +709,10 @@ class CollisionFunctions
 	{
 		var data:CollisionData = collisions.get(collisionTag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
-		var object:Dynamic = getLuaObject(objectTag);
-
-		if(object == null || !Std.isOfType(object, FlxSprite))
+		if (getSprite(objectTag) == null)
 			return false;
 
 		data.objectTag = objectTag;
@@ -607,10 +726,40 @@ class CollisionFunctions
 	{
 		var data:CollisionData = collisions.get(collisionTag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
 		data.objectTag = '';
+
+		return true;
+	}
+
+	public static function setHitbox(objectTag:String, offsetX:Float, offsetY:Float, width:Float, height:Float):Bool
+	{
+		if (objectTag == null || objectTag.length == 0)
+			return false;
+
+		var s:ObjectSensors = getOrCreateSensors(objectTag);
+
+		s.hitOffX = offsetX;
+		s.hitOffY = offsetY;
+		s.hitW = width;
+		s.hitH = height;
+
+		return true;
+	}
+
+	public static function setSteps(objectTag:String, climb:Int, drop:Int, stepHeight:Float = 16, tolerance:Float = 8):Bool
+	{
+		if (objectTag == null || objectTag.length == 0)
+			return false;
+
+		var s:ObjectSensors = getOrCreateSensors(objectTag);
+
+		s.climb = climb < 0 ? 0 : climb;
+		s.drop = drop < 0 ? 0 : drop;
+		s.stepHeight = stepHeight < 0 ? 0 : stepHeight;
+		s.tolerance = tolerance < 0 ? 0 : tolerance;
 
 		return true;
 	}
@@ -619,7 +768,7 @@ class CollisionFunctions
 	{
 		var data:CollisionData = collisions.get(tag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
 		updateDataFromObject(data);
@@ -629,412 +778,372 @@ class CollisionFunctions
 
 	public static function updateAll():Void
 	{
-		for(data in collisions)
+		for (data in collisions)
 			updateDataFromObject(data);
 	}
 
 	private static function updateDataFromObject(data:CollisionData):Void
 	{
-		if(data.objectTag == null || data.objectTag.length == 0)
+		if (data.objectTag == null || data.objectTag.length == 0)
 			return;
 
-		var object:Dynamic = getLuaObject(data.objectTag);
+		var sprite:FlxSprite = getSprite(data.objectTag);
 
-		if(object == null || !Std.isOfType(object, FlxSprite))
+		if (sprite == null)
 			return;
-
-		var sprite:FlxSprite = cast object;
 
 		data.x = sprite.x;
 		data.y = sprite.y;
 
-		if(data.kind == 'sprite')
+		if (data.kind == 'sprite')
 		{
 			data.width = sprite.width;
 			data.height = sprite.height;
 		}
 
-		if(data.debugSprite != null)
+		if (data.debugSprite != null)
 			data.debugSprite.setPosition(data.x, data.y);
 	}
 
 	public static function isTouchingObject(objectTag:String, collisionTag:String):Bool
 	{
-		var object:Dynamic = getLuaObject(objectTag);
+		var sprite:FlxSprite = getSprite(objectTag);
 
-		if(object == null || !Std.isOfType(object, FlxSprite))
+		if (sprite == null)
 			return false;
-
-		var sprite:FlxSprite = cast object;
 
 		var data:CollisionData = collisions.get(collisionTag);
 
-		if(data == null)
+		if (data == null || !data.enabled)
 			return false;
 
+		var s:ObjectSensors = getSensors(objectTag);
+
+		return touchesData(data, getRect(sprite, s), s);
+	}
+
+	public static function getTouchingCollision(objectTag:String):String
+	{
+		var sprite:FlxSprite = getSprite(objectTag);
+
+		if (sprite == null)
+			return '';
+
+		var s:ObjectSensors = getSensors(objectTag);
+		var r:CRect = getRect(sprite, s);
+
+		for (data in collisions)
+		{
+			if (!data.enabled)
+				continue;
+
+			if (touchesData(data, r, s))
+				return data.tag;
+		}
+
+		return '';
+	}
+
+	private static function touchesData(data:CollisionData, r:CRect, s:ObjectSensors):Bool
+	{
 		updateDataFromObject(data);
 
-		if(data.kind == 'surface' || data.kind == 'mask')
-			return isOnGround(objectTag, collisionTag);
+		if (data.kind == 'surface')
+			return !Math.isNaN(bestGroundY(data, r, s)) && isNear(r, bestGroundY(data, r, s), s);
 
-		return rectanglesOverlap(
-			sprite.x,
-			sprite.y,
-			sprite.width,
-			sprite.height,
-			data.x,
-			data.y,
-			data.width,
-			data.height
-		);
+		if (data.kind == 'mask')
+		{
+			if (maskObjectTouches(data, r))
+				return true;
+
+			var g:Float = bestGroundY(data, r, s);
+
+			return !Math.isNaN(g) && isNear(r, g, s);
+		}
+
+		return rectanglesOverlap(r.x, r.y, r.w, r.h, data.x, data.y, data.width, data.height);
 	}
 
 	public static function isSolidAt(collisionTag:String, worldX:Float, worldY:Float):Bool
 	{
 		var data:CollisionData = collisions.get(collisionTag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
 		updateDataFromObject(data);
 
-		if(data.kind == 'mask')
-			return isMaskSolidAt(data, worldX, worldY);
-
-		if(data.kind == 'surface')
-		{
-			var surfaceY:Float = getSurfaceY(data, worldX);
-
-			if(Math.isNaN(surfaceY))
-				return false;
-
-			return worldY >= surfaceY;
-		}
-
-		return worldX >= data.x &&
-			worldX < data.x + data.width &&
-			worldY >= data.y &&
-			worldY < data.y + data.height;
+		return solidAtData(data, worldX, worldY);
 	}
 
 	public static function isOnGround(objectTag:String, collisionTag:String = ''):Bool
 	{
-		var object:Dynamic = getLuaObject(objectTag);
+		var sprite:FlxSprite = getSprite(objectTag);
 
-		if(object == null || !Std.isOfType(object, FlxSprite))
+		if (sprite == null)
 			return false;
 
-		var sprite:FlxSprite = cast object;
+		var s:ObjectSensors = getSensors(objectTag);
+		var r:CRect = getRect(sprite, s);
 
-		var data:CollisionData = getGroundCollision(sprite, collisionTag);
+		var data:CollisionData = getGroundCollision(r, s, collisionTag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
-		updateDataFromObject(data);
+		var g:Float = bestGroundY(data, r, s);
 
-		var leftX:Float = sprite.x + 2;
-		var centerX:Float = sprite.x + sprite.width * 0.5;
-		var rightX:Float = sprite.x + sprite.width - 2;
-		var bottom:Float = sprite.y + sprite.height;
+		return !Math.isNaN(g) && isNear(r, g, s);
+	}
 
-		var leftGround:Float = getSurfaceYForObject(data, leftX, bottom);
-		var centerGround:Float = getSurfaceYForObject(data, centerX, bottom);
-		var rightGround:Float = getSurfaceYForObject(data, rightX, bottom);
+	public static function getGroundCollisionTag(objectTag:String):String
+	{
+		var sprite:FlxSprite = getSprite(objectTag);
 
-		return isGroundDistanceValid(bottom, leftGround) ||
-			isGroundDistanceValid(bottom, centerGround) ||
-			isGroundDistanceValid(bottom, rightGround);
+		if (sprite == null)
+			return '';
+
+		var s:ObjectSensors = getSensors(objectTag);
+		var data:CollisionData = getGroundCollision(getRect(sprite, s), s, '');
+
+		return data == null ? '' : data.tag;
 	}
 
 	public static function getGroundY(objectTag:String, collisionTag:String = ''):Float
 	{
-		var object:Dynamic = getLuaObject(objectTag);
+		var sprite:FlxSprite = getSprite(objectTag);
 
-		if(object == null || !Std.isOfType(object, FlxSprite))
+		if (sprite == null)
 			return Math.NaN;
 
-		var sprite:FlxSprite = cast object;
+		var s:ObjectSensors = getSensors(objectTag);
+		var r:CRect = getRect(sprite, s);
 
-		var data:CollisionData = getGroundCollision(sprite, collisionTag);
+		var data:CollisionData = getGroundCollision(r, s, collisionTag);
 
-		if(data == null)
+		if (data == null)
 			return Math.NaN;
 
-		updateDataFromObject(data);
-
-		var bottom:Float = sprite.y + sprite.height;
-
-		var leftX:Float = sprite.x + 2;
-		var centerX:Float = sprite.x + sprite.width * 0.5;
-		var rightX:Float = sprite.x + sprite.width - 2;
-
-		var leftGround:Float = getSurfaceYForObject(data, leftX, bottom);
-		var centerGround:Float = getSurfaceYForObject(data, centerX, bottom);
-		var rightGround:Float = getSurfaceYForObject(data, rightX, bottom);
-
-		var best:Float = nearestGround(bottom, leftGround, centerGround, rightGround);
-
-		if(Math.isNaN(best))
-			return Math.NaN;
-
-		return best;
+		return bestGroundY(data, r, s);
 	}
 
 	public static function getGroundYAt(collisionTag:String, x:Float, referenceY:Float = 0):Float
 	{
 		var data:CollisionData = collisions.get(collisionTag);
 
-		if(data == null)
+		if (data == null || !data.enabled)
 			return Math.NaN;
 
 		updateDataFromObject(data);
 
-		if(data.kind == 'surface')
+		if (data.kind == 'surface')
 			return getSurfaceY(data, x);
 
-		if(data.kind == 'mask')
-			return getMaskGroundY(data, x, referenceY);
+		if (data.kind == 'mask')
+		{
+			if (referenceY > 0)
+				return maskFindGround(data, x, referenceY, 32, 32);
+
+			return maskFirstSolid(data, x);
+		}
 
 		return data.y;
 	}
 
 	public static function getGroundAngle(objectTag:String, collisionTag:String = ''):Float
 	{
-		var object:Dynamic = getLuaObject(objectTag);
+		var sprite:FlxSprite = getSprite(objectTag);
 
-		if(object == null || !Std.isOfType(object, FlxSprite))
+		if (sprite == null)
 			return 0;
 
-		var sprite:FlxSprite = cast object;
+		var s:ObjectSensors = getSensors(objectTag);
+		var r:CRect = getRect(sprite, s);
 
-		var data:CollisionData = getGroundCollision(sprite, collisionTag);
+		var data:CollisionData = getGroundCollision(r, s, collisionTag);
 
-		if(data == null)
+		if (data == null)
 			return 0;
 
-		updateDataFromObject(data);
+		var g:Float = bestGroundY(data, r, s);
 
-		var centerX:Float = sprite.x + sprite.width * 0.5;
-
-		return getGroundAngleAtData(data, centerX);
+		return getGroundAngleAtData(data, r.x + r.w * 0.5, Math.isNaN(g) ? 0 : g);
 	}
 
-	public static function getGroundAngleAt(collisionTag:String, x:Float):Float
+	public static function getGroundAngleAt(collisionTag:String, x:Float, referenceY:Float = 0):Float
 	{
 		var data:CollisionData = collisions.get(collisionTag);
 
-		if(data == null)
+		if (data == null || !data.enabled)
 			return 0;
 
 		updateDataFromObject(data);
 
-		return getGroundAngleAtData(data, x);
+		return getGroundAngleAtData(data, x, referenceY);
 	}
 
 	public static function getGroundDistance(objectTag:String, collisionTag:String = ''):Float
 	{
-		var object:Dynamic = getLuaObject(objectTag);
+		var sprite:FlxSprite = getSprite(objectTag);
 
-		if(object == null || !Std.isOfType(object, FlxSprite))
+		if (sprite == null)
 			return Math.NaN;
 
-		var sprite:FlxSprite = cast object;
+		var s:ObjectSensors = getSensors(objectTag);
+		var r:CRect = getRect(sprite, s);
 
-		var groundY:Float = getGroundY(objectTag, collisionTag);
+		var g:Float = getGroundY(objectTag, collisionTag);
 
-		if(Math.isNaN(groundY))
+		if (Math.isNaN(g))
 			return Math.NaN;
 
-		return groundY - (sprite.y + sprite.height);
+		return g - (r.y + r.h);
 	}
 
 	public static function snapToGround(objectTag:String, collisionTag:String = ''):Bool
 	{
-		var object:Dynamic = getLuaObject(objectTag);
-
-		if(object == null || !Std.isOfType(object, FlxSprite))
-			return false;
-
-		var sprite:FlxSprite = cast object;
-
-		var groundY:Float = getGroundY(objectTag, collisionTag);
-
-		if(Math.isNaN(groundY))
-			return false;
-
-		sprite.y = groundY - sprite.height;
-
-		return true;
+		return resolveGround(objectTag, collisionTag);
 	}
 
 	public static function resolveGround(objectTag:String, collisionTag:String = ''):Bool
 	{
-		var object:Dynamic = getLuaObject(objectTag);
+		var sprite:FlxSprite = getSprite(objectTag);
 
-		if(object == null || !Std.isOfType(object, FlxSprite))
+		if (sprite == null)
 			return false;
 
-		var sprite:FlxSprite = cast object;
+		var s:ObjectSensors = getSensors(objectTag);
+		var r:CRect = getRect(sprite, s);
 
-		var data:CollisionData = getGroundCollision(sprite, collisionTag);
+		var data:CollisionData = getGroundCollision(r, s, collisionTag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
-		updateDataFromObject(data);
+		var g:Float = bestGroundY(data, r, s);
 
-		var bottom:Float = sprite.y + sprite.height;
-
-		var leftX:Float = sprite.x + 2;
-		var centerX:Float = sprite.x + sprite.width * 0.5;
-		var rightX:Float = sprite.x + sprite.width - 2;
-
-		var leftGround:Float = getSurfaceYForObject(data, leftX, bottom);
-		var centerGround:Float = getSurfaceYForObject(data, centerX, bottom);
-		var rightGround:Float = getSurfaceYForObject(data, rightX, bottom);
-
-		var groundY:Float = nearestGround(bottom, leftGround, centerGround, rightGround);
-
-		if(Math.isNaN(groundY))
+		if (Math.isNaN(g))
 			return false;
 
-		if(bottom >= groundY - 8 && bottom <= groundY + 32)
-		{
-			sprite.y = groundY - sprite.height;
-			return true;
-		}
+		sprite.y = g - r.h - s.hitOffY;
 
-		return false;
+		return true;
 	}
 
 	public static function resolveWalls(objectTag:String, collisionTag:String = ''):Bool
 	{
-		var object:Dynamic = getLuaObject(objectTag);
+		var sprite:FlxSprite = getSprite(objectTag);
 
-		if(object == null || !Std.isOfType(object, FlxSprite))
+		if (sprite == null)
 			return false;
 
-		var sprite:FlxSprite = cast object;
+		var s:ObjectSensors = getSensors(objectTag);
+		var r:CRect = getRect(sprite, s);
 
-		var data:CollisionData = getSolidCollision(sprite, collisionTag);
+		var data:CollisionData = getSolidCollision(r, collisionTag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
 		updateDataFromObject(data);
 
-		if(data.kind == 'mask')
+		if (data.kind == 'mask')
 		{
-			var leftX:Float = sprite.x;
-			var rightX:Float = sprite.x + sprite.width;
+			var topY:Float = r.y + s.wallInset;
+			var bottomY:Float = Math.max(topY, r.y + r.h - s.stepHeight);
 
-			var topY:Float = sprite.y + 4;
-			var bottomY:Float = sprite.y + sprite.height - 4;
+			var leftX:Float = r.x;
+			var rightX:Float = r.x + r.w - 1;
 
-			var leftHit:Bool = maskVerticalHit(data, leftX, topY, bottomY);
-			var rightHit:Bool = maskVerticalHit(data, rightX, topY, bottomY);
-
-			if(leftHit)
+			if (maskColumnHit(data, leftX, topY, bottomY))
 			{
-				var rightEdge:Float = findMaskRightEdge(data, leftX, topY, bottomY);
-				sprite.x = rightEdge + 0.01;
+				var n:Int = 1;
+
+				while (n < 64 && maskColumnHit(data, leftX + n, topY, bottomY))
+					n++;
+
+				sprite.x += n;
 				return true;
 			}
 
-			if(rightHit)
+			if (maskColumnHit(data, rightX, topY, bottomY))
 			{
-				var leftEdge:Float = findMaskLeftEdge(data, rightX, topY, bottomY);
-				sprite.x = leftEdge - sprite.width - 0.01;
+				var m:Int = 1;
+
+				while (m < 64 && maskColumnHit(data, rightX - m, topY, bottomY))
+					m++;
+
+				sprite.x -= m;
 				return true;
 			}
 
 			return false;
 		}
 
-		if(data.kind == 'surface')
+		if (data.kind == 'surface')
 			return false;
 
-		if(!rectanglesOverlap(
-			sprite.x,
-			sprite.y,
-			sprite.width,
-			sprite.height,
-			data.x,
-			data.y,
-			data.width,
-			data.height
-		))
+		if (!rectanglesOverlap(r.x, r.y, r.w, r.h, data.x, data.y, data.width, data.height))
 			return false;
 
-		var playerCenter:Float = sprite.x + sprite.width * 0.5;
+		var playerCenter:Float = r.x + r.w * 0.5;
 		var collisionCenter:Float = data.x + data.width * 0.5;
 
-		if(playerCenter < collisionCenter)
-			sprite.x = data.x - sprite.width;
+		if (playerCenter < collisionCenter)
+			sprite.x = data.x - r.w - s.hitOffX;
 		else
-			sprite.x = data.x + data.width;
+			sprite.x = data.x + data.width - s.hitOffX;
 
 		return true;
 	}
 
 	public static function resolveCeiling(objectTag:String, collisionTag:String = ''):Bool
 	{
-		var object:Dynamic = getLuaObject(objectTag);
+		var sprite:FlxSprite = getSprite(objectTag);
 
-		if(object == null || !Std.isOfType(object, FlxSprite))
+		if (sprite == null)
 			return false;
 
-		var sprite:FlxSprite = cast object;
+		var s:ObjectSensors = getSensors(objectTag);
+		var r:CRect = getRect(sprite, s);
 
-		var data:CollisionData = getSolidCollision(sprite, collisionTag);
+		var data:CollisionData = getSolidCollision(r, collisionTag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
 		updateDataFromObject(data);
 
-		if(data.kind == 'mask')
+		if (data.kind == 'mask')
 		{
-			var leftX:Float = sprite.x + 2;
-			var centerX:Float = sprite.x + sprite.width * 0.5;
-			var rightX:Float = sprite.x + sprite.width - 2;
-			var topY:Float = sprite.y;
+			var xs:Array<Float> = [r.x + 2, r.x + r.w * 0.5, r.x + r.w - 3];
 
-			if(isSolidAt(data.tag, leftX, topY) ||
-				isSolidAt(data.tag, centerX, topY) ||
-				isSolidAt(data.tag, rightX, topY))
+			for (sx in xs)
 			{
-				var ceilingY:Float = getMaskCeilingY(data, centerX, topY);
-
-				if(!Math.isNaN(ceilingY))
+				if (isMaskSolidAt(data, sx, r.y))
 				{
-					sprite.y = ceilingY;
-					return true;
+					var ceilingY:Float = maskCeilingY(data, sx, r.y, 32);
+
+					if (!Math.isNaN(ceilingY))
+					{
+						sprite.y = ceilingY - s.hitOffY;
+						return true;
+					}
 				}
 			}
 
 			return false;
 		}
 
-		if(data.kind == 'surface')
+		if (data.kind == 'surface')
 			return false;
 
-		if(!rectanglesOverlap(
-			sprite.x,
-			sprite.y,
-			sprite.width,
-			sprite.height,
-			data.x,
-			data.y,
-			data.width,
-			data.height
-		))
+		if (!rectanglesOverlap(r.x, r.y, r.w, r.h, data.x, data.y, data.width, data.height))
 			return false;
 
-		if(sprite.y < data.y)
+		if (r.y + r.h * 0.5 > data.y + data.height * 0.5)
 		{
-			sprite.y = data.y - sprite.height;
+			sprite.y = data.y + data.height - s.hitOffY;
 			return true;
 		}
 
@@ -1045,13 +1154,13 @@ class CollisionFunctions
 	{
 		var result:Bool = false;
 
-		if(resolveGround(objectTag, collisionTag))
+		if (resolveWalls(objectTag, collisionTag))
 			result = true;
 
-		if(resolveWalls(objectTag, collisionTag))
+		if (resolveCeiling(objectTag, collisionTag))
 			result = true;
 
-		if(resolveCeiling(objectTag, collisionTag))
+		if (resolveGround(objectTag, collisionTag))
 			result = true;
 
 		return result;
@@ -1059,53 +1168,42 @@ class CollisionFunctions
 
 	public static function getWallCollision(objectTag:String, collisionTag:String = ''):Int
 	{
-		var object:Dynamic = getLuaObject(objectTag);
+		var sprite:FlxSprite = getSprite(objectTag);
 
-		if(object == null || !Std.isOfType(object, FlxSprite))
+		if (sprite == null)
 			return 0;
 
-		var sprite:FlxSprite = cast object;
+		var s:ObjectSensors = getSensors(objectTag);
+		var r:CRect = getRect(sprite, s);
 
-		var data:CollisionData = getSolidCollision(sprite, collisionTag);
+		var data:CollisionData = getSolidCollision(r, collisionTag);
 
-		if(data == null)
+		if (data == null)
 			return 0;
 
 		updateDataFromObject(data);
 
-		if(data.kind == 'mask')
+		if (data.kind == 'mask')
 		{
-			var topY:Float = sprite.y + 4;
-			var bottomY:Float = sprite.y + sprite.height - 4;
+			var topY:Float = r.y + s.wallInset;
+			var bottomY:Float = Math.max(topY, r.y + r.h - s.stepHeight);
 
-			if(maskVerticalHit(data, sprite.x, topY, bottomY))
+			if (maskColumnHit(data, r.x, topY, bottomY))
 				return -1;
 
-			if(maskVerticalHit(data, sprite.x + sprite.width, topY, bottomY))
+			if (maskColumnHit(data, r.x + r.w - 1, topY, bottomY))
 				return 1;
 
 			return 0;
 		}
 
-		if(data.kind == 'surface')
+		if (data.kind == 'surface')
 			return 0;
 
-		if(!rectanglesOverlap(
-			sprite.x,
-			sprite.y,
-			sprite.width,
-			sprite.height,
-			data.x,
-			data.y,
-			data.width,
-			data.height
-		))
+		if (!rectanglesOverlap(r.x, r.y, r.w, r.h, data.x, data.y, data.width, data.height))
 			return 0;
 
-		var playerCenter:Float = sprite.x + sprite.width * 0.5;
-		var collisionCenter:Float = data.x + data.width * 0.5;
-
-		return playerCenter < collisionCenter ? -1 : 1;
+		return (r.x + r.w * 0.5) < (data.x + data.width * 0.5) ? -1 : 1;
 	}
 
 	public static function isTouchingWall(objectTag:String, collisionTag:String = ''):Bool
@@ -1115,45 +1213,82 @@ class CollisionFunctions
 
 	public static function isTouchingCeiling(objectTag:String, collisionTag:String = ''):Bool
 	{
-		var object:Dynamic = getLuaObject(objectTag);
+		var sprite:FlxSprite = getSprite(objectTag);
 
-		if(object == null || !Std.isOfType(object, FlxSprite))
+		if (sprite == null)
 			return false;
 
-		var sprite:FlxSprite = cast object;
+		var s:ObjectSensors = getSensors(objectTag);
+		var r:CRect = getRect(sprite, s);
 
-		var data:CollisionData = getSolidCollision(sprite, collisionTag);
+		var data:CollisionData = getSolidCollision(r, collisionTag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
 		updateDataFromObject(data);
 
-		if(data.kind == 'mask')
+		if (data.kind == 'mask')
 		{
-			var y:Float = sprite.y;
-
-			return isSolidAt(data.tag, sprite.x + 2, y) ||
-				isSolidAt(data.tag, sprite.x + sprite.width * 0.5, y) ||
-				isSolidAt(data.tag, sprite.x + sprite.width - 2, y);
+			return isMaskSolidAt(data, r.x + 2, r.y)
+				|| isMaskSolidAt(data, r.x + r.w * 0.5, r.y)
+				|| isMaskSolidAt(data, r.x + r.w - 3, r.y);
 		}
 
-		if(data.kind == 'surface')
+		if (data.kind == 'surface')
 			return false;
 
-		if(!rectanglesOverlap(
-			sprite.x,
-			sprite.y,
-			sprite.width,
-			sprite.height,
-			data.x,
-			data.y,
-			data.width,
-			data.height
-		))
+		if (!rectanglesOverlap(r.x, r.y, r.w, r.h, data.x, data.y, data.width, data.height))
 			return false;
 
-		return sprite.y < data.y;
+		return r.y + r.h * 0.5 > data.y + data.height * 0.5;
+	}
+
+	public static function raycast(tag:String, x1:Float, y1:Float, x2:Float, y2:Float):Float
+	{
+		lastHitX = Math.NaN;
+		lastHitY = Math.NaN;
+
+		var data:CollisionData = collisions.get(tag);
+
+		if (data == null || !data.enabled)
+			return -1;
+
+		updateDataFromObject(data);
+
+		var dx:Float = x2 - x1;
+		var dy:Float = y2 - y1;
+		var dist:Float = Math.sqrt(dx * dx + dy * dy);
+
+		if (dist <= 0)
+		{
+			if (solidAtData(data, x1, y1))
+			{
+				lastHitX = x1;
+				lastHitY = y1;
+				return 0;
+			}
+
+			return -1;
+		}
+
+		var steps:Int = Std.int(Math.ceil(dist));
+
+		for (i in 0...steps + 1)
+		{
+			var t:Float = i / steps;
+			var px:Float = x1 + dx * t;
+			var py:Float = y1 + dy * t;
+
+			if (solidAtData(data, px, py))
+			{
+				lastHitX = px;
+				lastHitY = py;
+				return dist * t;
+			}
+		}
+
+		return -1;
 	}
 
 	public static function getX(tag:String):Float
@@ -1184,15 +1319,20 @@ class CollisionFunctions
 	{
 		var data:CollisionData = collisions.get(tag);
 
-		if(data == null)
+		if (data == null)
 			return false;
 
-		if(data.debugSprite != null)
+		if (data.debugSprite != null)
 		{
+			if (PlayState.instance != null)
+				PlayState.instance.remove(data.debugSprite, true);
+
 			data.debugSprite.kill();
 			data.debugSprite.destroy();
 			data.debugSprite = null;
 		}
+
+		data.maskBits = null;
 
 		collisions.remove(tag);
 
@@ -1203,39 +1343,130 @@ class CollisionFunctions
 	{
 		var tags:Array<String> = [];
 
-		for(tag in collisions.keys())
+		for (tag in collisions.keys())
 			tags.push(tag);
 
-		for(tag in tags)
+		for (tag in tags)
 			removeCollision(tag);
+
+		sensors = new Map<String, ObjectSensors>();
+		lastHitX = Math.NaN;
+		lastHitY = Math.NaN;
 	}
 
-	private static function getGroundCollision(sprite:FlxSprite, requestedTag:String):CollisionData
+	private static function getSensors(tag:String):ObjectSensors
 	{
-		if(requestedTag != null && requestedTag.length > 0)
-			return collisions.get(requestedTag);
+		var s:ObjectSensors = sensors.get(tag);
+		return s == null ? defaultSensors : s;
+	}
+
+	private static function getOrCreateSensors(tag:String):ObjectSensors
+	{
+		var s:ObjectSensors = sensors.get(tag);
+
+		if (s == null)
+		{
+			s = new ObjectSensors();
+			sensors.set(tag, s);
+		}
+
+		return s;
+	}
+
+	private static function getRect(sprite:FlxSprite, s:ObjectSensors):CRect
+	{
+		return {
+			x: sprite.x + s.hitOffX,
+			y: sprite.y + s.hitOffY,
+			w: s.hitW > 0 ? s.hitW : sprite.width,
+			h: s.hitH > 0 ? s.hitH : sprite.height
+		};
+	}
+
+	private static function isNear(r:CRect, groundY:Float, s:ObjectSensors):Bool
+	{
+		var bottom:Float = r.y + r.h;
+		return bottom >= groundY - s.tolerance && bottom <= groundY + s.tolerance;
+	}
+
+	private static function blocksSides(data:CollisionData):Bool
+	{
+		return data.collisionType != 'platform' && data.collisionType != 'trigger';
+	}
+
+	private static function canBeGround(data:CollisionData):Bool
+	{
+		return data.collisionType == 'floor'
+			|| data.collisionType == 'ground'
+			|| data.collisionType == 'solid'
+			|| data.collisionType == 'platform';
+	}
+
+	private static function groundFor(data:CollisionData, x:Float, bottom:Float, s:ObjectSensors):Float
+	{
+		var climb:Int = data.collisionType == 'platform' ? 0 : s.climb;
+		var result:Float = Math.NaN;
+
+		switch (data.kind)
+		{
+			case 'surface':
+				result = getSurfaceY(data, x);
+
+			case 'mask':
+				result = maskFindGround(data, x, bottom, climb, s.drop);
+
+			default:
+				if (x >= data.x && x < data.x + data.width)
+					result = data.y;
+		}
+
+		if (Math.isNaN(result))
+			return Math.NaN;
+
+		if (result < bottom - climb || result > bottom + s.drop)
+			return Math.NaN;
+
+		return result;
+	}
+
+	private static function bestGroundY(data:CollisionData, r:CRect, s:ObjectSensors):Float
+	{
+		updateDataFromObject(data);
+
+		var bottom:Float = r.y + r.h;
+
+		var a:Float = groundFor(data, r.x + s.sensorInset, bottom, s);
+		var b:Float = groundFor(data, r.x + r.w * 0.5, bottom, s);
+		var c:Float = groundFor(data, r.x + r.w - s.sensorInset - 1, bottom, s);
+
+		return nearestGround(bottom, a, b, c);
+	}
+
+	private static function getGroundCollision(r:CRect, s:ObjectSensors, requestedTag:String):CollisionData
+	{
+		if (requestedTag != null && requestedTag.length > 0)
+		{
+			var requested:CollisionData = collisions.get(requestedTag);
+			return (requested != null && requested.enabled) ? requested : null;
+		}
 
 		var best:CollisionData = null;
 		var bestDistance:Float = Math.POSITIVE_INFINITY;
+		var bottom:Float = r.y + r.h;
 
-		for(data in collisions)
+		for (data in collisions)
 		{
-			if(data.collisionType != 'floor' &&
-				data.collisionType != 'ground' &&
-				data.collisionType != 'solid')
+			if (!data.enabled || !canBeGround(data))
 				continue;
 
-			var centerX:Float = sprite.x + sprite.width * 0.5;
-			var bottom:Float = sprite.y + sprite.height;
+			var g:Float = bestGroundY(data, r, s);
 
-			var groundY:Float = getSurfaceYForObject(data, centerX, bottom);
-
-			if(Math.isNaN(groundY))
+			if (Math.isNaN(g))
 				continue;
 
-			var distance:Float = Math.abs(bottom - groundY);
+			var distance:Float = Math.abs(bottom - g);
 
-			if(distance < bestDistance)
+			if (distance < bestDistance)
 			{
 				bestDistance = distance;
 				best = data;
@@ -1245,221 +1476,255 @@ class CollisionFunctions
 		return best;
 	}
 
-	private static function getSolidCollision(sprite:FlxSprite, requestedTag:String):CollisionData
+	private static function getSolidCollision(r:CRect, requestedTag:String):CollisionData
 	{
-		if(requestedTag != null && requestedTag.length > 0)
-			return collisions.get(requestedTag);
-
-		for(data in collisions)
+		if (requestedTag != null && requestedTag.length > 0)
 		{
-			if(data.collisionType != 'solid' &&
-				data.collisionType != 'wall' &&
-				data.collisionType != 'ceiling' &&
-				data.collisionType != 'floor' &&
-				data.collisionType != 'ground')
+			var requested:CollisionData = collisions.get(requestedTag);
+			return (requested != null && requested.enabled) ? requested : null;
+		}
+
+		for (data in collisions)
+		{
+			if (!data.enabled || !blocksSides(data))
 				continue;
 
-			if(data.kind == 'mask')
+			updateDataFromObject(data);
+
+			if (data.kind == 'mask')
 			{
-				if(maskObjectTouches(data, sprite))
+				if (maskObjectTouches(data, r))
 					return data;
 
 				continue;
 			}
 
-			if(data.kind == 'surface')
+			if (data.kind == 'surface')
 				continue;
 
-			if(rectanglesOverlap(
-				sprite.x,
-				sprite.y,
-				sprite.width,
-				sprite.height,
-				data.x,
-				data.y,
-				data.width,
-				data.height
-			))
+			if (rectanglesOverlap(r.x, r.y, r.w, r.h, data.x, data.y, data.width, data.height))
 				return data;
 		}
 
 		return null;
 	}
 
-	private static function getSurfaceYForObject(data:CollisionData, x:Float, referenceY:Float):Float
+	private static function solidAtData(data:CollisionData, wx:Float, wy:Float):Bool
 	{
-		if(data.kind == 'surface')
-			return getSurfaceY(data, x);
+		if (!data.enabled)
+			return false;
 
-		if(data.kind == 'mask')
-			return getMaskGroundY(data, x, referenceY);
+		switch (data.kind)
+		{
+			case 'mask':
+				return isMaskSolidAt(data, wx, wy);
 
-		return data.y;
+			case 'surface':
+				{
+					var sy:Float = getSurfaceY(data, wx);
+
+					if (Math.isNaN(sy))
+						return false;
+
+					return wy >= sy;
+				}
+
+			default:
+				return wx >= data.x && wx < data.x + data.width && wy >= data.y && wy < data.y + data.height;
+		}
 	}
 
 	private static function getSurfaceY(data:CollisionData, x:Float):Float
 	{
-		if(data.points == null || data.points.length < 2)
+		if (data.points == null || data.points.length < 2)
 			return Math.NaN;
 
-		var i:Int;
-
-		for(i in 0...data.points.length - 1)
+		for (i in 0...data.points.length - 1)
 		{
 			var p1:CollisionPoint = data.points[i];
 			var p2:CollisionPoint = data.points[i + 1];
 
-			if(x >= p1.x && x <= p2.x)
+			if (x >= p1.x && x <= p2.x)
 			{
 				var dx:Float = p2.x - p1.x;
 
-				if(dx == 0)
+				if (dx == 0)
 					return Math.min(p1.y, p2.y);
 
-				var percent:Float = (x - p1.x) / dx;
-
-				return p1.y + (p2.y - p1.y) * percent;
+				return p1.y + (p2.y - p1.y) * ((x - p1.x) / dx);
 			}
 		}
 
 		return Math.NaN;
 	}
 
-	private static function getMaskGroundY(data:CollisionData, worldX:Float, referenceY:Float):Float
+	private static inline function maskBit(data:CollisionData, lx:Int, ly:Int):Bool
 	{
-		if(data.maskSolid == null || data.maskSolid.length == 0)
-			return Math.NaN;
-
-		var localX:Int = Std.int(Math.floor(worldX - data.x));
-
-		if(localX < 0 || localX >= Std.int(data.width))
-			return Math.NaN;
-
-		var startY:Int = 0;
-
-		if(referenceY > 0)
-			startY = Std.int(Math.max(0, Math.floor(referenceY - data.y - 32)));
-
-		var endY:Int = data.maskSolid.length - 1;
-
-		if(endY < startY)
-			return Math.NaN;
-
-		var best:Float = Math.NaN;
-		var bestDistance:Float = Math.POSITIVE_INFINITY;
-
-		var pixelY:Int;
-
-		for(pixelY in startY...endY + 1)
-		{
-			if(pixelY < 0 || pixelY >= data.maskSolid.length)
-				continue;
-
-			var row:Array<Bool> = data.maskSolid[pixelY];
-
-			if(row == null || localX < 0 || localX >= row.length)
-				continue;
-
-			if(!row[localX])
-				continue;
-
-			var isTop:Bool =
-				pixelY == 0 ||
-				pixelY - 1 < 0 ||
-				localX >= data.maskSolid[pixelY - 1].length ||
-				!data.maskSolid[pixelY - 1][localX];
-
-			if(!isTop)
-				continue;
-
-			var worldY:Float = data.y + pixelY;
-
-			if(referenceY <= 0)
-				return worldY;
-
-			var distance:Float = Math.abs(worldY - referenceY);
-
-			if(worldY >= referenceY - 16 && distance < bestDistance)
-			{
-				bestDistance = distance;
-				best = worldY;
-			}
-		}
-
-		return best;
+		return (data.maskBits.get(ly * data.maskStride + (lx >> 3)) & (0x80 >> (lx & 7))) != 0;
 	}
 
-	private static function getMaskCeilingY(data:CollisionData, worldX:Float, referenceY:Float):Float
+	private static function isMaskSolidAt(data:CollisionData, worldX:Float, worldY:Float):Bool
 	{
-		if(data.maskSolid == null || data.maskSolid.length == 0)
-			return Math.NaN;
+		if (data.maskBits == null)
+			return false;
 
-		var localX:Int = Std.int(Math.floor(worldX - data.x));
+		var lx:Int = Std.int(Math.floor(worldX - data.x));
+		var ly:Int = Std.int(Math.floor(worldY - data.y));
 
-		if(localX < 0 || localX >= Std.int(data.width))
-			return Math.NaN;
+		if (lx < 0 || ly < 0 || lx >= data.maskW || ly >= data.maskH)
+			return false;
 
-		var startY:Int = Std.int(Math.max(0, Math.floor(referenceY - data.y - 16)));
-		var endY:Int = Std.int(Math.min(
-			data.maskSolid.length - 1,
-			Math.floor(referenceY - data.y + 16)
-		));
-
-		if(endY < startY)
-			return Math.NaN;
-
-		var solidStart:Int = -1;
-		var solidEnd:Int = -1;
-
-		var pixelY:Int;
-
-		for(pixelY in startY...endY + 1)
-		{
-			if(pixelY < 0 || pixelY >= data.maskSolid.length)
-				continue;
-
-			if(localX >= data.maskSolid[pixelY].length)
-				continue;
-
-			if(data.maskSolid[pixelY][localX])
-			{
-				if(solidStart < 0)
-					solidStart = pixelY;
-
-				solidEnd = pixelY;
-			}
-			else if(solidStart >= 0)
-			{
-				break;
-			}
-		}
-
-		if(solidStart < 0 || solidEnd < 0)
-			return Math.NaN;
-
-		return data.y + solidEnd + 1;
+		return maskBit(data, lx, ly);
 	}
 
-	private static function getGroundAngleAtData(data:CollisionData, x:Float):Float
+	private static function maskFindGround(data:CollisionData, worldX:Float, referenceY:Float, climb:Int, drop:Int):Float
 	{
-		if(data.kind == 'surface')
+		if (data.maskBits == null)
+			return Math.NaN;
+
+		var lx:Int = Std.int(Math.floor(worldX - data.x));
+
+		if (lx < 0 || lx >= data.maskW)
+			return Math.NaN;
+
+		var ly:Int = Std.int(Math.floor(referenceY - data.y));
+
+		if (ly >= data.maskH)
+			return Math.NaN;
+
+		if (ly < 0)
 		{
-			if(data.points == null || data.points.length < 2)
+			if (-ly > drop)
+				return Math.NaN;
+
+			ly = 0;
+		}
+
+		if (maskBit(data, lx, ly))
+		{
+			var n:Int = 0;
+
+			while (ly > 0 && n < climb && maskBit(data, lx, ly - 1))
+			{
+				ly--;
+				n++;
+			}
+
+			if (ly > 0 && maskBit(data, lx, ly - 1))
+				return Math.NaN;
+
+			return data.y + ly;
+		}
+
+		var steps:Int = 0;
+
+		while (ly < data.maskH - 1 && steps < drop)
+		{
+			ly++;
+			steps++;
+
+			if (maskBit(data, lx, ly))
+				return data.y + ly;
+		}
+
+		return Math.NaN;
+	}
+
+	private static function maskFirstSolid(data:CollisionData, worldX:Float):Float
+	{
+		if (data.maskBits == null)
+			return Math.NaN;
+
+		var lx:Int = Std.int(Math.floor(worldX - data.x));
+
+		if (lx < 0 || lx >= data.maskW)
+			return Math.NaN;
+
+		for (ly in 0...data.maskH)
+		{
+			if (maskBit(data, lx, ly))
+				return data.y + ly;
+		}
+
+		return Math.NaN;
+	}
+
+	private static function maskCeilingY(data:CollisionData, worldX:Float, referenceY:Float, limit:Int):Float
+	{
+		if (data.maskBits == null)
+			return Math.NaN;
+
+		var lx:Int = Std.int(Math.floor(worldX - data.x));
+		var ly:Int = Std.int(Math.floor(referenceY - data.y));
+
+		if (lx < 0 || lx >= data.maskW || ly < 0 || ly >= data.maskH)
+			return Math.NaN;
+
+		if (!maskBit(data, lx, ly))
+			return Math.NaN;
+
+		var n:Int = 0;
+
+		while (ly + 1 < data.maskH && n < limit && maskBit(data, lx, ly + 1))
+		{
+			ly++;
+			n++;
+		}
+
+		if (n >= limit)
+			return Math.NaN;
+
+		return data.y + ly + 1;
+	}
+
+	private static function maskColumnHit(data:CollisionData, worldX:Float, topY:Float, bottomY:Float):Bool
+	{
+		var start:Int = Std.int(Math.floor(topY));
+		var end:Int = Std.int(Math.ceil(bottomY));
+
+		for (y in start...end + 1)
+		{
+			if (isMaskSolidAt(data, worldX, y))
+				return true;
+		}
+
+		return false;
+	}
+
+	private static function maskObjectTouches(data:CollisionData, r:CRect):Bool
+	{
+		var top:Float = r.y;
+		var bottom:Float = r.y + r.h - 1;
+
+		if (maskColumnHit(data, r.x, top, bottom))
+			return true;
+
+		if (maskColumnHit(data, r.x + r.w - 1, top, bottom))
+			return true;
+
+		var centerX:Float = r.x + r.w * 0.5;
+
+		return isMaskSolidAt(data, centerX, bottom) || isMaskSolidAt(data, centerX, top);
+	}
+
+	private static function getGroundAngleAtData(data:CollisionData, x:Float, referenceY:Float):Float
+	{
+		if (data.kind == 'surface')
+		{
+			if (data.points == null || data.points.length < 2)
 				return 0;
 
-			var i:Int;
-
-			for(i in 0...data.points.length - 1)
+			for (i in 0...data.points.length - 1)
 			{
 				var p1:CollisionPoint = data.points[i];
 				var p2:CollisionPoint = data.points[i + 1];
 
-				if(x >= p1.x && x <= p2.x)
+				if (x >= p1.x && x <= p2.x)
 				{
 					var dx:Float = p2.x - p1.x;
 					var dy:Float = p2.y - p1.y;
 
-					if(dx == 0)
+					if (dx == 0)
 						return dy < 0 ? -90 : 90;
 
 					return Math.atan2(dy, dx) * 180 / Math.PI;
@@ -1469,132 +1734,30 @@ class CollisionFunctions
 			return 0;
 		}
 
-		if(data.kind == 'mask')
+		if (data.kind == 'mask')
 		{
-			var sampleDistance:Float = 4;
+			var sample:Float = 4;
+			var leftY:Float;
+			var rightY:Float;
 
-			var leftY:Float = getMaskGroundY(data, x - sampleDistance, 0);
-			var rightY:Float = getMaskGroundY(data, x + sampleDistance, 0);
+			if (referenceY > 0)
+			{
+				leftY = maskFindGround(data, x - sample, referenceY, 24, 24);
+				rightY = maskFindGround(data, x + sample, referenceY, 24, 24);
+			}
+			else
+			{
+				leftY = maskFirstSolid(data, x - sample);
+				rightY = maskFirstSolid(data, x + sample);
+			}
 
-			if(Math.isNaN(leftY) || Math.isNaN(rightY))
+			if (Math.isNaN(leftY) || Math.isNaN(rightY))
 				return 0;
 
-			return Math.atan2(
-				rightY - leftY,
-				sampleDistance * 2
-			) * 180 / Math.PI;
+			return Math.atan2(rightY - leftY, sample * 2) * 180 / Math.PI;
 		}
 
 		return 0;
-	}
-
-	private static function isMaskSolidAt(data:CollisionData, worldX:Float, worldY:Float):Bool
-	{
-		if(data.maskSolid == null || data.maskSolid.length == 0)
-			return false;
-
-		var localX:Int = Std.int(Math.floor(worldX - data.x));
-		var localY:Int = Std.int(Math.floor(worldY - data.y));
-
-		if(localX < 0 || localX >= Std.int(data.width))
-			return false;
-
-		if(localY < 0 || localY >= Std.int(data.height))
-			return false;
-
-		if(localY >= data.maskSolid.length)
-			return false;
-
-		if(localX >= data.maskSolid[localY].length)
-			return false;
-
-		return data.maskSolid[localY][localX];
-	}
-
-	private static function maskVerticalHit(data:CollisionData, worldX:Float, topY:Float, bottomY:Float):Bool
-	{
-		var start:Int = Std.int(Math.floor(topY));
-		var end:Int = Std.int(Math.ceil(bottomY));
-
-		if(end < start)
-			return false;
-
-		var y:Int;
-
-		for(y in start...end + 1)
-		{
-			if(isMaskSolidAt(data, worldX, y))
-				return true;
-		}
-
-		return false;
-	}
-
-	private static function findMaskLeftEdge(data:CollisionData, worldX:Float, topY:Float, bottomY:Float):Float
-	{
-		var x:Int = Std.int(Math.floor(worldX));
-
-		var i:Int;
-
-		for(i in 0...64)
-		{
-			var testX:Int = x - i;
-
-			if(!maskVerticalHit(data, testX, topY, bottomY))
-				return testX + 1;
-		}
-
-		return worldX;
-	}
-
-	private static function findMaskRightEdge(data:CollisionData, worldX:Float, topY:Float, bottomY:Float):Float
-	{
-		var x:Int = Std.int(Math.floor(worldX));
-
-		var i:Int;
-
-		for(i in 0...64)
-		{
-			var testX:Int = x + i;
-
-			if(!maskVerticalHit(data, testX, topY, bottomY))
-				return testX - 1;
-		}
-
-		return worldX;
-	}
-
-	private static function maskObjectTouches(data:CollisionData, sprite:FlxSprite):Bool
-	{
-		var left:Float = sprite.x;
-		var right:Float = sprite.x + sprite.width;
-		var top:Float = sprite.y;
-		var bottom:Float = sprite.y + sprite.height;
-
-		if(maskVerticalHit(data, left, top, bottom))
-			return true;
-
-		if(maskVerticalHit(data, right, top, bottom))
-			return true;
-
-		var centerX:Float = sprite.x + sprite.width * 0.5;
-
-		if(isSolidAt(data.tag, centerX, bottom))
-			return true;
-
-		if(isSolidAt(data.tag, centerX, top))
-			return true;
-
-		return false;
-	}
-
-	private static function isGroundDistanceValid(bottom:Float, groundY:Float):Bool
-	{
-		if(Math.isNaN(groundY))
-			return false;
-
-		return bottom >= groundY - 8 &&
-			bottom <= groundY + 8;
 	}
 
 	private static function nearestGround(referenceY:Float, a:Float, b:Float, c:Float):Float
@@ -1604,14 +1767,14 @@ class CollisionFunctions
 
 		var values:Array<Float> = [a, b, c];
 
-		for(value in values)
+		for (value in values)
 		{
-			if(Math.isNaN(value))
+			if (Math.isNaN(value))
 				continue;
 
 			var distance:Float = Math.abs(referenceY - value);
 
-			if(distance < bestDistance)
+			if (distance < bestDistance)
 			{
 				bestDistance = distance;
 				best = value;
@@ -1621,42 +1784,30 @@ class CollisionFunctions
 		return best;
 	}
 
-	private static function rectanglesOverlap(
-		x1:Float,
-		y1:Float,
-		w1:Float,
-		h1:Float,
-		x2:Float,
-		y2:Float,
-		w2:Float,
-		h2:Float
-	):Bool
+	private static function rectanglesOverlap(x1:Float, y1:Float, w1:Float, h1:Float, x2:Float, y2:Float, w2:Float, h2:Float):Bool
 	{
-		return x1 < x2 + w2 &&
-			x1 + w1 > x2 &&
-			y1 < y2 + h2 &&
-			y1 + h1 > y2;
+		return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
 	}
 
 	private static function parseColor(value:String):FlxColor
 	{
 		var color:String = value;
 
-		if(color == null || color.length == 0)
+		if (color == null || color.length == 0)
 			return FlxColor.WHITE;
 
-		if(color.charAt(0) == '#')
+		if (color.charAt(0) == '#')
 			color = color.substr(1);
 
-		if(color.length == 6)
+		if (color.length == 6)
 			color = 'FF' + color;
 
-		if(color.length != 8)
+		if (color.length != 8)
 			return FlxColor.WHITE;
 
 		var parsed:Null<Int> = Std.parseInt('0x' + color);
 
-		if(parsed == null)
+		if (parsed == null)
 			return FlxColor.WHITE;
 
 		return cast parsed;
@@ -1664,7 +1815,7 @@ class CollisionFunctions
 
 	private static function normalizeType(collisionType:String):String
 	{
-		if(collisionType == null || collisionType.length == 0)
+		if (collisionType == null || collisionType.length == 0)
 			return 'solid';
 
 		return collisionType.toLowerCase();
@@ -1674,10 +1825,10 @@ class CollisionFunctions
 	{
 		data.points.sort(function(a:CollisionPoint, b:CollisionPoint):Int
 		{
-			if(a.x < b.x)
+			if (a.x < b.x)
 				return -1;
 
-			if(a.x > b.x)
+			if (a.x > b.x)
 				return 1;
 
 			return 0;
@@ -1686,13 +1837,40 @@ class CollisionFunctions
 
 	private static function getLuaObject(tag:String):Dynamic
 	{
-		if(PlayState.instance == null)
+		var game:PlayState = PlayState.instance;
+
+		if (game == null || tag == null || tag.length == 0)
 			return null;
 
-		if(tag == null || tag.length == 0)
+		var object:Dynamic = game.getLuaObject(tag);
+
+		if (object != null)
+			return object;
+
+		switch (tag)
+		{
+			case 'boyfriend':
+				return game.boyfriend;
+			case 'dad':
+				return game.dad;
+			case 'gf':
+				return game.gf;
+		}
+
+		if (game.variables.exists(tag))
+			return game.variables.get(tag);
+
+		return null;
+	}
+
+	private static function getSprite(tag:String):FlxSprite
+	{
+		var object:Dynamic = getLuaObject(tag);
+
+		if (object == null || !Std.isOfType(object, FlxSprite))
 			return null;
 
-		return PlayState.instance.getLuaObject(tag);
+		return cast object;
 	}
 }
 
@@ -1709,12 +1887,16 @@ class CollisionData
 	public var height:Float = 0;
 
 	public var collisionType:String = 'solid';
+	public var enabled:Bool = true;
 
 	public var objectTag:String = '';
 
 	public var points:Array<CollisionPoint> = [];
-	public var columns:Array<Array<Float>> = [];
-	public var maskSolid:Array<Array<Bool>> = [];
+
+	public var maskBits:Bytes = null;
+	public var maskW:Int = 0;
+	public var maskH:Int = 0;
+	public var maskStride:Int = 0;
 
 	public var maskImage:String = '';
 	public var maskColor:FlxColor = FlxColor.WHITE;
@@ -1740,5 +1922,41 @@ class CollisionPoint
 	{
 		this.x = x;
 		this.y = y;
+	}
+}
+
+class MaskCache
+{
+	public var bits:Bytes;
+	public var width:Int;
+	public var height:Int;
+	public var stride:Int;
+
+	public function new(bits:Bytes, width:Int, height:Int, stride:Int)
+	{
+		this.bits = bits;
+		this.width = width;
+		this.height = height;
+		this.stride = stride;
+	}
+}
+
+class ObjectSensors
+{
+	public var hitOffX:Float = 0;
+	public var hitOffY:Float = 0;
+	public var hitW:Float = 0;
+	public var hitH:Float = 0;
+
+	public var climb:Int = 24;
+	public var drop:Int = 12;
+	public var stepHeight:Float = 16;
+	public var tolerance:Float = 8;
+
+	public var wallInset:Float = 4;
+	public var sensorInset:Float = 2;
+
+	public function new()
+	{
 	}
 }

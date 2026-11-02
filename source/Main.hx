@@ -186,7 +186,9 @@ class Main extends Sprite
     {
         #if html5
         FlxG.autoPause = true;
-        FlxG.mouse.visible = false;
+        #end
+        #if (mobile || html5)
+        hideMouseCursor();
         #end
         FlxG.fixedTimestep = false;
         FlxG.game.focusLostFramerate = 60;
@@ -204,8 +206,19 @@ class Main extends Sprite
             Lib.current.stage.addEventListener(Event.DEACTIVATE, onDeactivated);
     }
 
+    public static function hideMouseCursor():Void
+    {
+        #if (mobile || html5)
+        if (FlxG.mouse != null)
+            FlxG.mouse.visible = false;
+        #end
+    }
+
     function onFrame(event:Event):Void
     {
+        #if mobile
+        hideMouseCursor();
+        #end
         var now = Timer.stamp();
         var elapsed = now - lastFrameTime;
         lastFrameTime = now;
@@ -217,6 +230,9 @@ class Main extends Sprite
 
     function onDeactivated(event:Event):Void
     {
+        #if mobile
+        hideMouseCursor();
+        #end
         flushProgress();
         flushFlixelSave();
     }
@@ -404,6 +420,9 @@ class Main extends Sprite
 
     static function onGameResized(width:Int, height:Int):Void
     {
+        #if mobile
+        hideMouseCursor();
+        #end
         if (FlxG.cameras != null)
             for (cam in FlxG.cameras.list)
                 if (cam != null && cam.filters != null)

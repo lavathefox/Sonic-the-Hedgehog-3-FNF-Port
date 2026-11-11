@@ -73,9 +73,10 @@
         <haxelib name="grig.audio" />
         <haxelib name="funkin.vis" />
     </section>
+    <!-- HTML5: the mod's songs are NOT bundled here. The workflow copies them next to the game
+         (export/release/html5/bin/assets/songs) and LoadingState downloads only the song you pick. -->
     <section if="html5">
         <assets path="html5_stage/shared" rename="assets/shared" exclude="*.ogg" />
-        <assets path="html5_stage/songs" rename="assets/songs" exclude="*.ogg" />
         <assets path="html5_stage/fonts" rename="assets/fonts" exclude="*.ogg" />
     </section>
     <section if="MODS_ALLOWED">
@@ -106,8 +107,8 @@
     <haxedef name="HXVLC_NO_SHARE_DIRECTORY" if="VIDEOS_ALLOWED" />
     <haxedef name="x86_BUILD" if="32bits" />
     <haxedef name="FLX_NO_FOCUS_LOST_SCREEN" />
-    <haxedef name="HXC_DEBUG_TRACE" if="debug" />
     <haxedef name="FLX_NO_DEBUG" unless="debug" />
+    <haxedef name="HXC_DEBUG_TRACE" if="debug" />
     <haxedef name="NAPE_RELEASE_BUILD" unless="debug" />
     <haxedef name="HXCPP_CHECK_POINTER" if="CRASH_HANDLER" />
     <haxedef name="HXCPP_STACK_LINE" if="CRASH_HANDLER" />

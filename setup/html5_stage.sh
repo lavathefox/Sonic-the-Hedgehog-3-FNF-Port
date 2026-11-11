@@ -1,12 +1,3 @@
-#!/usr/bin/env bash
-# Prepares everything the HTML5 build needs. Run it from the repository root before:
-#   haxelib run lime build html5 -release
-#
-# 1) Browsers have no mods/ folder, so the mod is copied into html5_stage/ using the layout of a
-#    normal (non-mods) Psych Engine assets folder. Project.xml bundles that folder when targeting html5.
-# 2) Paths.SOUND_EXT is "mp3" on web builds, so every .ogg gets an .mp3 next to it (needs ffmpeg).
-#    The .ogg files themselves are left untouched and are not bundled (see Project.xml).
-#    Converted files are kept in .audio_cache/, so each song is only converted once.
 set -euo pipefail
 
 MOD="${MOD_DIR:-example_mods/Sonic the Hedgehog 3 (FNF Port)}"
@@ -58,7 +49,7 @@ find assets "$OUT" -type f -name '*.ogg' -print0 | xargs -0 -P "$(nproc 2>/dev/n
       exit 0
     fi
     mkdir -p "$(dirname "$cached")"
-    ffmpeg -y -loglevel error -i "$f" -codec:a libmp3lame -q:a 4 "$cached"
+    ffmpeg -y -loglevel error -i "$f" -codec:a libmp3lame -q:a 6 "$cached"
   fi
   cp "$cached" "$out"
 ' _ {}

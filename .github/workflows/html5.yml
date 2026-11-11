@@ -1,8 +1,5 @@
 name: Build HTML5
 
-# Manual only: open the Actions tab, pick "Build HTML5" and press "Run workflow".
-# "deploy" publishes the result on GitHub Pages; leave it off while you are still fixing build errors,
-# it saves about a minute.
 on:
   workflow_dispatch:
     inputs:
@@ -33,7 +30,6 @@ jobs:
         with:
           haxe-version: 4.3.4
 
-      # Libraries are only downloaded on the first run. Change "v1" to "v2" in the key when you change the version list below.
       - name: Cache Haxe libraries
         id: haxelib-cache
         uses: actions/cache@v4
@@ -77,7 +73,6 @@ jobs:
           haxelib_retry set openfl 9.3.3
           haxelib_retry git flxanimate https://github.com/Dot-Stuff/flxanimate 768740a56b26aa0c072720e0d1236b94afe68e3e
 
-      # The .mp3 files are cached, so ffmpeg is only needed when a .ogg is new or changed.
       - name: Cache converted audio
         id: audio-cache
         uses: actions/cache@v4
@@ -94,8 +89,6 @@ jobs:
       - name: Stage mod assets and convert audio
         run: bash setup/html5_stage.sh
 
-      # Copies the HTML5 replacements (source_html5/) over the originals in source/. This only changes the
-      # temporary checkout of this run, nothing is committed back.
       - name: Apply HTML5 overrides
         run: |
           test -d source_html5 || { echo "::error::source_html5/ is missing from the repository"; exit 1; }
@@ -104,6 +97,13 @@ jobs:
 
       - name: Build HTML5
         run: haxelib run lime build html5 -release
+        
+      - name: Copy songs next to the game (downloaded only when a song starts)
+        run: |
+          mkdir -p export/release/html5/bin/assets/songs
+          cp -a html5_stage/songs/. export/release/html5/bin/assets/songs/
+          find export/release/html5/bin/assets/songs -name '*.ogg' -delete
+          echo "Songs copied:"; (cd export/release/html5/bin/assets/songs && find . -type f | sort)
 
       - name: Upload build (zip)
         uses: actions/upload-artifact@v4
@@ -120,7 +120,6 @@ jobs:
         with:
           path: export/release/html5/bin/
 
-  # Needs Settings > Pages > Source = "GitHub Actions" (one time).
   deploy-pages:
     name: Deploy to GitHub Pages
     if: inputs.deploy

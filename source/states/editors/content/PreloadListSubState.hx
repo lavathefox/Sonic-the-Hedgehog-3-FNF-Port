@@ -109,45 +109,50 @@ class PreloadListSubState extends MusicBeatSubstate implements PsychUIEvent
 
 		removeButton.x = radioGrp.x - 30;
 
-		function addToList(path:Path, isFolder:Bool)
+function addToList(path:Path, isFolder:Bool)
+{
+	#if !sys
+	showOutput('Loading files is not supported in the browser!', true);
+	return;
+	#else
+	var exePath:String = Sys.getCwd().replace('\\', '/');
+	if(path.dir.startsWith(exePath))
+	{
+		var pathStr:String = path.dir.substr(exePath.length);
+		var split:Array<String> = pathStr.split('/');
+		switch(split[0])
 		{
-			var exePath:String = Sys.getCwd().replace('\\', '/');
-			if(path.dir.startsWith(exePath))
-			{
-				var pathStr:String = path.dir.substr(exePath.length);
-				var split:Array<String> = pathStr.split('/');
-				switch(split[0])
+			case 'assets', 'mods':
+				for (i in 1...3)
 				{
-					case 'assets', 'mods':
-						for (i in 1...3)
-						{
-							switch(split[i])
+					switch(split[i])
+					{
+						case 'sounds', 'music', 'songs', 'images':
+							split.shift();
+							if(i == 2) split.shift();
+
+							pathStr = split.join('/') + '/' + path.file;
+							if(isFolder && !pathStr.endsWith('/')) pathStr += '/';
+
+							if(!lockedList.contains(pathStr))
 							{
-								case 'sounds', 'music', 'songs', 'images':
-									split.shift();
-									if(i == 2) split.shift();
-
-									pathStr = split.join('/') + '/' + path.file;
-									if(isFolder && !pathStr.endsWith('/')) pathStr += '/';
-
-									if(!lockedList.contains(pathStr))
-									{
-										preloadList.set(pathStr, LOW_QUALITY|HIGH_QUALITY);
-										preloadListKeys.push(pathStr);
-										radioGrp.labels = preloadListKeys;
-										showOutput('File added to preload: $pathStr');
-									}
-									else showOutput('File is already preloaded automatically!', true);
-									return;
+								preloadList.set(pathStr, LOW_QUALITY|HIGH_QUALITY);
+								preloadListKeys.push(pathStr);
+								radioGrp.labels = preloadListKeys;
+								showOutput('File added to preload: $pathStr');
 							}
-						}
-						showOutput('File must be inside images/music/songs subfolder!', true);
-					default:
-						showOutput('File must be inside assets/mods folder!', true);
+							else showOutput('File is already preloaded automatically!', true);
+							return;
+					}
 				}
-			}
-			else showOutput('File is not inside Psych Engine\'s folder!', true);
+				showOutput('File must be inside images/music/songs subfolder!', true);
+			default:
+				showOutput('File must be inside assets/mods folder!', true);
 		}
+	}
+	else showOutput('File is not inside Psych Engine\'s folder!', true);
+	#end
+}
 
 		var loadFileBtn:PsychUIButton = new PsychUIButton(0, bg.y + bg.height - 40, 'Load File', function()
 		{

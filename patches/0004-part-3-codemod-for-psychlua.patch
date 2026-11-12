@@ -1,0 +1,184 @@
+From 44ac7d13f3b293b8fbbbcd568bb65a59876de9b6 Mon Sep 17 00:00:00 2001
+From: claude <a@b.c>
+Date: Thu, 12 Nov 2026 22:25:56 +0000
+Subject: [PATCH 4/5] part 3: codemod for psychlua
+
+---
+ source/psychlua/ExtraFunctions.hx | 16 ++++++++--------
+ source/psychlua/FunkinLua.hx      | 22 +++++++++++-----------
+ source/psychlua/HScript.hx        |  2 +-
+ source/psychlua/LuaUtils.hx       |  4 ++--
+ 4 files changed, 22 insertions(+), 22 deletions(-)
+
+diff --git a/source/psychlua/ExtraFunctions.hx b/source/psychlua/ExtraFunctions.hx
+index 6b11ca7..47d6e8b 100644
+--- a/source/psychlua/ExtraFunctions.hx
++++ b/source/psychlua/ExtraFunctions.hx
+@@ -150,9 +150,9 @@ class ExtraFunctions
+ 		// File management
+ 		Lua_helper.add_callback(lua, "checkFileExists", function(filename:String, ?absolute:Bool = false) {
+ 			#if MODS_ALLOWED
+-			if(absolute) return FileSystem.exists(filename);
++			if(absolute) return FS.exists(filename);
+ 
+-			return FileSystem.exists(Paths.getPath(filename, TEXT));
++			return FS.exists(Paths.getPath(filename, TEXT));
+ 
+ 			#else
+ 			if(absolute) return Assets.exists(filename, TEXT);
+@@ -165,10 +165,10 @@ class ExtraFunctions
+ 			try {
+ 				#if MODS_ALLOWED
+ 				if(!absolute)
+-					File.saveContent(Paths.mods(path), content);
++					FS.saveContent(Paths.mods(path), content);
+ 				else
+ 				#end
+-					File.saveContent(path, content);
++					FS.saveContent(path, content);
+ 
+ 				return true;
+ 			} catch (e:Dynamic) {
+@@ -181,9 +181,9 @@ class ExtraFunctions
+ 			try {
+ 				var lePath:String = path;
+ 				if(!absolute) lePath = Paths.getPath(path, TEXT, !ignoreModFolders);
+-				if(FileSystem.exists(lePath))
++				if(FS.exists(lePath))
+ 				{
+-					FileSystem.deleteFile(lePath);
++					FS.deleteFile(lePath);
+ 					return true;
+ 				}
+ 			} catch (e:Dynamic) {
+@@ -197,8 +197,8 @@ class ExtraFunctions
+ 		Lua_helper.add_callback(lua, "directoryFileList", function(folder:String) {
+ 			var list:Array<String> = [];
+ 			#if sys
+-			if(FileSystem.exists(folder)) {
+-				for (folder in FileSystem.readDirectory(folder)) {
++			if(FS.exists(folder)) {
++				for (folder in FS.readDirectory(folder)) {
+ 					if (!list.contains(folder)) {
+ 						list.push(folder);
+ 					}
+diff --git a/source/psychlua/FunkinLua.hx b/source/psychlua/FunkinLua.hx
+index dabc135..8ea27ba 100644
+--- a/source/psychlua/FunkinLua.hx
++++ b/source/psychlua/FunkinLua.hx
+@@ -1271,7 +1271,7 @@ class FunkinLua {
+ 			#if TRANSLATIONS_ALLOWED
+ 			path = Paths.getPath('data/$songPath/${dialogueFile}_${ClientPrefs.data.language}.json', TEXT);
+ 			#if MODS_ALLOWED
+-			if(!FileSystem.exists(path))
++			if(!FS.exists(path))
+ 			#else
+ 			if(!Assets.exists(path, TEXT))
+ 			#end
+@@ -1281,7 +1281,7 @@ class FunkinLua {
+ 			luaTrace('startDialogue: Trying to load dialogue: ' + path);
+ 
+ 			#if MODS_ALLOWED
+-			if(FileSystem.exists(path))
++			if(FS.exists(path))
+ 			#else
+ 			if(Assets.exists(path, TEXT))
+ 			#end
+@@ -1307,7 +1307,7 @@ class FunkinLua {
+ 		});
+ 		Lua_helper.add_callback(lua, "startVideo", function(videoFile:String, ?canSkip:Bool = true, ?forMidSong:Bool = false, ?shouldLoop:Bool = false, ?playOnLoad:Bool = true) {
+ 			#if VIDEOS_ALLOWED
+-			if(FileSystem.exists(Paths.video(videoFile)))
++			if(FS.exists(Paths.video(videoFile)))
+ 			{
+ 				if(game.videoCutscene != null)
+ 				{
+@@ -1600,7 +1600,7 @@ class FunkinLua {
+ 		}
+ 
+ 		try{
+-			var isString:Bool = !FileSystem.exists(scriptName);
++			var isString:Bool = !FS.exists(scriptName);
+ 			var result:Dynamic = null;
+ 			if(!isString)
+ 				result = LuaL.dofile(lua, scriptName);
+@@ -1783,7 +1783,7 @@ class FunkinLua {
+ 		if(!scriptFile.endsWith(ext)) scriptFile += ext;
+ 		var path:String = Paths.getPath(scriptFile, TEXT);
+ 		#if MODS_ALLOWED
+-		if(FileSystem.exists(path))
++		if(FS.exists(path))
+ 		#else
+ 		if(Assets.exists(path, TEXT))
+ 		#end
+@@ -1791,7 +1791,7 @@ class FunkinLua {
+ 			return path;
+ 		}
+ 		#if MODS_ALLOWED
+-		else if(FileSystem.exists(scriptFile))
++		else if(FS.exists(scriptFile))
+ 		#else
+ 		else if(Assets.exists(scriptFile, TEXT))
+ 		#end
+@@ -1856,21 +1856,21 @@ class FunkinLua {
+ 
+ 		for (folder in foldersToCheck)
+ 		{
+-			if(FileSystem.exists(folder))
++			if(FS.exists(folder))
+ 			{
+ 				var frag:String = folder + name + '.frag';
+ 				var vert:String = folder + name + '.vert';
+ 				var found:Bool = false;
+-				if(FileSystem.exists(frag))
++				if(FS.exists(frag))
+ 				{
+-					frag = File.getContent(frag);
++					frag = FS.getContent(frag);
+ 					found = true;
+ 				}
+ 				else frag = null;
+ 
+-				if(FileSystem.exists(vert))
++				if(FS.exists(vert))
+ 				{
+-					vert = File.getContent(vert);
++					vert = FS.getContent(vert);
+ 					found = true;
+ 				}
+ 				else vert = null;
+diff --git a/source/psychlua/HScript.hx b/source/psychlua/HScript.hx
+index cafe4d7..9715c5f 100644
+--- a/source/psychlua/HScript.hx
++++ b/source/psychlua/HScript.hx
+@@ -103,7 +103,7 @@ class HScript extends Iris
+ 		{
+ 			var f:String = file.replace('\\', '/');
+ 			if(f.contains('/') && !f.contains('\n')) {
+-				scriptThing = File.getContent(f);
++				scriptThing = FS.getContent(f);
+ 				scriptName = f;
+ 			}
+ 		}
+diff --git a/source/psychlua/LuaUtils.hx b/source/psychlua/LuaUtils.hx
+index 91cd8d2..b453c01 100644
+--- a/source/psychlua/LuaUtils.hx
++++ b/source/psychlua/LuaUtils.hx
+@@ -126,12 +126,12 @@ class LuaUtils
+ 
+ 		var settings:Map<String, Dynamic> = FlxG.save.data.modSettings.get(modName);
+ 		var path:String = Paths.mods('$modName/data/settings.json');
+-		if(FileSystem.exists(path))
++		if(FS.exists(path))
+ 		{
+ 			if(settings == null || !settings.exists(saveTag))
+ 			{
+ 				if(settings == null) settings = new Map<String, Dynamic>();
+-				var data:String = File.getContent(path);
++				var data:String = FS.getContent(path);
+ 				try
+ 				{
+ 					//FunkinLua.luaTrace('getModSetting: Trying to find default value for "$saveTag" in Mod: "$modName"');
+-- 
+2.43.0
+

@@ -1,0 +1,1161 @@
+From d016c093a5908d2679683834566e186fb9d273ab Mon Sep 17 00:00:00 2001
+From: claude <a@b.c>
+Date: Thu, 12 Nov 2026 22:25:55 +0000
+Subject: [PATCH 2/5] part 1: FS layer + codemod for
+ backend/save/util/shaders/Main
+
+---
+ project.xml                            |  3 +
+ setup/switch_codemod.sh                | 44 ++++++++++----
+ source/Main.hx                         | 80 ++++++++++++++++++++++++--
+ source/backend/Achievements.hx         |  4 +-
+ source/backend/ClientPrefs.hx          |  5 ++
+ source/backend/CoolUtil.hx             |  2 +-
+ source/backend/FS.hx                   | 43 +++++++++++++-
+ source/backend/Mods.hx                 | 26 ++++-----
+ source/backend/Paths.hx                | 58 +++++++++----------
+ source/backend/PlatformUtil.hx         | 46 +++++++++++++++
+ source/backend/Song.hx                 |  4 +-
+ source/backend/Sonic3Storage.hx        | 28 ++++-----
+ source/backend/StageData.hx            |  4 +-
+ source/backend/WeekData.hx             | 12 ++--
+ source/import.hx                       |  2 +
+ source/save/Save.hx                    | 36 ++++++------
+ source/save/manual/SaveManualImport.hx | 12 ++--
+ source/shaders/ErrorHandledShader.hx   |  6 +-
+ source/util/SystemUtil.hx              | 16 +++---
+ 19 files changed, 309 insertions(+), 122 deletions(-)
+
+diff --git a/project.xml b/project.xml
+index 2782620..da26a47 100644
+--- a/project.xml
++++ b/project.xml
+@@ -7,6 +7,7 @@
+     <set name="SWF_VERSION" value="11.8" />
+ 
+     <define name="SWITCH_BUILD" if="switch" />
++    <define name="CONSOLE_BUILD" if="switch" />
+ 
+     <!-- Features are opt-in by platform: browser builds avoid native dependencies. -->
+     <define name="MODS_ALLOWED" if="desktop || android || switch" />
+@@ -47,6 +48,8 @@
+     <!-- HTML5: the source_html5 classpath overrides browser-incompatible classes. -->
+     <classpath name="source" />
+     <classpath name="source_html5" if="html5" />
++    <!-- Switch-only overrides (modified FlxSave). Keeps other targets on stock Flixel. -->
++    <classpath name="source_switch" if="switch" />
+     <window width="959" height="670" fps="60" background="#000000" hardware="true" vsync="false" allow-high-dpi="true" />
+     <window if="html5" resizable="true" fullscreen="false" />
+     <window if="desktop" orientation="landscape" fullscreen="false" resizable="true" />
+diff --git a/setup/switch_codemod.sh b/setup/switch_codemod.sh
+index 7b77891..c062cb2 100644
+--- a/setup/switch_codemod.sh
++++ b/setup/switch_codemod.sh
+@@ -1,16 +1,33 @@
++#!/usr/bin/env bash
++# Rewrites direct sys.* file calls to the FS layer (backend/FS.hx) so the Switch build can
++# redirect reads to romfs:/ and writes to the SD card.
++#
++# Usage (run from the repo root, review `git diff` after each part):
++#   bash setup/switch_codemod.sh <path> [<path> ...]
++# Example, in parts:
++#   bash setup/switch_codemod.sh source/backend source/save source/util source/shaders source/Main.hx
++#   bash setup/switch_codemod.sh source/states source/objects source/options source/cutscenes source/flxanimate source/hscript
++#   bash setup/switch_codemod.sh source/psychlua
+ set -euo pipefail
+ 
+ if [ ! -d source ]; then
+-	echo "Rode na raiz do repositorio (pasta 'source' nao encontrada)." >&2
++	echo "Run this from the repository root ('source' folder not found)." >&2
+ 	exit 1
+ fi
+ 
+-SKIP='source/backend/FS.hx|source/backend/PlatformUtil.hx|source_html5/'
++if [ "$#" -eq 0 ]; then
++	echo "Pass at least one file or folder (see the usage at the top of this script)." >&2
++	exit 1
++fi
++
++# Never rewritten: the FS layer itself, the browser shims, HTML5 overrides, platform glue,
++# dead code and the editors (they are not shipped on Switch).
++SKIP='source/backend/FS\.hx|source/backend/PlatformUtil\.hx|source/backend/web/|source_html5/|source/external/|source/unused/|source/states/editors/'
+ 
+-files=$(grep -rlE 'FileSystem\.|File\.(getContent|getBytes|saveContent|saveBytes)|BitmapData\.fromFile|Sound\.fromFile' source --include='*.hx' | grep -Ev "$SKIP" || true)
++files=$(grep -rlE 'FileSystem\.|File\.(getContent|getBytes|saveContent|saveBytes|write|append)|BitmapData\.fromFile|Sound\.fromFile' "$@" --include='*.hx' | grep -Ev "$SKIP" || true)
+ 
+ if [ -z "$files" ]; then
+-	echo "Nada para alterar."
++	echo "Nothing to change."
+ 	exit 0
+ fi
+ 
+@@ -19,14 +36,20 @@ for f in $files; do
+ 	before=$(md5sum "$f" | cut -d' ' -f1)
+ 
+ 	sed -i -E \
++		-e 's/\bFileSystem\.stat\(([^()]*)\)\.size\b/FS.size(\1)/g' \
+ 		-e 's/\bFileSystem\.exists\(/FS.exists(/g' \
+ 		-e 's/\bFileSystem\.isDirectory\(/FS.isDirectory(/g' \
+ 		-e 's/\bFileSystem\.readDirectory\(/FS.readDirectory(/g' \
+ 		-e 's/\bFileSystem\.createDirectory\(/FS.createDirectory(/g' \
++		-e 's/\bFileSystem\.deleteFile\(/FS.deleteFile(/g' \
++		-e 's/\bFileSystem\.deleteDirectory\(/FS.deleteDirectory(/g' \
++		-e 's/\bFileSystem\.rename\(/FS.rename(/g' \
+ 		-e 's/\bFile\.getContent\(/FS.getContent(/g' \
+ 		-e 's/\bFile\.getBytes\(/FS.getBytes(/g' \
+ 		-e 's/\bFile\.saveContent\(/FS.saveContent(/g' \
+ 		-e 's/\bFile\.saveBytes\(/FS.saveBytes(/g' \
++		-e 's/\bFile\.write\(/FS.openWrite(/g' \
++		-e 's/\bFile\.append\(/FS.openAppend(/g' \
+ 		-e 's/\bBitmapData\.fromFile\(/FS.loadBitmap(/g' \
+ 		-e 's/\bSound\.fromFile\(/FS.loadSound(/g' \
+ 		"$f"
+@@ -34,20 +57,17 @@ for f in $files; do
+ 	after=$(md5sum "$f" | cut -d' ' -f1)
+ 	if [ "$before" != "$after" ]; then
+ 		count=$((count + 1))
+-		echo "alterado: $f"
++		echo "changed: $f"
+ 	fi
+ done
+ 
+ if [ -f source/import.hx ] && ! grep -q 'import backend.FS;' source/import.hx; then
+ 	printf '\nimport backend.FS;\n' >> source/import.hx
+-	echo "adicionado 'import backend.FS;' em source/import.hx"
+-elif [ ! -f source/import.hx ]; then
+-	echo "AVISO: source/import.hx nao existe; adicione 'import backend.FS;' nos arquivos alterados." >&2
++	echo "added 'import backend.FS;' to source/import.hx"
+ fi
+ 
+ echo
+-echo "$count arquivo(s) alterado(s)."
++echo "$count file(s) changed."
+ echo
+-echo "Ainda precisam de revisao manual (nao tocados pelo script):"
+-grep -rnE 'File\.(write|append|read)\(|FileSystem\.(rename|deleteFile|deleteDirectory|stat|fullPath|absolutePath)\(' source --include='*.hx' \
+-	| grep -Ev "$SKIP" || echo "  (nenhum)"
++echo "Calls still needing a manual look (not rewritten):"
++grep -rnE 'FileSystem\.(stat|fullPath|absolutePath)\(|File\.(read|copy)\(' "$@" --include='*.hx' | grep -Ev "$SKIP" || echo "  (none)"
+diff --git a/source/Main.hx b/source/Main.hx
+index 71e68da..b578072 100644
+--- a/source/Main.hx
++++ b/source/Main.hx
+@@ -17,6 +17,10 @@ import lime.system.System;
+ import states.Sonic3TitleStateV2;
+ import backend.Highscore;
+ import backend.Sonic3Storage;
++import backend.PlatformUtil;
++#if SWITCH_BUILD
++import backend.FS;
++#end
+ #if sys
+ import save.Save;
+ #end
+@@ -47,6 +51,53 @@ import sys.io.File;
+ @:cppInclude('./external/gamemode_client.h')
+ @:cppFileCode('#define GAMEMODE_AUTO')
+ #end
++#if SWITCH_BUILD
++// Heap size override for the Switch build.
++//
++// libnx's default __libnx_initheap asks the kernel for ALL the memory the process can get
++// (about 3 GB). Real hardware launched from the Homebrew Menu receives a heap from the loader, so
++// that path is left untouched below. When the .nro is opened directly (emulators such as Ryujinx),
++// there is no loader heap and the default request can exceed the host's RAM + page file, which
++// crashes the whole emulator ("paging file is too small"). The fallback is capped here.
++// Lower SWITCH_FALLBACK_HEAP_BYTES (e.g. 0x20000000 = 512 MB) if the emulator still runs out of memory.
++@:cppFileCode('
++extern "C" {
++	typedef unsigned int NxResult;
++	extern char* fake_heap_start;
++	extern char* fake_heap_end;
++	bool envHasHeapOverride(void);
++	void* envGetHeapOverrideAddr(void);
++	unsigned long long envGetHeapOverrideSize(void);
++	NxResult svcSetHeapSize(void** out_addr, unsigned long long size);
++
++	#define SWITCH_FALLBACK_HEAP_BYTES 0x40000000ULL
++
++	void __libnx_initheap(void)
++	{
++		void* addr = 0;
++		unsigned long long size = 0;
++
++		if (envHasHeapOverride())
++		{
++			addr = envGetHeapOverrideAddr();
++			size = envGetHeapOverrideSize();
++		}
++		else
++		{
++			size = SWITCH_FALLBACK_HEAP_BYTES;
++			if (svcSetHeapSize(&addr, size) != 0)
++			{
++				addr = 0;
++				size = 0;
++			}
++		}
++
++		fake_heap_start = (char*)addr;
++		fake_heap_end = (char*)addr + size;
++	}
++}
++')
++#end
+ class Main extends Sprite
+ {
+     public static final game = {
+@@ -98,6 +149,23 @@ class Main extends Sprite
+         backend.Native.fixScaling();
+         #end
+ 
++        #if SWITCH_BUILD
++        // Read-only assets live in romfs, so relative paths must resolve there.
++        // Writable data (saves, mods, logs) goes to the SD card via PlatformUtil.DATA_DIR.
++        Sys.setCwd('romfs:/');
++        try
++        {
++            FS.createDirectory(PlatformUtil.DATA_DIR + '/saves');
++            FS.createDirectory(PlatformUtil.DATA_DIR + '/mods');
++            flixel.util.FlxSave._SWITCH_SAVE_PATH = PlatformUtil.DATA_DIR + '/saves';
++        }
++        catch (e:Dynamic)
++        {
++            // Never abort startup because the SD card is unavailable; saving just stays disabled.
++            trace('Switch: could not prepare the data folder -> ' + e);
++        }
++        #end
++
+         var needsPermission:Bool = setupStorage();
+         setupProgress();
+         #if (CRASH_HANDLER && android)
+@@ -151,6 +219,8 @@ class Main extends Sprite
+         var folder:String;
+         #if mobile
+         folder = Path.join([System.applicationStorageDirectory, 'sonic3-progress']);
++        #elseif SWITCH_BUILD
++        folder = PlatformUtil.DATA_DIR + '/saves';
+         #else
+         folder = Path.join([Sys.getCwd(), 'saves']);
+         #end
+@@ -455,14 +525,14 @@ class Main extends Sprite
+         try
+         {
+             var folder = Path.directory(path);
+-            if (folder.length > 0 && !FileSystem.exists(folder)) FileSystem.createDirectory(folder);
+-            if (FileSystem.exists(path) && FileSystem.stat(path).size > CRASH_LOG_LIMIT)
++            if (folder.length > 0 && !FS.exists(folder)) FS.createDirectory(folder);
++            if (FS.exists(path) && FS.size(path) > CRASH_LOG_LIMIT)
+             {
+                 var rotated = path + '.old';
+-                if (FileSystem.exists(rotated)) FileSystem.deleteFile(rotated);
+-                FileSystem.rename(path, rotated);
++                if (FS.exists(rotated)) FS.deleteFile(rotated);
++                FS.rename(path, rotated);
+             }
+-            var output = File.append(path, false);
++            var output = FS.openAppend(path, false);
+             output.writeString(content);
+             output.close();
+             return true;
+diff --git a/source/backend/Achievements.hx b/source/backend/Achievements.hx
+index 7107abe..66bdedc 100644
+--- a/source/backend/Achievements.hx
++++ b/source/backend/Achievements.hx
+@@ -231,9 +231,9 @@ class Achievements {
+ 	inline static function loadAchievementJson(path:String, addMods:Bool = true)
+ 	{
+ 		var retVal:Array<Dynamic> = null;
+-		if(FileSystem.exists(path)) {
++		if(FS.exists(path)) {
+ 			try {
+-				var rawJson:String = File.getContent(path).trim();
++				var rawJson:String = FS.getContent(path).trim();
+ 				if(rawJson != null && rawJson.length > 0) retVal = tjson.TJSON.parse(rawJson); //Json.parse('{"achievements": $rawJson}').achievements;
+ 				
+ 				if(addMods && retVal != null)
+diff --git a/source/backend/ClientPrefs.hx b/source/backend/ClientPrefs.hx
+index b18ec2c..a8a4ccf 100644
+--- a/source/backend/ClientPrefs.hx
++++ b/source/backend/ClientPrefs.hx
+@@ -127,7 +127,12 @@ class ClientPrefs
+         'ui_left' => [DPAD_LEFT, LEFT_STICK_DIGITAL_LEFT],
+         'ui_down' => [DPAD_DOWN, LEFT_STICK_DIGITAL_DOWN],
+         'ui_right' => [DPAD_RIGHT, LEFT_STICK_DIGITAL_RIGHT],
++        // Switch: Nintendo's A/B are mirrored compared to Xbox-style pads, so accept/back are swapped.
++        #if SWITCH_BUILD
++        'accept' => [B, START], 'back' => [A],
++        #else
+         'accept' => [A, START], 'back' => [B],
++        #end
+         'pause' => [START], 'reset' => [BACK]
+     ];
+     public static var defaultKeys:Map<String, Array<FlxKey>> = null;
+diff --git a/source/backend/CoolUtil.hx b/source/backend/CoolUtil.hx
+index bfddc60..d1c21b3 100644
+--- a/source/backend/CoolUtil.hx
++++ b/source/backend/CoolUtil.hx
+@@ -45,7 +45,7 @@ class CoolUtil
+ 	{
+ 		var daList:String = null;
+ 		#if (sys && MODS_ALLOWED)
+-		if(FileSystem.exists(path)) daList = File.getContent(path);
++		if(FS.exists(path)) daList = FS.getContent(path);
+ 		#else
+ 		if(Assets.exists(path)) daList = Assets.getText(path);
+ 		#end
+diff --git a/source/backend/FS.hx b/source/backend/FS.hx
+index 5512165..2bf2211 100644
+--- a/source/backend/FS.hx
++++ b/source/backend/FS.hx
+@@ -1,15 +1,29 @@
+ package backend;
+ 
+-#if sys
+ import haxe.io.Bytes;
+ import openfl.display.BitmapData;
+ import openfl.media.Sound;
++#if sys
+ import sys.FileSystem;
+ import sys.io.File;
++import sys.io.FileOutput;
++#elseif js
++// Browser stand-ins that read from the bundled assets (same API as sys.*).
++import backend.web.FileSystem;
++import backend.web.File;
++#end
+ 
++/**
++ * Thin file-system layer used by the whole game.
++ *
++ * - Desktop / Android / iOS: forwards to sys.* untouched.
++ * - HTML5: forwards to the backend.web shims.
++ * - Switch: reads resolve to romfs:/ (read-only, inside the .nro) or to the SD card for `mods/`,
++ *   and every write is redirected to the SD card (see PlatformUtil.toFileSystemPath / toWritablePath).
++ */
++#if (sys || js)
+ class FS
+ {
+-
+ 	public static inline function exists(path:String):Bool
+ 		return FileSystem.exists(PlatformUtil.toFileSystemPath(path));
+ 
+@@ -31,12 +45,36 @@ class FS
+ 	public static inline function loadSound(path:String):Sound
+ 		return Sound.fromFile(PlatformUtil.toFileSystemPath(path));
+ 
++	/** Size in bytes of a file (replaces `FileSystem.stat(path).size`). */
++	public static inline function size(path:String):Int
++		return FileSystem.stat(PlatformUtil.toFileSystemPath(path)).size;
++
+ 	public static inline function saveContent(path:String, content:String):Void
+ 		File.saveContent(PlatformUtil.toWritablePath(path), content);
+ 
+ 	public static inline function saveBytes(path:String, bytes:Bytes):Void
+ 		File.saveBytes(PlatformUtil.toWritablePath(path), bytes);
+ 
++	public static inline function deleteFile(path:String):Void
++		FileSystem.deleteFile(PlatformUtil.toWritablePath(path));
++
++	public static inline function deleteDirectory(path:String):Void
++		FileSystem.deleteDirectory(PlatformUtil.toWritablePath(path));
++
++	public static inline function rename(path:String, newPath:String):Void
++		FileSystem.rename(PlatformUtil.toWritablePath(path), PlatformUtil.toWritablePath(newPath));
++
++	#if sys
++	/** Replaces `File.write(path, binary)`. */
++	public static inline function openWrite(path:String, binary:Bool = true):FileOutput
++		return File.write(PlatformUtil.toWritablePath(path), binary);
++
++	/** Replaces `File.append(path, binary)`. */
++	public static inline function openAppend(path:String, binary:Bool = true):FileOutput
++		return File.append(PlatformUtil.toWritablePath(path), binary);
++	#end
++
++	/** Creates the folder and every missing parent (never fails when it already exists). */
+ 	public static function createDirectory(path:String):Void
+ 	{
+ 		var target:String = PlatformUtil.toWritablePath(path);
+@@ -57,6 +95,7 @@ class FS
+ 
+ 			current += (current.length == 0 || StringTools.endsWith(current, '/') ? '' : '/') + part;
+ 
++			// Skip device names such as "sdmc:" or "C:".
+ 			if (StringTools.endsWith(part, ':'))
+ 				continue;
+ 
+diff --git a/source/backend/Mods.hx b/source/backend/Mods.hx
+index e265123..8bd4fea 100644
+--- a/source/backend/Mods.hx
++++ b/source/backend/Mods.hx
+@@ -50,13 +50,13 @@ class Mods
+         var result:Array<String> = [];
+         #if (MODS_ALLOWED && sys)
+         var root = Paths.mods();
+-        if (FileSystem.exists(root) && FileSystem.isDirectory(root))
++        if (FS.exists(root) && FS.isDirectory(root))
+         {
+-            for (name in FileSystem.readDirectory(root))
++            for (name in FS.readDirectory(root))
+             {
+                 if (!validFolder(name)) continue;
+                 var full = Path.join([root, name]);
+-                if (FileSystem.isDirectory(full)) result.push(name);
++                if (FS.isDirectory(full)) result.push(name);
+             }
+         }
+         result.sort(function(a, b) return Reflect.compare(a.toLowerCase(), b.toLowerCase()));
+@@ -75,11 +75,11 @@ class Mods
+     {
+         var list:ModsList = {enabled: [], disabled: [], all: []};
+         #if (MODS_ALLOWED && sys)
+-        if (FileSystem.exists('modsList.txt'))
++        if (FS.exists('modsList.txt'))
+         {
+             try
+             {
+-                for (line in File.getContent('modsList.txt').split('\n'))
++                for (line in FS.getContent('modsList.txt').split('\n'))
+                 {
+                     var parts = StringTools.trim(line).split('|');
+                     var folder = StringTools.trim(parts[0]);
+@@ -139,7 +139,7 @@ class Mods
+                 seen.push(folder);
+                 lines.push(folder + '|' + (list.disabled.contains(folder) ? '0' : '1'));
+             }
+-            File.saveContent('modsList.txt', lines.join('\n'));
++            FS.saveContent('modsList.txt', lines.join('\n'));
+             cachedList = {all: seen, enabled: [], disabled: []};
+             for (folder in seen)
+             {
+@@ -190,9 +190,9 @@ class Mods
+         if (folder == null) folder = currentModDirectory;
+         if (!validFolder(folder)) return null;
+         var path = Paths.mods(folder + '/pack.json');
+-        if (FileSystem.exists(path) && !FileSystem.isDirectory(path))
++        if (FS.exists(path) && !FS.isDirectory(path))
+         {
+-            try return tjson.TJSON.parse(File.getContent(path)) catch (e:Dynamic) {}
++            try return tjson.TJSON.parse(FS.getContent(path)) catch (e:Dynamic) {}
+         }
+         #end
+         return null;
+@@ -216,7 +216,7 @@ class Mods
+         if (relPath == null || relPath.length == 0) return null;
+ 
+         for (mod in parseList().enabled)
+-            if (FileSystem.exists(Paths.mods(mod + '/' + relPath)))
++            if (FS.exists(Paths.mods(mod + '/' + relPath)))
+                 return mod;
+         #end
+         return null;
+@@ -233,7 +233,7 @@ class Mods
+     {
+         #if (MODS_ALLOWED && sys)
+         if (currentModDirectory != null && currentModDirectory.length > 0
+-            && FileSystem.exists(Paths.mods(currentModDirectory + '/' + relPath)))
++            && FS.exists(Paths.mods(currentModDirectory + '/' + relPath)))
+             return true;
+ 
+         var mod = findModWithFile(relPath);
+@@ -295,9 +295,9 @@ class Mods
+     private static function addIfExists(list:Array<String>, path:String):Void
+     {
+         #if sys
+-        if (path == null || path.length == 0 || !FileSystem.exists(path)) return;
++        if (path == null || path.length == 0 || !FS.exists(path)) return;
+ 
+-        if (FileSystem.isDirectory(path))
++        if (FS.isDirectory(path))
+             path = withSlash(path);
+ 
+         if (!list.contains(path))
+@@ -323,7 +323,7 @@ class Mods
+         {
+             try
+             {
+-                for (line in File.getContent(file).split('\n'))
++                for (line in FS.getContent(file).split('\n'))
+                 {
+                     var value = StringTools.trim(line);
+                     if (value.length > 0 && (allowDuplicates || !result.contains(value))) result.push(value);
+diff --git a/source/backend/Paths.hx b/source/backend/Paths.hx
+index c14c319..a424d72 100644
+--- a/source/backend/Paths.hx
++++ b/source/backend/Paths.hx
+@@ -182,11 +182,11 @@ class Paths
+ 			if (parentfolder != null) customFile = '$parentfolder/$file';
+ 
+ 			var modded:String = modFolders(customFile);
+-			if (FileSystem.exists(modded)) return modded;
++			if (FS.exists(modded)) return modded;
+ 
+ 			#if sys
+ 			var resolvedModded:String = resolveModPathCaseInsensitive(modded);
+-			if (resolvedModded != null && FileSystem.exists(resolvedModded))
++			if (resolvedModded != null && FS.exists(resolvedModded))
+ 			{
+ 				trace('MOD PATH CASE FALLBACK: ' + modded + ' -> ' + resolvedModded);
+ 				return resolvedModded;
+@@ -224,7 +224,7 @@ class Paths
+ 
+ 		var listing:Map<String, String> = new Map();
+ 
+-		for (entry in FileSystem.readDirectory(directory))
++		for (entry in FS.readDirectory(directory))
+ 		{
+ 			var lower:String = entry.toLowerCase();
+ 			
+@@ -259,7 +259,7 @@ class Paths
+ 				}
+ 
+ 				var directory:String = current.length == 0 ? '.' : current;
+-				if (!FileSystem.exists(directory) || !FileSystem.isDirectory(directory))
++				if (!FS.exists(directory) || !FS.isDirectory(directory))
+ 					return null;
+ 
+ 				var match:String = listDirectory(directory).get(part.toLowerCase());
+@@ -310,7 +310,7 @@ class Paths
+ 
+ 		try
+ 		{
+-			var output = reportedCount == 1 ? File.write('asset_problems.txt', false) : File.append('asset_problems.txt', false);
++			var output = reportedCount == 1 ? FS.openWrite('asset_problems.txt', false) : FS.openAppend('asset_problems.txt', false);
+ 
+ 			if (reportedCount == 1)
+ 				output.writeString('Assets that failed to load. Each line: type, key, details.\n');
+@@ -350,7 +350,7 @@ class Paths
+ 	{
+ 		#if (MODS_ALLOWED && sys)
+ 		var file:String = modsVideo(key);
+-		if(FileSystem.exists(file)) return file;
++		if(FS.exists(file)) return file;
+ 		#end
+ 		return 'assets/videos/$key.$VIDEO_EXT';
+ 	}
+@@ -401,11 +401,11 @@ class Paths
+ 		if (bitmap == null)
+ 		{
+ 			#if (MODS_ALLOWED && sys)
+-			if (FileSystem.exists(file))
++			if (FS.exists(file))
+ 			{
+ 				try
+ 				{
+-					bitmap = BitmapData.fromFile(file);
++					bitmap = FS.loadBitmap(file);
+ 				}
+ 				catch (e:Dynamic)
+ 				{
+@@ -463,8 +463,8 @@ class Paths
+ 	{
+ 		var path:String = getPath(key, TEXT, null, !ignoreMods);
+ 		#if sys
+-		if (FileSystem.exists(path) && !FileSystem.isDirectory(path))
+-			return File.getContent(path);
++		if (FS.exists(path) && !FS.isDirectory(path))
++			return FS.getContent(path);
+ 		return OpenFlAssets.exists(path, TEXT) ? OpenFlAssets.getText(path) : null;
+ 		#else
+ 		return (OpenFlAssets.exists(path, TEXT)) ? Assets.getText(path) : null;
+@@ -476,7 +476,7 @@ class Paths
+ 		var folderKey:String = Language.getFileTranslation('fonts/$key');
+ 		#if (MODS_ALLOWED && sys)
+ 		var file:String = modFolders(folderKey);
+-		if(FileSystem.exists(file)) return file;
++		if(FS.exists(file)) return file;
+ 		#end
+ 		return 'assets/$folderKey';
+ 	}
+@@ -489,13 +489,13 @@ class Paths
+ 			var modKey:String = normalizeKey(key);
+ 			if(parentFolder == 'songs') modKey = 'songs/$modKey';
+ 
+-			if (FileSystem.exists(modFolders(modKey)))
++			if (FS.exists(modFolders(modKey)))
+ 				return true;
+ 		}
+ 		#end
+ 		var file:String = getPath(key, type, parentFolder, false);
+ 		#if sys
+-		if (FileSystem.exists(file)) return true;
++		if (FS.exists(file)) return true;
+ 		#end
+ 		return OpenFlAssets.exists(file, type);
+ 	}
+@@ -508,9 +508,9 @@ class Paths
+ 		if (imageLoaded == null) return null;
+ 
+ 		#if (MODS_ALLOWED && sys)
+-		if (FileSystem.exists(xmlPath))
++		if (FS.exists(xmlPath))
+ 		{
+-			var xmlContent:String = File.getContent(xmlPath);
++			var xmlContent:String = FS.getContent(xmlPath);
+ 			if (imageLoaded == null || xmlContent == null || xmlContent.length == 0)
+ 			{
+ 				trace('ATLAS ERROR: Sparrow key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' xml=' + xmlPath);
+@@ -524,9 +524,9 @@ class Paths
+ 			return FlxAtlasFrames.fromSparrow(imageLoaded, xmlPath);
+ 
+ 		#if (MODS_ALLOWED && sys)
+-		if (FileSystem.exists(jsonPath))
++		if (FS.exists(jsonPath))
+ 		{
+-			var jsonContent:String = File.getContent(jsonPath);
++			var jsonContent:String = FS.getContent(jsonPath);
+ 			if (imageLoaded == null || jsonContent == null || jsonContent.length == 0)
+ 			{
+ 				trace('ATLAS ERROR: TexturePacker key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' json=' + jsonPath);
+@@ -567,9 +567,9 @@ class Paths
+ 		var imageLoaded:FlxGraphic = image(key, parentFolder, allowGPU);
+ 		var xmlPath:String = getPath(Language.getFileTranslation('images/$key') + '.xml', TEXT, parentFolder, true);
+ 		#if (MODS_ALLOWED && sys)
+-		if (FileSystem.exists(xmlPath))
++		if (FS.exists(xmlPath))
+ 		{
+-			var xmlContent:String = File.getContent(xmlPath);
++			var xmlContent:String = FS.getContent(xmlPath);
+ 			if (imageLoaded == null || xmlContent == null || xmlContent.length == 0)
+ 			{
+ 				trace('ATLAS ERROR: key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' xml=' + xmlPath + ' xmlLength=' + (xmlContent == null ? -1 : xmlContent.length));
+@@ -591,9 +591,9 @@ class Paths
+ 		var imageLoaded:FlxGraphic = image(key, parentFolder, allowGPU);
+ 		var txtPath:String = getPath(Language.getFileTranslation('images/$key') + '.txt', TEXT, parentFolder, true);
+ 		#if (MODS_ALLOWED && sys)
+-		if (FileSystem.exists(txtPath))
++		if (FS.exists(txtPath))
+ 		{
+-			var txtContent:String = File.getContent(txtPath);
++			var txtContent:String = FS.getContent(txtPath);
+ 			if (imageLoaded == null || txtContent == null || txtContent.length == 0)
+ 			{
+ 				trace('ATLAS ERROR: Packer key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' txt=' + txtPath);
+@@ -615,9 +615,9 @@ class Paths
+ 		var imageLoaded:FlxGraphic = image(key, parentFolder, allowGPU);
+ 		var jsonPath:String = getPath(Language.getFileTranslation('images/$key') + '.json', TEXT, parentFolder, true);
+ 		#if (MODS_ALLOWED && sys)
+-		if (FileSystem.exists(jsonPath))
++		if (FS.exists(jsonPath))
+ 		{
+-			var jsonContent:String = File.getContent(jsonPath);
++			var jsonContent:String = FS.getContent(jsonPath);
+ 			if (imageLoaded == null || jsonContent == null || jsonContent.length == 0)
+ 			{
+ 				trace('ATLAS ERROR: JSON key=' + key + ' image=' + (imageLoaded == null ? 'NULL' : 'OK') + ' json=' + jsonPath);
+@@ -693,8 +693,8 @@ class Paths
+ 		try
+ 		{
+ 			#if sys
+-			if (FileSystem.exists(file) && !FileSystem.isDirectory(file))
+-				result = Sound.fromFile(file);
++			if (FS.exists(file) && !FS.isDirectory(file))
++				result = FS.loadSound(file);
+ 			#end
+ 			#if html5
+ 			if (result == null)
+@@ -762,12 +762,12 @@ class Paths
+ 		if (Mods.currentModDirectory != null && Mods.currentModDirectory.length > 0)
+ 		{
+ 			var fileToCheck:String = mods(Mods.currentModDirectory + '/' + key);
+-			if (FileSystem.exists(fileToCheck))
++			if (FS.exists(fileToCheck))
+ 				return fileToCheck;
+ 
+ 			#if sys
+ 			var resolved:String = resolveModPathCaseInsensitive(fileToCheck);
+-			if (resolved != null && FileSystem.exists(resolved))
++			if (resolved != null && FS.exists(resolved))
+ 			{
+ 				trace('MOD FILE CASE FALLBACK: ' + fileToCheck + ' -> ' + resolved);
+ 				return resolved;
+@@ -778,12 +778,12 @@ class Paths
+ 		for (mod in Mods.getGlobalMods())
+ 		{
+ 			var fileToCheck:String = mods(mod + '/' + key);
+-			if (FileSystem.exists(fileToCheck))
++			if (FS.exists(fileToCheck))
+ 				return fileToCheck;
+ 
+ 			#if sys
+ 			var resolved:String = resolveModPathCaseInsensitive(fileToCheck);
+-			if (resolved != null && FileSystem.exists(resolved))
++			if (resolved != null && FS.exists(resolved))
+ 			{
+ 				trace('MOD FILE CASE FALLBACK: ' + fileToCheck + ' -> ' + resolved);
+ 				return resolved;
+diff --git a/source/backend/PlatformUtil.hx b/source/backend/PlatformUtil.hx
+index df0cc8f..0d7e7b2 100644
+--- a/source/backend/PlatformUtil.hx
++++ b/source/backend/PlatformUtil.hx
+@@ -36,6 +36,50 @@ class PlatformUtil
+ 
+ 	public static inline var hasKeyboard:Bool = #if (mobile || CONSOLE_BUILD) false #else true #end;
+ 
++	/** Folder on the SD card where the Switch build stores mods, saves and logs. */
++	public static inline var DATA_DIR:String = #if SWITCH_BUILD 'sdmc:/switch/Sonic3-FNF-Port' #else '.' #end;
++
++	/** True when the path already names a device (e.g. "sdmc:/..." or "romfs:/..."). */
++	static inline function hasDevice(path:String):Bool
++		return path.indexOf(':/') > 0;
++
++	static function stripDotSlash(path:String):String
++	{
++		while (StringTools.startsWith(path, './'))
++			path = path.substr(2);
++		return path;
++	}
++
++	/**
++	 * Path used for READING. On Switch, `mods/` lives on the SD card and everything
++	 * else (assets, data files) is read from the read-only romfs inside the .nro.
++	 */
++	public static function toFileSystemPath(path:String):String
++	{
++		#if SWITCH_BUILD
++		if (path == null || path == '' || hasDevice(path))
++			return path;
++		path = stripDotSlash(path);
++		if (path == 'mods' || StringTools.startsWith(path, 'mods/'))
++			return DATA_DIR + '/' + path;
++		return 'romfs:/' + path;
++		#else
++		return path;
++		#end
++	}
++
++	/** Path used for WRITING. On Switch the romfs is read-only, so relative paths go to the SD card. */
++	public static function toWritablePath(path:String):String
++	{
++		#if SWITCH_BUILD
++		if (path == null || path == '' || hasDevice(path))
++			return path;
++		return DATA_DIR + '/' + stripDotSlash(path);
++		#else
++		return path;
++		#end
++	}
++
+ 	public static function getWritableDir():String
+ 	{
+ 		#if sys
+@@ -45,6 +89,8 @@ class PlatformUtil
+ 			return lime.system.System.applicationStorageDirectory;
+ 			#elseif ios
+ 			return lime.system.System.documentsDirectory;
++			#elseif SWITCH_BUILD
++			return DATA_DIR + '/';
+ 			#else
+ 			return haxe.io.Path.addTrailingSlash(Sys.getCwd());
+ 			#end
+diff --git a/source/backend/Song.hx b/source/backend/Song.hx
+index e704b0f..c5fdf95 100644
+--- a/source/backend/Song.hx
++++ b/source/backend/Song.hx
+@@ -146,8 +146,8 @@ class Song
+ 		_lastPath = Paths.json('$formattedFolder/$formattedSong');
+ 
+ 		#if MODS_ALLOWED
+-		if(FileSystem.exists(_lastPath))
+-			rawData = File.getContent(_lastPath);
++		if(FS.exists(_lastPath))
++			rawData = FS.getContent(_lastPath);
+ 		else
+ 		#end
+ 			rawData = Assets.getText(_lastPath);
+diff --git a/source/backend/Sonic3Storage.hx b/source/backend/Sonic3Storage.hx
+index 55c7437..ffd3dd0 100644
+--- a/source/backend/Sonic3Storage.hx
++++ b/source/backend/Sonic3Storage.hx
+@@ -35,6 +35,8 @@ class Sonic3Storage
+ 	{
+ 		#if android
+ 		return '/storage/emulated/0/' + FOLDER_NAME + '/';
++		#elseif SWITCH_BUILD
++		return PlatformUtil.DATA_DIR + '/';
+ 		#elseif sys
+ 		return Sys.getCwd();
+ 		#else
+@@ -110,7 +112,7 @@ class Sonic3Storage
+ 			if (useAsWorkingDirectory)
+ 				Sys.setCwd(getRoot());
+ 
+-			return FileSystem.exists(getRoot()) && FileSystem.exists(getModsFolder());
++			return FS.exists(getRoot()) && FS.exists(getModsFolder());
+ 		}
+ 		catch (e:Dynamic)
+ 		{
+@@ -170,7 +172,7 @@ class Sonic3Storage
+ 
+ 			try
+ 			{
+-				if (!overwrite && FileSystem.exists(target) && FileSystem.stat(target).size > 0)
++				if (!overwrite && FS.exists(target) && FS.size(target) > 0)
+ 					continue;
+ 
+ 				var bytes = Assets.getBytes(id);
+@@ -183,7 +185,7 @@ class Sonic3Storage
+ 					if (text != null && text.length > 0)
+ 					{
+ 						createDirectory(Path.directory(target));
+-						File.saveContent(target, text);
++						FS.saveContent(target, text);
+ 						copied++;
+ 						continue;
+ 					}
+@@ -196,9 +198,9 @@ class Sonic3Storage
+ 				}
+ 
+ 				createDirectory(Path.directory(target));
+-				File.saveBytes(target, bytes);
++				FS.saveBytes(target, bytes);
+ 
+-				var written:Int = FileSystem.stat(target).size;
++				var written:Int = FS.size(target);
+ 
+ 				if (written != bytes.length)
+ 					problems.push('SIZE   ' + id + ' (expected ' + bytes.length + ', wrote ' + written + ')');
+@@ -247,7 +249,7 @@ class Sonic3Storage
+ 			if (problems.length > shown)
+ 				lines.push('... and ' + (problems.length - shown) + ' more');
+ 
+-			File.saveContent(getRoot() + 'copy_report.txt', lines.join('\n'));
++			FS.saveContent(getRoot() + 'copy_report.txt', lines.join('\n'));
+ 		}
+ 		catch (e:Dynamic) {}
+ 		#end
+@@ -274,9 +276,9 @@ class Sonic3Storage
+ 
+ 		try
+ 		{
+-			if (FileSystem.exists(marker))
++			if (FS.exists(marker))
+ 			{
+-				var parsed:Null<Int> = Std.parseInt(StringTools.trim(File.getContent(marker)));
++				var parsed:Null<Int> = Std.parseInt(StringTools.trim(FS.getContent(marker)));
+ 
+ 				if (parsed != null)
+ 					current = parsed;
+@@ -298,7 +300,7 @@ class Sonic3Storage
+ 		{
+ 			try
+ 			{
+-				File.saveContent(marker, Std.string(BUNDLE_REVISION));
++				FS.saveContent(marker, Std.string(BUNDLE_REVISION));
+ 			}
+ 			catch (e:Dynamic) {}
+ 		}
+@@ -316,7 +318,7 @@ class Sonic3Storage
+ 		try
+ 		{
+ 			var mods:String = getModsFolder();
+-			return !FileSystem.exists(mods) || FileSystem.readDirectory(mods).length == 0;
++			return !FS.exists(mods) || FS.readDirectory(mods).length == 0;
+ 		}
+ 		catch (e:Dynamic)
+ 		{
+@@ -336,15 +338,15 @@ class Sonic3Storage
+ 		while (clean.length > 1 && StringTools.endsWith(clean, '/'))
+ 			clean = clean.substr(0, clean.length - 1);
+ 
+-		if (clean == '' || FileSystem.exists(clean))
++		if (clean == '' || FS.exists(clean))
+ 			return;
+ 
+ 		var parent:String = Path.directory(clean);
+ 
+-		if (parent != '' && parent != clean && !FileSystem.exists(parent))
++		if (parent != '' && parent != clean && !FS.exists(parent))
+ 			createDirectory(parent);
+ 
+-		FileSystem.createDirectory(clean);
++		FS.createDirectory(clean);
+ 		#end
+ 	}
+ }
+diff --git a/source/backend/StageData.hx b/source/backend/StageData.hx
+index 5f785f0..ec01040 100644
+--- a/source/backend/StageData.hx
++++ b/source/backend/StageData.hx
+@@ -80,8 +80,8 @@ class StageData {
+ 		{
+ 			var path:String = Paths.getPath('stages/' + stage + '.json', TEXT, null, true);
+ 			#if MODS_ALLOWED
+-			if(FileSystem.exists(path))
+-				return cast tjson.TJSON.parse(File.getContent(path));
++			if(FS.exists(path))
++				return cast tjson.TJSON.parse(FS.getContent(path));
+ 			#else
+ 			if(Assets.exists(path))
+ 				return cast tjson.TJSON.parse(Assets.getText(path));
+diff --git a/source/backend/WeekData.hx b/source/backend/WeekData.hx
+index 008d95e..8e18c95 100644
+--- a/source/backend/WeekData.hx
++++ b/source/backend/WeekData.hx
+@@ -113,21 +113,21 @@ class WeekData {
+ 		#if MODS_ALLOWED
+ 		for (i in 0...directories.length) {
+ 			var directory:String = directories[i] + 'weeks/';
+-			if(FileSystem.exists(directory)) {
++			if(FS.exists(directory)) {
+ 				var listOfWeeks:Array<String> = CoolUtil.coolTextFile(directory + 'weekList.txt');
+ 				for (daWeek in listOfWeeks)
+ 				{
+ 					var path:String = directory + daWeek + '.json';
+-					if(FileSystem.exists(path))
++					if(FS.exists(path))
+ 					{
+ 						addWeek(daWeek, path, directories[i], i, originalLength);
+ 					}
+ 				}
+ 
+-				for (file in FileSystem.readDirectory(directory))
++				for (file in FS.readDirectory(directory))
+ 				{
+ 					var path = haxe.io.Path.join([directory, file]);
+-					if (!FileSystem.isDirectory(path) && file.endsWith('.json'))
++					if (!FS.isDirectory(path) && file.endsWith('.json'))
+ 					{
+ 						addWeek(file.substr(0, file.length - 5), path, directories[i], i, originalLength);
+ 					}
+@@ -163,8 +163,8 @@ class WeekData {
+ 	private static function getWeekFile(path:String):WeekFile {
+ 		var rawJson:String = null;
+ 		#if MODS_ALLOWED
+-		if(FileSystem.exists(path)) {
+-			rawJson = File.getContent(path);
++		if(FS.exists(path)) {
++			rawJson = FS.getContent(path);
+ 		}
+ 		#else
+ 		if(OpenFlAssets.exists(path)) {
+diff --git a/source/import.hx b/source/import.hx
+index d82db13..35fdce1 100644
+--- a/source/import.hx
++++ b/source/import.hx
+@@ -69,3 +69,5 @@ import flixel.addons.transition.FlxTransitionableState;
+ 
+ using StringTools;
+ #end
++
++import backend.FS;
+diff --git a/source/save/Save.hx b/source/save/Save.hx
+index d8bb0f7..134a132 100644
+--- a/source/save/Save.hx
++++ b/source/save/Save.hx
+@@ -36,8 +36,8 @@ class Save
+         {
+             var root = folder != null && folder.trim().length > 0
+                 ? folder : #if mobile lime.system.System.applicationStorageDirectory #else Path.join([Sys.getCwd(), "saves"]) #end;
+-            if (!FileSystem.exists(root)) FileSystem.createDirectory(root);
+-            if (!FileSystem.isDirectory(root)) return fail("Save location is not a directory");
++            if (!FS.exists(root)) FS.createDirectory(root);
++            if (!FS.isDirectory(root)) return fail("Save location is not a directory");
+             directory = Path.addTrailingSlash(root);
+             lastError = "";
+             return true;
+@@ -56,7 +56,7 @@ class Save
+         var backup = primary + ".bak";
+         var loaded:Dynamic = readFile(primary);
+         if (loaded == null) loaded = readFile(backup);
+-        if (loaded == null && (FileSystem.exists(primary) || FileSystem.exists(backup)))
++        if (loaded == null && (FS.exists(primary) || FS.exists(backup)))
+             return fail("Save and backup are invalid for slot " + slot);
+         data = loaded == null ? {} : loaded;
+         currentSlot = slot;
+@@ -82,26 +82,26 @@ class Save
+             var encoded = encode(data);
+             if (encoded == null) return fail("Unable to serialize save data");
+             if (maxFileBytes > 0 && encoded.length > maxFileBytes) return fail("Save exceeds size limit");
+-            File.saveContent(temp, encoded);
++            FS.saveContent(temp, encoded);
+             if (readFile(temp) == null) return fail("Temporary save failed validation");
+-            if (FileSystem.exists(primary))
++            if (FS.exists(primary))
+             {
+                 if (readFile(primary) != null)
+                 {
+-                    if (FileSystem.exists(backup)) FileSystem.deleteFile(backup);
+-                    FileSystem.rename(primary, backup);
++                    if (FS.exists(backup)) FS.deleteFile(backup);
++                    FS.rename(primary, backup);
+                 }
+                 else
+                 {
+                     var corrupt = primary + ".corrupt";
+-                    if (FileSystem.exists(corrupt)) FileSystem.deleteFile(corrupt);
+-                    FileSystem.rename(primary, corrupt);
++                    if (FS.exists(corrupt)) FS.deleteFile(corrupt);
++                    FS.rename(primary, corrupt);
+                 }
+             }
+-            try FileSystem.rename(temp, primary) catch (e:Dynamic)
++            try FS.rename(temp, primary) catch (e:Dynamic)
+             {
+-                if (!FileSystem.exists(primary) && FileSystem.exists(backup))
+-                    FileSystem.rename(backup, primary);
++                if (!FS.exists(primary) && FS.exists(backup))
++                    FS.rename(backup, primary);
+                 throw e;
+             }
+             dirty = false;
+@@ -220,7 +220,7 @@ class Save
+     public static function slotExists(slot:Int):Bool
+     {
+         #if sys
+-        return validSlot(slot) && ready() && (FileSystem.exists(slotPath(slot)) || FileSystem.exists(slotPath(slot) + ".bak"));
++        return validSlot(slot) && ready() && (FS.exists(slotPath(slot)) || FS.exists(slotPath(slot) + ".bak"));
+         #else
+         return false;
+         #end
+@@ -234,7 +234,7 @@ class Save
+         try
+         {
+             var seen:Map<Int, Bool> = new Map();
+-            for (name in FileSystem.readDirectory(directory))
++            for (name in FS.readDirectory(directory))
+             {
+                 var match = ~/^slot_([0-9]+)\.json(\.bak)?$/;
+                 if (!match.match(name)) continue;
+@@ -260,7 +260,7 @@ class Save
+         {
+             var path = slotPath(slot);
+             for (suffix in ["", ".bak", ".tmp", ".corrupt"])
+-                if (FileSystem.exists(path + suffix)) FileSystem.deleteFile(path + suffix);
++                if (FS.exists(path + suffix)) FS.deleteFile(path + suffix);
+             if (currentSlot == slot)
+             {
+                 currentSlot = -1;
+@@ -373,9 +373,9 @@ class Save
+     {
+         try
+         {
+-            if (!FileSystem.exists(path) || FileSystem.isDirectory(path)) return null;
+-            if (maxFileBytes > 0 && FileSystem.stat(path).size > maxFileBytes) return null;
+-            var envelope:Dynamic = Json.parse(File.getContent(path));
++            if (!FS.exists(path) || FS.isDirectory(path)) return null;
++            if (maxFileBytes > 0 && FS.size(path) > maxFileBytes) return null;
++            var envelope:Dynamic = Json.parse(FS.getContent(path));
+             if (envelope == null || envelope.version != VERSION ||
+                 !Std.isOfType(envelope.payload, String) || !Std.isOfType(envelope.checksum, String)) return null;
+             var payload:String = envelope.payload;
+diff --git a/source/save/manual/SaveManualImport.hx b/source/save/manual/SaveManualImport.hx
+index 2cfa4bc..6c1ca73 100644
+--- a/source/save/manual/SaveManualImport.hx
++++ b/source/save/manual/SaveManualImport.hx
+@@ -86,9 +86,9 @@ class SaveManualImport
+         if (path == null || StringTools.trim(path).length == 0) return fail("No import file specified");
+         try
+         {
+-            if (!FileSystem.exists(path) || FileSystem.isDirectory(path)) return fail("Import file does not exist");
+-            if (maxImportBytes > 0 && FileSystem.stat(path).size > maxImportBytes) return fail("Import exceeds size limit");
+-            return importText(File.getContent(path), merge, persist);
++            if (!FS.exists(path) || FS.isDirectory(path)) return fail("Import file does not exist");
++            if (maxImportBytes > 0 && FS.size(path) > maxImportBytes) return fail("Import exceeds size limit");
++            return importText(FS.getContent(path), merge, persist);
+         }
+         catch (error:Dynamic) return fail("Unable to read import file: " + Std.string(error));
+     }
+@@ -100,10 +100,10 @@ class SaveManualImport
+         if (json.length == 0) return false;
+         try
+         {
+-            if (FileSystem.exists(path) && !overwrite) return fail("Export file already exists");
++            if (FS.exists(path) && !overwrite) return fail("Export file already exists");
+             var parent = Path.directory(path);
+-            if (parent.length > 0 && !FileSystem.exists(parent)) return fail("Export directory does not exist");
+-            File.saveContent(path, json);
++            if (parent.length > 0 && !FS.exists(parent)) return fail("Export directory does not exist");
++            FS.saveContent(path, json);
+             lastError = "";
+             return true;
+         }
+diff --git a/source/shaders/ErrorHandledShader.hx b/source/shaders/ErrorHandledShader.hx
+index f25675e..ee0d79b 100644
+--- a/source/shaders/ErrorHandledShader.hx
++++ b/source/shaders/ErrorHandledShader.hx
+@@ -41,11 +41,11 @@ class ErrorHandledShader extends FlxShader implements IErrorHandler
+ 		var errMsg:String = "";
+ 		var dateNow:String = Date.now().toString().replace(" ", "_").replace(":", "'");
+ 
+-		if (!FileSystem.exists('./crash/'))
+-			FileSystem.createDirectory('./crash/');
++		if (!FS.exists('./crash/'))
++			FS.createDirectory('./crash/');
+ 
+ 		var crashLogPath:String = './crash/shader_${shaderName}_${dateNow}.txt';
+-		File.saveContent(crashLogPath, error);
++		FS.saveContent(crashLogPath, error);
+ 		Application.current.window.alert('Error log saved at: $crashLogPath', alertTitle);
+ 		#else
+ 		Application.current.window.alert('Error logs aren\'t created on debug builds, check the trace log instead.', alertTitle);
+diff --git a/source/util/SystemUtil.hx b/source/util/SystemUtil.hx
+index e5c83ea..3f6dab9 100644
+--- a/source/util/SystemUtil.hx
++++ b/source/util/SystemUtil.hx
+@@ -211,7 +211,7 @@ class SystemUtil
+         #if sys
+         try
+         {
+-            return path != null && FileSystem.exists(path) && FileSystem.isDirectory(path);
++            return path != null && FS.exists(path) && FS.isDirectory(path);
+         }
+         catch (error:Dynamic) {}
+         #end
+@@ -223,7 +223,7 @@ class SystemUtil
+         #if sys
+         try
+         {
+-            return path != null && FileSystem.exists(path) && !FileSystem.isDirectory(path);
++            return path != null && FS.exists(path) && !FS.isDirectory(path);
+         }
+         catch (error:Dynamic) {}
+         #end
+@@ -236,13 +236,13 @@ class SystemUtil
+         try
+         {
+             if (path == null || path.length == 0) return fail("Invalid directory");
+-            if (FileSystem.exists(path)) return FileSystem.isDirectory(path);
++            if (FS.exists(path)) return FS.isDirectory(path);
+             var parent = Path.directory(path);
+-            if (parent.length > 0 && parent != path && !FileSystem.exists(parent))
++            if (parent.length > 0 && parent != path && !FS.exists(parent))
+             {
+                 if (!ensureDirectory(parent)) return false;
+             }
+-            FileSystem.createDirectory(path);
++            FS.createDirectory(path);
+             lastError = "";
+             return true;
+         }
+@@ -261,7 +261,7 @@ class SystemUtil
+         try
+         {
+             if (!fileExists(path)) return fallback;
+-            var result = File.getContent(path);
++            var result = FS.getContent(path);
+             lastError = "";
+             return result;
+         }
+@@ -281,7 +281,7 @@ class SystemUtil
+             if (path == null || path.length == 0) return fail("Invalid file path");
+             var parent = Path.directory(path);
+             if (createDirectories && parent.length > 0 && !ensureDirectory(parent)) return false;
+-            File.saveContent(path, content == null ? "" : content);
++            FS.saveContent(path, content == null ? "" : content);
+             lastError = "";
+             return true;
+         }
+@@ -302,7 +302,7 @@ class SystemUtil
+             if (path == null || path.length == 0) return fail("Invalid file path");
+             var parent = Path.directory(path);
+             if (createDirectories && parent.length > 0 && !ensureDirectory(parent)) return false;
+-            var output = File.append(path, false);
++            var output = FS.openAppend(path, false);
+             output.writeString(content == null ? "" : content);
+             output.close();
+             lastError = "";
+-- 
+2.43.0
+

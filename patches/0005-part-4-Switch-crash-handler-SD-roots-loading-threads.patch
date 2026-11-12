@@ -1,0 +1,113 @@
+From 7575c6bc362c5a83ac88dfeb388c5e6064128b35 Mon Sep 17 00:00:00 2001
+From: claude <a@b.c>
+Date: Thu, 12 Nov 2026 22:26:37 +0000
+Subject: [PATCH 5/5] part 4: Switch crash handler, SD roots, loading threads,
+ antialiasing default
+
+---
+ project.xml                    |  4 +---
+ source/Main.hx                 |  2 +-
+ source/backend/ClientPrefs.hx  |  2 +-
+ source/backend/PlatformUtil.hx | 22 +++++++++++++++++++++-
+ source/states/LoadingState.hx  |  4 ++++
+ 5 files changed, 28 insertions(+), 6 deletions(-)
+
+diff --git a/project.xml b/project.xml
+index da26a47..c064977 100644
+--- a/project.xml
++++ b/project.xml
+@@ -20,9 +20,7 @@
+     <define name="MULTITHREADED_LOADING" if="desktop" unless="switch" />
+     <define name="SHOW_LOADING_SCREEN" />
+     <define name="PSYCH_WATERMARKS" />
+-    <section unless="switch">
+-        <define name="CRASH_HANDLER" if="release" unless="html5" />
+-    </section>
++    <define name="CRASH_HANDLER" if="release || switch" unless="html5" />
+     <define name="CHECK_FOR_UPDATES" if="desktop officialBuild" />
+     <haxedef name="LINC_LUA_RELATIVE_DYNAMIC_LIB" if="LUA_ALLOWED" />
+     <section if="officialBuild">
+diff --git a/source/Main.hx b/source/Main.hx
+index b578072..7488d1a 100644
+--- a/source/Main.hx
++++ b/source/Main.hx
+@@ -574,7 +574,7 @@ class Main extends Sprite
+         #end
+         appendToLog(path, '\n=== CRASH ===\n' + message + '\n');
+         flushProgress();
+-        #if !android
++        #if !(android || SWITCH_BUILD)
+         if (Application.current != null && Application.current.window != null)
+             Application.current.window.alert(message, 'Error!');
+         #end
+diff --git a/source/backend/ClientPrefs.hx b/source/backend/ClientPrefs.hx
+index a8a4ccf..b25dcf5 100644
+--- a/source/backend/ClientPrefs.hx
++++ b/source/backend/ClientPrefs.hx
+@@ -40,7 +40,7 @@ import save.Save;
+     public var showFPS:Bool = true;
+     public var flashing:Bool = true;
+     public var autoPause:Bool = true;
+-    public var antialiasing:Bool = true;
++    public var antialiasing:Bool = #if SWITCH_BUILD false #else true #end;
+     public var noteSkin:String = 'Default';
+     public var splashSkin:String = 'Psych';
+     public var splashAlpha:Float = 0.6;
+diff --git a/source/backend/PlatformUtil.hx b/source/backend/PlatformUtil.hx
+index 0d7e7b2..9df4db7 100644
+--- a/source/backend/PlatformUtil.hx
++++ b/source/backend/PlatformUtil.hx
+@@ -50,6 +50,26 @@ class PlatformUtil
+ 		return path;
+ 	}
+ 
++	#if SWITCH_BUILD
++	/** Top-level folders that live on the SD card (read and written there). */
++	static final SD_FOLDERS:Array<String> = ['mods', 'saves', 'crash', 'shaderCrashes'];
++
++	/** Single files the game writes and later reads back; they also live on the SD card. */
++	static final SD_FILES:Array<String> = ['modsList.txt', 'asset_problems.txt'];
++
++	static function isSdPath(path:String):Bool
++	{
++		if (SD_FILES.indexOf(path) != -1)
++			return true;
++		for (folder in SD_FOLDERS)
++		{
++			if (path == folder || StringTools.startsWith(path, folder + '/'))
++				return true;
++		}
++		return false;
++	}
++	#end
++
+ 	/**
+ 	 * Path used for READING. On Switch, `mods/` lives on the SD card and everything
+ 	 * else (assets, data files) is read from the read-only romfs inside the .nro.
+@@ -60,7 +80,7 @@ class PlatformUtil
+ 		if (path == null || path == '' || hasDevice(path))
+ 			return path;
+ 		path = stripDotSlash(path);
+-		if (path == 'mods' || StringTools.startsWith(path, 'mods/'))
++		if (isSdPath(path))
+ 			return DATA_DIR + '/' + path;
+ 		return 'romfs:/' + path;
+ 		#else
+diff --git a/source/states/LoadingState.hx b/source/states/LoadingState.hx
+index e8e6685..eca119a 100644
+--- a/source/states/LoadingState.hx
++++ b/source/states/LoadingState.hx
+@@ -433,6 +433,10 @@ class LoadingState extends MusicBeatState
+ 		#if MULTITHREADED_LOADING
+ 		// Due to the Main thread and Discord thread, we decrease it by 2.
+ 		var threadCount:Int = Std.int(Math.max(1, getCPUThreadsCount() - #if DISCORD_ALLOWED 2 #else 1 #end));
++		#if SWITCH_BUILD
++		// The Switch has 4 cores and the main thread uses one of them.
++		threadCount = Std.int(Math.min(threadCount, 3));
++		#end
+ 		#else
+ 		var threadCount:Int = 1;
+ 		#end
+-- 
+2.43.0
+

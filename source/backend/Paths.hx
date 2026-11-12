@@ -37,7 +37,7 @@ import backend.Mods;
 @:access(openfl.display.BitmapData)
 class Paths
 {
-	inline public static var SOUND_EXT = #if web "mp3" #else "ogg" #end;
+	inline public static var SOUND_EXT = #if (web || html5) "mp3" #else "ogg" #end;
 	inline public static var VIDEO_EXT = "mp4";
 
 	public static function excludeAsset(key:String) {
@@ -69,19 +69,16 @@ class Paths
 	@:access(flixel.system.frontEnds.BitmapFrontEnd._cache)
 	public static function clearStoredMemory()
 	{
-		// Folder listings used by the case-insensitive lookup may be outdated (files can be copied after startup).
 		#if (MODS_ALLOWED && sys)
 		clearDirectoryCache();
 		#end
 
-		// clear anything not in the tracked assets list
 		for (key in FlxG.bitmap._cache.keys())
 		{
 			if (!currentTrackedAssets.exists(key))
 				destroyGraphic(FlxG.bitmap.get(key));
 		}
 
-		// clear all sounds that are cached
 		for (key => asset in currentTrackedSounds)
 		{
 			if (!localTrackedAssets.contains(key) && !dumpExclusions.contains(key) && asset != null)
@@ -90,7 +87,6 @@ class Paths
 				currentTrackedSounds.remove(key);
 			}
 		}
-		// flags everything to be cleared out next unused memory clear
 		localTrackedAssets = [];
 		#if !html5 openfl.Assets.cache.clear("songs"); #end
 	}
@@ -132,7 +128,6 @@ class Paths
 
 	inline static function destroyGraphic(graphic:FlxGraphic)
 	{
-		// free some gpu memory
 		if (graphic != null) FlxG.bitmap.remove(graphic);
 	}
 
@@ -159,11 +154,6 @@ class Paths
 	static public function setCurrentLevel(name:String)
 		currentLevel = name == null ? null : name.toLowerCase();
 
-	/**
-	 * Cleans an asset key coming from a script or a mod: Windows-style backslashes,
-	 * repeated slashes, a leading "./" and surrounding spaces are fixed.
-	 * Those only worked on Windows, so they are a common reason for missing sprites on Android.
-	 */
 	public static function normalizeKey(key:String):String
 	{
 		if (key == null)
@@ -194,8 +184,6 @@ class Paths
 			var modded:String = modFolders(customFile);
 			if (FileSystem.exists(modded)) return modded;
 
-			// Android storage is case-sensitive, unlike many Windows setups.
-			// Resolve each path component without changing the stored filename.
 			#if sys
 			var resolvedModded:String = resolveModPathCaseInsensitive(modded);
 			if (resolvedModded != null && FileSystem.exists(resolvedModded))
@@ -220,11 +208,8 @@ class Paths
 	}
 
 	#if (MODS_ALLOWED && sys)
-	// Lowercase name -> real name, per folder. Reading a big folder (like images/) on every
-	// failed lookup is slow on phones, so each listing is read once and kept.
 	static var directoryCache:Map<String, Map<String, String>> = new Map();
 
-	/** Forgets the cached folder listings (called when the memory is cleared and after files are copied). */
 	public static function clearDirectoryCache():Void
 	{
 		directoryCache = new Map();
@@ -242,8 +227,7 @@ class Paths
 		for (entry in FileSystem.readDirectory(directory))
 		{
 			var lower:String = entry.toLowerCase();
-
-			// If two names only differ by case, keep the first one.
+			
 			if (!listing.exists(lower))
 				listing.set(lower, entry);
 		}
@@ -313,13 +297,6 @@ class Paths
 		#end
 	}
 
-	/**
-	 * Android only: writes a line to asset_problems.txt (in the working directory, next to the
-	 * mods folder) the first time an asset fails to load or looks risky, so the exact name can be
-	 * read with a file manager. The file is replaced on every launch.
-	 *
-	 * @param kind IMAGE, ATLAS or SOUND.
-	 */
 	public static function reportAssetProblem(kind:String, key:String, detail:String):Void
 	{
 		#if (android && sys)
@@ -512,8 +489,6 @@ class Paths
 			var modKey:String = normalizeKey(key);
 			if(parentFolder == 'songs') modKey = 'songs/$modKey';
 
-			// modFolders checks the current mod, the global mods and mods/<key>,
-			// including the case-insensitive lookup used on Android.
 			if (FileSystem.exists(modFolders(modKey)))
 				return true;
 		}
@@ -667,6 +642,45 @@ class Paths
 	}
 
 	public static var currentTrackedSounds:Map<String, Sound> = [];
+
+	#if html5
+	static var soundIdIndex:Map<String, String> = null;
+	static var missingSounds:Map<String, Bool> = new Map();
+
+	static function buildSoundIdIndex():Void
+	{
+		soundIdIndex = new Map();
+		for (type in [AssetType.SOUND, AssetType.MUSIC])
+		{
+			var ids:Array<String> = OpenFlAssets.list(type);
+			if (ids == null) continue;
+			for (id in ids)
+				soundIdIndex.set(id.toLowerCase(), id);
+		}
+	}
+
+	static function resolveSoundId(file:String):String
+	{
+		if (OpenFlAssets.exists(file, SOUND))
+			return file;
+
+		if (soundIdIndex == null)
+			buildSoundIdIndex();
+
+		var dot:Int = file.lastIndexOf('.');
+		var baseName:String = dot > -1 ? file.substr(0, dot) : file;
+		var otherExt:String = SOUND_EXT == 'mp3' ? 'ogg' : 'mp3';
+
+		for (ext in [SOUND_EXT, otherExt])
+		{
+			var found:String = soundIdIndex.get((baseName + '.' + ext).toLowerCase());
+			if (found != null)
+				return found;
+		}
+		return null;
+	}
+	#end
+
 	public static function returnSound(key:String, ?path:String, ?modsAllowed:Bool = true, ?beepOnNull:Bool = true):Sound
 	{
 		var file:String = getPath(Language.getFileTranslation(key) + '.' + SOUND_EXT, SOUND, path, modsAllowed);
@@ -682,8 +696,17 @@ class Paths
 			if (FileSystem.exists(file) && !FileSystem.isDirectory(file))
 				result = Sound.fromFile(file);
 			#end
+			#if html5
+			if (result == null)
+			{
+				var id:String = resolveSoundId(file);
+				if (id != null)
+					result = OpenFlAssets.getSound(id);
+			}
+			#else
 			if (result == null && OpenFlAssets.exists(file, SOUND))
 				result = OpenFlAssets.getSound(file);
+			#end
 		}
 		catch (e:Dynamic)
 		{
@@ -692,7 +715,17 @@ class Paths
 		if (result == null)
 		{
 			reportAssetProblem('SOUND', key, 'not found: ' + file);
+			#if html5
+			// Never play the Flixel beep on the web: log the missing file once and stay silent instead.
+			if (!missingSounds.exists(file))
+			{
+				missingSounds.set(file, true);
+				trace('[Paths] Sound not found in the HTML5 manifest: ' + file + ' (key: ' + key + ')');
+			}
+			return null;
+			#else
 			return beepOnNull ? FlxAssets.getSound('flixel/sounds/beep') : null;
+			#end
 		}
 		currentTrackedSounds.set(file, result);
 		localTrackedAssets.push(file);
@@ -726,9 +759,6 @@ class Paths
 
 	static public function modFolders(key:String)
 	{
-		// Resolve the active mod first. On Android, exact-case checks can fail
-		// even when the file exists, and falling back to mods/<key> loses the
-		// active mod's directory entirely.
 		if (Mods.currentModDirectory != null && Mods.currentModDirectory.length > 0)
 		{
 			var fileToCheck:String = mods(Mods.currentModDirectory + '/' + key);
@@ -815,8 +845,6 @@ class Paths
 		if (spr == null || folderOrImg == null) return;
 		try
 		{
-			// The installed FlxAnimate exposes a single-argument loadAtlas method.
-			// Keep the original source instead of converting a folder to FlxGraphic.
 			spr.loadAtlas(folderOrImg);
 		}
 		catch (e:Dynamic)

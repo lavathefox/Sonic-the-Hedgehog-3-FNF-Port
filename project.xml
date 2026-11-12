@@ -6,6 +6,7 @@
     <set name="APP_ID" value="0x0100f6c013bbc000" />
     <set name="SWF_VERSION" value="11.8" />
 
+    <define name="CONSOLE_BUILD" if="switch" />
     <define name="SWITCH_BUILD" if="switch" />
 
     <!-- Features are opt-in by platform: browser builds avoid native dependencies. -->

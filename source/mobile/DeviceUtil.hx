@@ -1,98 +1,80 @@
 package mobile;
 
+import mobile.backend.HapticsUtil;
+
 #if android
 import lime.system.JNI;
 #end
 
-/**
- * Android-only device features (vibration and keep screen on), done through
- * project/DeviceHelper.java. On other platforms every function does nothing.
- *
- * If the Java file is not part of the build, the calls fail once, print a
- * message and are skipped from then on, so the game never crashes because of it.
- */
 class DeviceUtil
 {
 	#if android
 	static inline var HELPER:String = 'me/funkin/sonic3/DeviceHelper';
 
-	static var vibrateMethod:Dynamic = null;
-	static var keepScreenMethod:Dynamic = null;
-	static var brightnessMethod:Dynamic = null;
-	static var unavailable:Bool = false;
+	static var methods:Map<String, Dynamic> = new Map();
+	static var broken:Map<String, Bool> = new Map();
 	#end
 
-	/** Vibrates for the given time in milliseconds. */
 	public static function vibrate(milliseconds:Int):Void
 	{
-		#if android
-		if (unavailable || milliseconds <= 0)
+		if (milliseconds <= 0)
 			return;
 
+		#if (android || ios)
+		HapticsUtil.vibrate(milliseconds, 1, true);
+		#elseif html5
 		try
 		{
-			if (vibrateMethod == null)
-				vibrateMethod = JNI.createStaticMethod(HELPER, 'vibrate', '(I)V');
-
-			vibrateMethod(milliseconds);
+			js.Browser.navigator.vibrate(milliseconds);
 		}
-		catch (e:Dynamic)
-		{
-			unavailable = true;
-			trace('DeviceUtil: vibration is not available -> ' + e);
-		}
+		catch (e:Dynamic) {}
 		#end
 	}
 
-	/** One short pulse, with the strength chosen in the VIBRATION option. */
 	public static function tap():Void
 	{
-		#if android
-		vibrate(AndroidOptions.vibrationMs());
+		#if (android || ios)
+		HapticsUtil.tap();
 		#end
 	}
 
-	/** Sets the screen brightness from 0 to 1. A negative value gives control back to the phone (automatic). */
 	public static function setBrightness(value:Float):Void
 	{
 		#if android
-		if (unavailable)
-			return;
-
-		try
-		{
-			if (brightnessMethod == null)
-				brightnessMethod = JNI.createStaticMethod(HELPER, 'setBrightness', '(F)V');
-
-			brightnessMethod(value);
-		}
-		catch (e:Dynamic)
-		{
-			unavailable = true;
-			trace('DeviceUtil: brightness is not available -> ' + e);
-		}
+		callHelper('setBrightness', '(F)V', [value]);
 		#end
 	}
 
-	/** Stops the screen from turning off while the game is open. */
 	public static function setKeepScreenOn(value:Bool):Void
 	{
 		#if android
-		if (unavailable)
+		callHelper('setKeepScreenOn', '(Z)V', [value]);
+		#end
+	}
+
+	#if android
+	static function callHelper(name:String, signature:String, args:Array<Dynamic>):Void
+	{
+		if (broken.exists(name))
 			return;
 
 		try
 		{
-			if (keepScreenMethod == null)
-				keepScreenMethod = JNI.createStaticMethod(HELPER, 'setKeepScreenOn', '(Z)V');
+			var method:Dynamic = methods.get(name);
 
-			keepScreenMethod(value);
+			if (method == null)
+			{
+				method = JNI.createStaticMethod(HELPER, name, signature);
+				methods.set(name, method);
+			}
+
+			Reflect.callMethod(null, method, args);
 		}
 		catch (e:Dynamic)
 		{
-			unavailable = true;
-			trace('DeviceUtil: keep screen on is not available -> ' + e);
+			broken.set(name, true);
+			trace('DeviceUtil: "$name" is not available -> ' + e);
 		}
-		#end
 	}
+	#end
 }

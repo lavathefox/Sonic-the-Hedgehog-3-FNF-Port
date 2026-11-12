@@ -36,6 +36,61 @@ class PlatformUtil
 
 	public static inline var hasKeyboard:Bool = #if (mobile || CONSOLE_BUILD) false #else true #end;
 
+	public static inline var DATA_DIR:String = #if SWITCH_BUILD 'sdmc:/switch/Sonic3-FNF-Port' #else '.' #end;
+
+	static inline function hasDevice(path:String):Bool
+		return path.indexOf(':/') > 0;
+
+	static function stripDotSlash(path:String):String
+	{
+		while (StringTools.startsWith(path, './'))
+			path = path.substr(2);
+		return path;
+	}
+
+	#if SWITCH_BUILD
+	static final SD_FOLDERS:Array<String> = ['mods', 'saves', 'crash', 'shaderCrashes'];
+
+	static final SD_FILES:Array<String> = ['modsList.txt', 'asset_problems.txt'];
+
+	static function isSdPath(path:String):Bool
+	{
+		if (SD_FILES.indexOf(path) != -1)
+			return true;
+		for (folder in SD_FOLDERS)
+		{
+			if (path == folder || StringTools.startsWith(path, folder + '/'))
+				return true;
+		}
+		return false;
+	}
+	#end
+
+	public static function toFileSystemPath(path:String):String
+	{
+		#if SWITCH_BUILD
+		if (path == null || path == '' || hasDevice(path))
+			return path;
+		path = stripDotSlash(path);
+		if (isSdPath(path))
+			return DATA_DIR + '/' + path;
+		return 'romfs:/' + path;
+		#else
+		return path;
+		#end
+	}
+
+	public static function toWritablePath(path:String):String
+	{
+		#if SWITCH_BUILD
+		if (path == null || path == '' || hasDevice(path))
+			return path;
+		return DATA_DIR + '/' + stripDotSlash(path);
+		#else
+		return path;
+		#end
+	}
+
 	public static function getWritableDir():String
 	{
 		#if sys
@@ -45,6 +100,8 @@ class PlatformUtil
 			return lime.system.System.applicationStorageDirectory;
 			#elseif ios
 			return lime.system.System.documentsDirectory;
+			#elseif SWITCH_BUILD
+			return DATA_DIR + '/';
 			#else
 			return haxe.io.Path.addTrailingSlash(Sys.getCwd());
 			#end

@@ -1,0 +1,148 @@
+name: Build Switch
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: Build type
+        type: choice
+        default: release
+        options:
+          - release
+          - debug
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: switch-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HAXE_VERSION: 4.3.4
+  # Branch do lime-nx baseada no Lime de 2 jul 2026 (a mesma que o Switch Funkin' usa).
+  LIME_NX_REF: lime-9778682
+  APP_NAME: Sonic3-FNF-Port
+  BUILD_TYPE: ${{ inputs.build_type || 'release' }}
+
+jobs:
+  build-switch:
+    name: Build Switch (.nro)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    container: devkitpro/devkita64:latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux packages
+        run: |
+          apt-get update
+          apt-get install -y wget git neko libgc-dev \
+            libgl1-mesa-dev libglu1-mesa-dev g++-multilib gcc-multilib libasound2-dev \
+            libx11-dev libxext-dev libxi-dev libxrandr-dev libxinerama-dev libpulse-dev \
+            libmbedtls-dev libpng-dev libturbojpeg-dev libuv1-dev libvorbis-dev libvulkan-dev
+
+      - name: Install Haxe
+        run: |
+          set -euo pipefail
+          wget -q "https://github.com/HaxeFoundation/haxe/releases/download/${HAXE_VERSION}/haxe-${HAXE_VERSION}-linux64.tar.gz"
+          mkdir haxe_temp
+          tar -xf "haxe-${HAXE_VERSION}-linux64.tar.gz" -C haxe_temp
+          cp -r haxe_temp/haxe_*/* /usr/local/bin/
+          mkdir -p ~/haxelib
+          haxelib --always --quiet setup ~/haxelib
+          haxe --version
+
+      - name: Install devkitPro libraries
+        run: |
+          dkp-pacman -Sy --noconfirm || echo "::warning::Could not sync devkitPro repos, using the existing cache"
+          # Lista minima. Para video (HxSwitchVideo) adicione: switch-dav1d switch-ffmpeg switch-libarchive
+          # switch-libass switch-libexpat switch-libfribidi switch-libmpv switch-libplacebo switch-libzstd switch-lz4
+          dkp-pacman -S --needed --noconfirm \
+            switch-bzip2 switch-cmake switch-curl switch-flac \
+            switch-freetype switch-glad switch-glm switch-harfbuzz \
+            switch-libdrm_nouveau switch-libjpeg-turbo switch-libmodplug \
+            switch-libogg switch-libopus switch-libpng switch-libvorbis \
+            switch-libvorbisidec switch-libwebp switch-mesa switch-mpg123 \
+            switch-openal-soft switch-opusfile switch-pkg-config switch-sdl2 \
+            switch-sdl2_gfx switch-sdl2_image switch-sdl2_mixer \
+            switch-sdl2_net switch-sdl2_ttf switch-tools switch-zlib \
+            switch-liblua51
+
+      - name: Install Haxe libraries
+        run: |
+          set -euo pipefail
+          haxelib --always --quiet install flixel 5.6.1
+          haxelib --always --quiet install flixel-addons 3.2.2
+          haxelib --always --quiet install flixel-tools 1.5.1
+          haxelib --always --quiet install hscript-iris 1.1.3
+          haxelib --always --quiet install tjson 1.4.0
+          haxelib --always --quiet install openfl 9.3.3
+          haxelib --always --quiet install format
+          haxelib --always --quiet install hxp
+          haxelib --always --quiet git flxanimate https://github.com/Dot-Stuff/flxanimate 768740a56b26aa0c072720e0d1236b94afe68e3e
+          haxelib --always --quiet git linc_luajit https://github.com/superpowers04/linc_luajit 1906c4a96f6bb6df66562b3f24c62f4c5bba14a7
+          haxelib --always --quiet git funkin.vis https://github.com/FunkinCrew/funkVis 22b1ce089dd924f15cdc4632397ef3504d464e90
+          haxelib --always --quiet git grig.audio https://gitlab.com/haxe-grig/grig.audio.git cbf91e2180fd2e374924fe74844086aab7891666
+
+          haxelib --always --quiet git hxcpp https://github.com/Slushi-Github/hxcpp-nx.git
+          (cd ~/haxelib/hxcpp/git/tools/hxcpp && haxe compile.hxml)
+          haxelib --always --quiet git lime https://github.com/Slushi-Github/lime-nx.git "$LIME_NX_REF"
+          haxelib --always --quiet git hx_libnx https://github.com/Slushi-Github/hx_libnx.git
+          haxelib list
+
+      - name: Build Lime for Switch
+        run: haxelib run lime rebuild switch
+
+      - name: Compile for Switch
+        run: |
+          set -euo pipefail
+          flag="-release"
+          [ "$BUILD_TYPE" = "debug" ] && flag="-debug"
+          haxelib run lime build project.xml switch "$flag"
+
+      - name: Verify and package
+        id: package
+        run: |
+          set -euo pipefail
+          bin="export/$BUILD_TYPE/switch/bin"
+          if ! ls "$bin"/*.nro > /dev/null 2>&1; then
+            echo "::error::No .nro was produced in $bin"
+            find export -maxdepth 4 | head -50 || true
+            exit 1
+          fi
+          mkdir -p dist
+          cp "$bin"/*.nro dist/
+          cd dist && sha256sum *.nro > SHA256SUMS.txt
+          echo "size=$(du -h *.nro | cut -f1 | head -n 1)" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Switch (.nro)"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Type | $BUILD_TYPE |"
+            echo "| lime-nx | $LIME_NX_REF |"
+            echo "| Size | ${{ steps.package.outputs.size || 'n/a' }} |"
+            echo ""
+            echo "Copie o .nro para \`sd:/switch/\` e abra pelo Homebrew Menu."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-switch
+          path: dist/*
+          if-no-files-found: error
+          retention-days: ${{ startsWith(github.ref, 'refs/tags/v') && 90 || 14 }}

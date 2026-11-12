@@ -12,7 +12,6 @@ fi
 rm -rf "$OUT"
 mkdir -p "$OUT/shared" "$OUT/songs" "$OUT/fonts" "$CACHE"
 
-# stage <mod subfolder> <destination inside html5_stage>
 stage() {
   if [ -d "$MOD/$1" ]; then
     mkdir -p "$OUT/$2"
@@ -30,7 +29,6 @@ stage music shared/music
 stage fonts fonts
 stage songs songs
 
-# Without the mods folder the game reads the week list from weeks/weekList.txt.
 mkdir -p "$OUT/shared/weeks"
 list="$OUT/shared/weeks/weekList.txt"
 : > "$list"
@@ -39,7 +37,6 @@ for f in "$OUT"/shared/weeks/*.json; do
   basename "$f" .json >> "$list"
 done
 
-# Every .ogg gets an .mp3 next to it, converted once and then reused from the cache.
 find assets "$OUT" -type f -name '*.ogg' -print0 | xargs -0 -P "$(nproc 2>/dev/null || echo 2)" -I{} sh -c '
   f="$1"; out="${f%.ogg}.mp3"; cached="$CACHE/$out"
   [ -f "$out" ] && exit 0
@@ -53,5 +50,17 @@ find assets "$OUT" -type f -name '*.ogg' -print0 | xargs -0 -P "$(nproc 2>/dev/n
   fi
   cp "$cached" "$out"
 ' _ {}
+
+missing=0
+while IFS= read -r -d '' f; do
+  if [ ! -f "${f%.ogg}.mp3" ]; then
+    echo "ERROR: no .mp3 was generated for: $f" >&2
+    missing=1
+  fi
+done < <(find assets "$OUT" -type f -name '*.ogg' -print0)
+if [ "$missing" -ne 0 ]; then
+  echo "ERROR: install ffmpeg (with libmp3lame) and run this script again." >&2
+  exit 1
+fi
 
 echo "HTML5 assets staged in $OUT/"

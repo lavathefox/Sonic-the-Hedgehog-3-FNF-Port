@@ -6,8 +6,8 @@ class LetterPath
 		':' => 'colon2',
 		'#' => 'hash',
 		'/' => 'slash',
-		'\u00C9' => '\u00E9', // É -> é.png (the file name is lowercase)
-		'\u00CA' => '\u00EA' // Ê -> ê.png (the file name is lowercase)
+		'\u00C9' => '\u00E9',
+		'\u00CA' => '\u00EA' 
 	];
 
 	public static function get(char:String):String

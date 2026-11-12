@@ -1,15 +1,20 @@
 package backend;
 
-#if sys
 import haxe.io.Bytes;
 import openfl.display.BitmapData;
 import openfl.media.Sound;
+#if sys
 import sys.FileSystem;
 import sys.io.File;
+import sys.io.FileOutput;
+#elseif js
+import backend.web.FileSystem;
+import backend.web.File;
+#end
 
+#if (sys || js)
 class FS
 {
-
 	public static inline function exists(path:String):Bool
 		return FileSystem.exists(PlatformUtil.toFileSystemPath(path));
 
@@ -31,11 +36,31 @@ class FS
 	public static inline function loadSound(path:String):Sound
 		return Sound.fromFile(PlatformUtil.toFileSystemPath(path));
 
+	public static inline function size(path:String):Int
+		return FileSystem.stat(PlatformUtil.toFileSystemPath(path)).size;
+
 	public static inline function saveContent(path:String, content:String):Void
 		File.saveContent(PlatformUtil.toWritablePath(path), content);
 
 	public static inline function saveBytes(path:String, bytes:Bytes):Void
 		File.saveBytes(PlatformUtil.toWritablePath(path), bytes);
+
+	public static inline function deleteFile(path:String):Void
+		FileSystem.deleteFile(PlatformUtil.toWritablePath(path));
+
+	public static inline function deleteDirectory(path:String):Void
+		FileSystem.deleteDirectory(PlatformUtil.toWritablePath(path));
+
+	public static inline function rename(path:String, newPath:String):Void
+		FileSystem.rename(PlatformUtil.toWritablePath(path), PlatformUtil.toWritablePath(newPath));
+
+	#if sys
+	public static inline function openWrite(path:String, binary:Bool = true):FileOutput
+		return File.write(PlatformUtil.toWritablePath(path), binary);
+
+	public static inline function openAppend(path:String, binary:Bool = true):FileOutput
+		return File.append(PlatformUtil.toWritablePath(path), binary);
+	#end
 
 	public static function createDirectory(path:String):Void
 	{

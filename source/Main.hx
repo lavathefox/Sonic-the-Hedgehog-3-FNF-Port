@@ -86,6 +86,9 @@ class Main extends Sprite
     public function new()
     {
         super();
+        #if SWITCH_BUILD
+        backend.SwitchHeap.init();
+        #end
         if (instance != null) return;
         instance = this;
         startupTime = Timer.stamp();

@@ -189,15 +189,7 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 
 	function getLetterPath(char:String):String
 	{
-		switch (char.toUpperCase())
-		{
-			case ':':
-				return 'hud/letershud/colon2';
-			case '/':
-				return 'hud/letershud/slash';
-			default:
-				return 'hud/letershud/' + char.toUpperCase();
-		}
+		return LetterPath.get(char);
 	}
 
 	function getLetterGraphic(char:String):FlxGraphic
@@ -531,7 +523,7 @@ class SonicPreferencesSubstate extends MusicBeatSubstate
 		}
 		catch (e:Dynamic)
 		{
-			trace('Erro ao ler pasta "' + directory + '": ' + e);
+			trace('Error reading folder "' + directory + '": ' + e);
 		}
 		#end
 

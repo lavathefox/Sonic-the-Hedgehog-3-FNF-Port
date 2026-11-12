@@ -321,12 +321,7 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 
 	function getLetterPath(char:String):String
 	{
-		char = char.toUpperCase();
-
-		if (char == ':')
-			return 'hud/letershud/colon2';
-
-		return 'hud/letershud/' + char;
+		return LetterPath.get(char);
 	}
 
 	function getLetterWidth(char:String, scale:Float):Float

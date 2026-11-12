@@ -169,10 +169,7 @@ class SonicGameplayState extends MusicBeatSubstate
 
     function getLetterPath(character:String):String
     {
-        var upper = character.toUpperCase();
-        if (upper == ':') return 'hud/letershud/colon2';
-        if (upper == '-') return 'hud/letershud/minus';
-        return 'hud/letershud/' + upper;
+        return LetterPath.get(character);
     }
 
     function getLetterWidth(character:String):Float

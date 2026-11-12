@@ -9,8 +9,13 @@ class PlatformUtil
 		#elseif android 'android'
 		#elseif ios 'ios'
 		#elseif html5 'html5'
+		#elseif CONSOLE_BUILD 'console'
 		#else 'unknown'
 		#end;
+
+	public static inline var isConsole:Bool = #if CONSOLE_BUILD true #else false #end;
+
+	public static inline var gamepadOnly:Bool = #if CONSOLE_BUILD true #else false #end;
 
 	public static inline var isDesktop:Bool = #if desktop true #else false #end;
 	public static inline var isMobile:Bool = #if mobile true #else false #end;
@@ -29,7 +34,7 @@ class PlatformUtil
 
 	public static inline var canQuit:Bool = #if (html5 || ios) false #else true #end;
 
-	public static inline var hasKeyboard:Bool = #if mobile false #else true #end;
+	public static inline var hasKeyboard:Bool = #if (mobile || CONSOLE_BUILD) false #else true #end;
 
 	public static function getWritableDir():String
 	{

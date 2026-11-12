@@ -1,11 +1,5 @@
 package options;
 
-/**
- * Maps a character to its image in images/hud/letershud.
- *
- * File names must be safe for URLs: on the HTML5 target a '#' in a file name is read as a
- * URL fragment, so the asset cannot be loaded. That is why '#' is stored as "hash.png".
- */
 class LetterPath
 {
 	static final names:Map<String, String> = [

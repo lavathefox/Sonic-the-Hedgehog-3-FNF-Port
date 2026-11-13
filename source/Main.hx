@@ -137,6 +137,10 @@ class Main extends Sprite
         var startState:Class<FlxState> = needsPermission ? states.PermissionState : game.initialState;
         addChild(new FlxGame(game.width, game.height, startState, game.framerate, game.framerate, game.skipSplash, game.startFullscreen));
 
+        #if PC_OPTIONS
+        options.pc.PCOptions.init();
+        #end
+
         setupStage();
         setupFPS();
         setupWindow();

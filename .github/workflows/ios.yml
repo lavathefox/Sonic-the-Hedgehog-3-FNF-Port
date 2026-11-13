@@ -1,0 +1,157 @@
+name: Build iOS
+
+# Builds an UNSIGNED .ipa (no Apple developer account needed on the CI).
+# Install it on a device by re-signing it with AltStore, Sideloadly or similar.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  HAXE_VERSION: 4.3.4
+  APP_NAME: Sonic3-FNF-Port
+  HXCPP_COMPILE_CACHE: ${{ github.workspace }}/.hxcpp_cache
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build iOS (.ipa)
+    runs-on: macos-14
+    timeout-minutes: 150
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read version
+        id: info
+        run: |
+          set -euo pipefail
+          version=$(sed -n 's/.*<app[^>]*version="\([^"]*\)".*/\1/p' project.xml | head -n 1)
+          [ -n "$version" ] || version="0.0.0"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Set up Haxe
+        uses: krdlab/setup-haxe@v2
+        with:
+          haxe-version: ${{ env.HAXE_VERSION }}
+
+      - name: Cache Haxe libraries (includes the Lime iOS binaries)
+        id: haxelib-cache
+        uses: actions/cache@v4
+        with:
+          path: .haxelib
+          key: haxelib-ios-${{ env.HAXE_VERSION }}-${{ hashFiles('.github/workflows/ios.yml') }}
+
+      - name: Restore compiled objects
+        uses: actions/cache/restore@v4
+        with:
+          path: .hxcpp_cache
+          key: hxcpp-ios-${{ github.sha }}
+          restore-keys: |
+            hxcpp-ios-
+
+      - name: Set up Haxelib
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/.haxelib"
+          haxelib setup "$GITHUB_WORKSPACE/.haxelib"
+
+      - name: Install Haxe dependencies
+        if: steps.haxelib-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          exec < /dev/null
+          lib() {
+            local attempt=1
+            while [ "$attempt" -le 3 ]; do
+              if haxelib --always "$@"; then return 0; fi
+              echo "::warning::haxelib $* failed, retrying"
+              sleep 5
+              attempt=$((attempt + 1))
+            done
+            echo "::error::haxelib $* failed after 3 attempts"
+            return 1
+          }
+          # Same versions as build.yml. Lua, video and Discord are not used on iOS.
+          lib install hxcpp 4.3.2
+          lib install lime 8.1.2
+          lib install openfl 9.3.3
+          lib install flixel 5.6.1
+          lib install flixel-addons 3.2.2
+          lib install flixel-tools 1.5.1
+          lib install hscript-iris 1.1.3
+          lib install tjson 1.4.0
+          lib set hxcpp 4.3.2
+          lib set lime 8.1.2
+          lib set openfl 9.3.3
+          lib git flxanimate https://github.com/Dot-Stuff/flxanimate 768740a56b26aa0c072720e0d1236b94afe68e3e
+          lib git funkin.vis https://github.com/FunkinCrew/funkVis 22b1ce089dd924f15cdc4632397ef3504d464e90
+          lib git grig.audio https://gitlab.com/haxe-grig/grig.audio.git cbf91e2180fd2e374924fe74844086aab7891666
+
+      - name: Show installed libraries
+        run: haxelib list < /dev/null
+
+      - name: Build Lime native libraries for iOS
+        timeout-minutes: 60
+        run: |
+          set -euo pipefail
+          exec < /dev/null
+          # The compiled libraries live inside .haxelib, so they are cached with it.
+          if ! find .haxelib/lime -path '*ndll/iPhone*' -name '*.a' | grep -q .; then
+            haxelib run lime rebuild ios -arm64 -nocolor
+          else
+            echo "Lime iOS libraries already built (cache hit)."
+          fi
+
+      - name: Generate the Xcode project
+        timeout-minutes: 30
+        run: |
+          set -euo pipefail
+          exec < /dev/null
+          haxelib run lime update ios -release -final -nocolor
+          find export/release/ios -maxdepth 2 -name '*.xcodeproj'
+
+      - name: Build the app (code signing disabled)
+        timeout-minutes: 90
+        run: |
+          set -euo pipefail
+          exec < /dev/null
+          proj=$(find export/release/ios -maxdepth 2 -name '*.xcodeproj' | head -n 1)
+          [ -n "$proj" ] || { echo "::error::No .xcodeproj was generated"; exit 1; }
+          xcodebuild -project "$proj" -alltargets -configuration Release -sdk iphoneos -arch arm64 \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tail -n 200
+
+      - name: Package the .ipa
+        run: |
+          set -euo pipefail
+          app=$(find export/release/ios -type d -name '*.app' -path '*Release-iphoneos*' | head -n 1)
+          [ -n "$app" ] || { echo "::error::No .app was produced"; find export/release/ios -maxdepth 4 | head -50; exit 1; }
+          echo "App bundle: $app"
+          rm -rf ipa && mkdir -p ipa/Payload
+          cp -R "$app" ipa/Payload/
+          (cd ipa && zip -qry "../${APP_NAME}-${VERSION}-unsigned.ipa" Payload)
+          ls -la ./*.ipa
+
+      - name: Save compiled objects
+        uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .hxcpp_cache
+          key: hxcpp-ios-${{ github.sha }}
+
+      - name: Upload .ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.APP_NAME }}-ios-unsigned
+          path: ${{ env.APP_NAME }}-${{ env.VERSION }}-unsigned.ipa
+          if-no-files-found: error

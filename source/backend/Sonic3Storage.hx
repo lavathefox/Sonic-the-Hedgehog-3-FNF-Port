@@ -10,31 +10,16 @@ import openfl.utils.Assets;
 import lime.system.JNI;
 #end
 
-/**
- * Creates the ".Sonic3Funkin" storage folder (with a "mods" folder inside)
- * on the Android internal storage and can copy the mods bundled in the APK
- * into it.
- *
- * Usage (call once at startup, before the game reads any mod files):
- *
- *   Sonic3Storage.ensureFolders(true);
- *   Sonic3Storage.syncBundledMods(); // copies the mods bundled in the APK when needed
- *
- * Notes:
- * - Writing to /storage/emulated/0 needs the storage permission
- *   ("All files access" on Android 11+). Without it, every function
- *   here fails safely and returns false / 0 instead of crashing.
- * - On non-Android targets nothing is created; the working directory is used.
- */
 class Sonic3Storage
 {
 	public static inline var FOLDER_NAME:String = '.Sonic3Funkin';
 
-	/** Root folder, always ending with "/". */
 	public static function getRoot():String
 	{
 		#if android
 		return '/storage/emulated/0/' + FOLDER_NAME + '/';
+		#elseif ios
+        return haxe.io.Path.addTrailingSlash(lime.system.System.documentsDirectory);
 		#elseif sys
 		return Sys.getCwd();
 		#else
@@ -48,11 +33,6 @@ class Sonic3Storage
 		return getRoot() + 'mods/';
 	}
 
-	/**
-	 * True when the app may write to the shared storage
-	 * ("All files access" on Android 11+, the storage permission below that).
-	 * Needs project/StorageHelper.java to be part of the Android build.
-	 */
 	public static function hasPermission():Bool
 	{
 		#if android
@@ -71,11 +51,6 @@ class Sonic3Storage
 		#end
 	}
 
-	/**
-	 * Opens the system screen (Android 11+) or dialog (Android 6-10) where the
-	 * user grants storage access. Poll hasPermission() afterwards (PermissionState
-	 * does it), so the game can continue without being relaunched.
-	 */
 	public static function requestPermission():Void
 	{
 		#if android
@@ -91,14 +66,6 @@ class Sonic3Storage
 		#end
 	}
 
-	/**
-	 * Creates the root folder and the "mods" folder inside it.
-	 *
-	 * @param useAsWorkingDirectory If true, also calls Sys.setCwd() on the root
-	 *        folder. Leave it false if your Android port already sets the
-	 *        working directory in its own StorageUtil.
-	 * @return true if both folders exist when the function returns.
-	 */
 	public static function ensureFolders(useAsWorkingDirectory:Bool = false):Bool
 	{
 		#if (android && sys)
@@ -123,7 +90,6 @@ class Sonic3Storage
 		#end
 	}
 
-	/** File types that are read as text when their bytes come back empty. */
 	static final TEXT_EXTENSIONS:Array<String> = ['json', 'xml', 'txt', 'lua', 'hx', 'hxc', 'frag', 'vert', 'csv'];
 
 	static function isTextFile(id:String):Bool
@@ -131,24 +97,6 @@ class Sonic3Storage
 		return TEXT_EXTENSIONS.contains(Path.extension(id).toLowerCase());
 	}
 
-	/**
-	 * Copies every asset whose id starts with "mods/" (plus "modsList.txt")
-	 * from the APK into the .Sonic3Funkin folder.
-	 *
-	 * - Existing files are kept, unless they are empty (an empty file in the
-	 *   mods folder would hide the real one and break JSON/XML parsing).
-	 * - Bundled files that are empty or cannot be read are skipped instead of
-	 *   being written as 0-byte files.
-	 * - Text files that come back empty as bytes are read again as text.
-	 * - A summary is written to .Sonic3Funkin/copy_report.txt after every copy,
-	 *   so problems can be read with a file manager.
-	 *
-	 * This only finds something if the mods are embedded in the APK
-	 * (for example with <assets path="mods" ... /> in project.xml).
-	 *
-	 * @param overwrite Replace files that already exist.
-	 * @return how many files were copied.
-	 */
 	public static function copyBundledMods(overwrite:Bool = false):Int
 	{
 		#if (android && sys)
@@ -161,7 +109,6 @@ class Sonic3Storage
 
 		for (id in Assets.list())
 		{
-			// Mods live under "mods/"; "modsList.txt" (enabled mods) sits next to that folder.
 			if (!StringTools.startsWith(id, 'mods/') && id != 'modsList.txt')
 				continue;
 
@@ -175,7 +122,6 @@ class Sonic3Storage
 
 				var bytes = Assets.getBytes(id);
 
-				// Some text assets come back empty as bytes: read them as text instead.
 				if ((bytes == null || bytes.length == 0) && isTextFile(id))
 				{
 					var text:String = Assets.getText(id);
@@ -213,7 +159,6 @@ class Sonic3Storage
 
 		writeCopyReport(listed, copied, problems);
 
-		// New files were written: forget the folder listings cached by the case-insensitive lookup in Paths.
 		#if MODS_ALLOWED
 		Paths.clearDirectoryCache();
 		#end
@@ -225,7 +170,6 @@ class Sonic3Storage
 		#end
 	}
 
-	/** Writes .Sonic3Funkin/copy_report.txt with the result of the last copy. */
 	static function writeCopyReport(listed:Int, copied:Int, problems:Array<String>):Void
 	{
 		#if sys
@@ -253,16 +197,8 @@ class Sonic3Storage
 		#end
 	}
 
-	/** Raise this number whenever example_mods changes and installed games must receive the new files. */
 	public static inline var BUNDLE_REVISION:Int = 3;
-
-	/**
-	 * Copies the bundled mods when needed: on the first run, when the mods folder
-	 * is empty, or when BUNDLE_REVISION was raised (that case replaces existing files).
-	 * Remembers the revision in .Sonic3Funkin/.mods_revision.
-	 *
-	 * @return how many files were copied.
-	 */
+	
 	public static function syncBundledMods():Int
 	{
 		#if (android && sys)
@@ -292,8 +228,6 @@ class Sonic3Storage
 
 		var copied:Int = copyBundledMods(revisionChanged);
 
-		// Only remember the revision when something was really copied,
-		// so a build without bundled mods does not block a later one.
 		if (copied > 0)
 		{
 			try
@@ -309,7 +243,6 @@ class Sonic3Storage
 		#end
 	}
 
-	/** True when the mods folder is missing or has nothing inside it. */
 	public static function isModsFolderEmpty():Bool
 	{
 		#if sys
@@ -327,7 +260,6 @@ class Sonic3Storage
 		#end
 	}
 
-	/** Creates a directory and all of its missing parents. */
 	static function createDirectory(path:String):Void
 	{
 		#if sys

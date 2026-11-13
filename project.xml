@@ -7,6 +7,8 @@
     <set name="SWF_VERSION" value="11.8" />
 
     <define name="CONSOLE_BUILD" if="switch" />
+    <define name="TOUCH_CONTROLS" if="android || ios" />
+    <define name="PC_OPTIONS" if="desktop" unless="switch" />
     <define name="SWITCH_BUILD" if="switch" />
 
     <!-- Features are opt-in by platform: browser builds avoid native dependencies. -->
@@ -38,9 +40,6 @@
         <set name="LIME_OPENGL" value="1" />
 
         <haxelib name="hx_libnx" />
-
-        <!-- Para `lime run switch` (envio por rede via nxlink). Troque pelo IP do seu Switch. -->
-        <!-- <config:switch ip="192.168.x.x" /> -->
 
         <config:switch libs="lua5.1" if="LUA_ALLOWED" />
     </section>

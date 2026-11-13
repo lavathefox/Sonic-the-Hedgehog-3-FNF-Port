@@ -155,8 +155,12 @@ class Sonic3Options extends MusicBeatState
 				];
 		}
 
-		#if android
+		#if TOUCH_CONTROLS
 		categories.push('Mobile Options');
+		#end
+
+		#if PC_OPTIONS
+		categories.push('PC Options');
 		#end
 	}
 
@@ -374,14 +378,18 @@ class Sonic3Options extends MusicBeatState
 			case 6:
 				openLanguage();
 
-			#if android
+			#if TOUCH_CONTROLS
 			case 7:
 				openMobileOptions();
+			#end
+
+			#if PC_OPTIONS
+			case 7:
+				openPCOptions();
 			#end
 		}
 	}
 
-	/** Shared by every category: plays the sound, locks this menu, hides it and opens the substate. */
 	function openOptionsSubState(substate:MusicBeatSubstate):Void
 	{
 		if (subStateOpen)
@@ -424,10 +432,17 @@ class Sonic3Options extends MusicBeatState
 		openOptionsSubState(new options.SonicLanguageSubstate());
 	}
 
-	#if android
+	#if TOUCH_CONTROLS
 	function openMobileOptions():Void
 	{
 		openOptionsSubState(new options.SonicMobileOptionsSubstate());
+	}
+	#end
+
+	#if PC_OPTIONS
+	function openPCOptions():Void
+	{
+		openOptionsSubState(new options.pc.SonicPCOptionsSubstate());
 	}
 	#end
 

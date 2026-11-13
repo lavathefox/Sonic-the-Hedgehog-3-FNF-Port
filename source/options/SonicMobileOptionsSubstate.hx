@@ -13,7 +13,6 @@ import backend.Paths;
 import mobile.AndroidOptions;
 import mobile.DeviceUtil;
 
-/** One line of the menu: its name, how to read its value as text, and how to change it. */
 typedef MobileOptionEntry =
 {
 	var label:String; // already translated to the current language
@@ -23,7 +22,6 @@ typedef MobileOptionEntry =
 
 class SonicMobileOptionsSubstate extends MusicBeatSubstate
 {
-	// The list shows this many options at once and scrolls when there are more.
 	static inline var VISIBLE_ROWS:Int = 4;
 
 	var entries:Array<MobileOptionEntry> = [];
@@ -54,8 +52,7 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 	{
 		super.create();
 
-		// Reads the saved options before the menu shows them.
-		AndroidOptions.loadSaved();
+		loadOptions();
 
 		language = getCurrentLanguage();
 		buildValueTranslations();
@@ -74,7 +71,7 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		background.cameras = [optionsCamera];
 		add(background);
 
-		var title:String = tr('MOBILE OPTIONS', 'OPCOES MOBILE', 'OPCIONES MOVILES');
+		var title:String = getTitle();
 		createTextSprites(title, titleSprites, (FlxG.width - getTextWidth(title, 3)) / 2, 125, 3);
 
 		selectedArrow = new FlxSprite(115, optionY);
@@ -100,7 +97,22 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		MobileControls.update();
 	}
 
-	// ---- Language ----
+	var refreshAllRows:Bool = false;
+
+	function getTitle():String
+	{
+		return tr('MOBILE OPTIONS', 'OPCOES MOBILE', 'OPCIONES MOVILES');
+	}
+
+	function loadOptions():Void
+	{
+		AndroidOptions.loadSaved();
+	}
+
+	function applyOptions():Void
+	{
+		AndroidOptions.apply();
+	}
 
 	function getCurrentLanguage():String
 	{
@@ -119,7 +131,6 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		}
 	}
 
-	/** Picks the text for the current language. No accents: the HUD letters only exist for A-Z. */
 	function tr(en:String, pt:String, es:String):String
 	{
 		switch (language)
@@ -135,10 +146,6 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		}
 	}
 
-	/**
-	 * Translates the value names that come from AndroidOptions (ON, OFF, LOW, HIGH...).
-	 * A name that is not in the list is shown as it is, so nothing breaks if AndroidOptions has others.
-	 */
 	function buildValueTranslations():Void
 	{
 		valueTranslations = new Map();
@@ -148,7 +155,6 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 
 		var pt:Bool = language == 'PORTUGUESE';
 
-		// [english, portuguese, spanish]
 		var words:Array<Array<String>> = [
 			['ON', 'SIM', 'SI'],
 			['OFF', 'NAO', 'NO'],
@@ -191,9 +197,7 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		var translated:String = valueTranslations.get(value.toUpperCase());
 		return translated != null ? translated : value;
 	}
-
-	// ---- The options ----
-
+	
 	function buildEntries():Void
 	{
 		entries = [
@@ -205,17 +209,14 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 				function() return ClientPrefs.data.mobilePauseButton,
 				function(value:Bool) { ClientPrefs.data.mobilePauseButton = value; }),
 
-			// Draws a ring where each finger touches the screen.
 			boolEntry(tr('TOUCH CURSOR', 'CURSOR DE TOQUE', 'CURSOR TACTIL'),
 				function() return ClientPrefs.data.mobileTouchCursor,
 				function(value:Bool) { ClientPrefs.data.mobileTouchCursor = value; }),
 
-			// How visible the arrows and the A/B buttons are.
 			listEntry(tr('CONTROLS OPACITY', 'OPACIDADE BOTOES', 'OPACIDAD BOTONES'), AndroidOptions.OPACITY_NAMES,
 				function() return ClientPrefs.data.mobileControlsOpacity,
 				function(value:Int) { ClientPrefs.data.mobileControlsOpacity = value; }),
 
-			// A short vibration when a control or a lane is touched.
 			listEntry(tr('VIBRATION', 'VIBRACAO', 'VIBRACION'), AndroidOptions.VIBRATION_NAMES,
 				function() return ClientPrefs.data.mobileVibration,
 				function(value:Int)
@@ -224,49 +225,42 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 					DeviceUtil.tap(); // lets the player feel the new strength right away
 				}),
 
-			// Stops the screen from turning off while the game is open.
+			#if !ios
 			boolEntry(tr('KEEP SCREEN ON', 'MANTER TELA LIGADA', 'PANTALLA ENCENDIDA'),
 				function() return ClientPrefs.data.mobileKeepScreenOn,
 				function(value:Bool) { ClientPrefs.data.mobileKeepScreenOn = value; }),
+			#end
 
-			// Look of the touch lanes used during songs (applies on the next song).
 			listEntry(tr('LANE STYLE', 'ESTILO DAS LANES', 'ESTILO DE LANES'), AndroidOptions.LANE_STYLE_NAMES,
 				function() return ClientPrefs.data.mobileLaneStyle,
 				function(value:Int) { ClientPrefs.data.mobileLaneStyle = value; }),
 
-			// How bright a lane flashes when it is touched (applies on the next song).
 			listEntry(tr('LANE OPACITY', 'OPACIDADE LANES', 'OPACIDAD LANES'), AndroidOptions.LANE_OPACITY_NAMES,
 				function() return ClientPrefs.data.mobileLaneOpacity,
 				function(value:Int) { ClientPrefs.data.mobileLaneOpacity = value; }),
 
-			// Size of the on-screen arrows and A/B buttons.
 			listEntry(tr('CONTROLS SIZE', 'TAMANHO BOTOES', 'TAMANO BOTONES'), AndroidOptions.CONTROLS_SIZE_NAMES,
 				function() return ClientPrefs.data.mobileControlsSize,
 				function(value:Int) { ClientPrefs.data.mobileControlsSize = value; }),
 
-			// Swaps the sides: arrows on the right, A/B buttons on the left.
 			boolEntry(tr('LEFT HANDED', 'MODO CANHOTO', 'MODO ZURDO'),
 				function() return ClientPrefs.data.mobileLeftHanded,
 				function(value:Bool) { ClientPrefs.data.mobileLeftHanded = value; }),
 
-			// Screen brightness while the game is open. AUTO = the phone decides.
+			#if !ios
 			listEntry(tr('BRIGHTNESS', 'BRILHO', 'BRILLO'), AndroidOptions.BRIGHTNESS_NAMES,
 				function() return ClientPrefs.data.mobileBrightness,
 				function(value:Int) { ClientPrefs.data.mobileBrightness = value; }),
+			#end
 
-			// ---- New options ----
-
-			// FPS counter in the corner. Uses the normal showFPS pref that already exists.
 			boolEntry(tr('SHOW FPS', 'MOSTRAR FPS', 'MOSTRAR FPS'),
 				function() return ClientPrefs.data.showFPS,
 				function(value:Bool) { ClientPrefs.data.showFPS = value; }),
 
-			// Size of the ring drawn by TOUCH CURSOR.
 			listEntry(tr('TOUCH CURSOR SIZE', 'TAMANHO CURSOR', 'TAMANO CURSOR'), AndroidOptions.TOUCH_CURSOR_SIZE_NAMES,
 				function() return ClientPrefs.data.mobileTouchCursorSize,
 				function(value:Int) { ClientPrefs.data.mobileTouchCursorSize = value; }),
 
-			// A vibration when a note is missed.
 			boolEntry(tr('VIBRATE ON MISS', 'VIBRAR AO ERRAR', 'VIBRAR AL FALLAR'),
 				function() return ClientPrefs.data.mobileVibrateOnMiss,
 				function(value:Bool)
@@ -276,24 +270,32 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 						DeviceUtil.tap();
 				}),
 
-			// The A and B buttons trade places.
 			boolEntry(tr('SWAP A AND B', 'TROCAR A E B', 'INTERCAMBIAR A Y B'),
 				function() return ClientPrefs.data.mobileSwapAB,
 				function(value:Bool) { ClientPrefs.data.mobileSwapAB = value; }),
 
-			// Hides the Android status and navigation bars while the game is open.
+			#if !ios
 			boolEntry(tr('IMMERSIVE MODE', 'MODO IMERSIVO', 'MODO INMERSIVO'),
 				function() return ClientPrefs.data.mobileImmersive,
 				function(value:Bool) { ClientPrefs.data.mobileImmersive = value; }),
+			#end
 
-			// Turns off heavy effects to save battery on weak phones.
 			boolEntry(tr('BATTERY SAVER', 'ECONOMIA BATERIA', 'AHORRO BATERIA'),
 				function() return ClientPrefs.data.mobileBatterySaver,
-				function(value:Bool) { ClientPrefs.data.mobileBatterySaver = value; })
+				function(value:Bool) { ClientPrefs.data.mobileBatterySaver = value; }),
+
+			{
+				label: tr('RESET OPTIONS', 'REINICIAR OPCOES', 'REINICIAR OPCIONES'),
+				getValue: function():String return 'DEFAULT',
+				change: function(direction:Int):Void
+				{
+					AndroidOptions.resetToDefaults();
+					refreshAllRows = true;
+				}
+			}
 		];
 	}
 
-	/** An ON/OFF option. */
 	function boolEntry(label:String, getter:Void->Bool, setter:Bool->Void):MobileOptionEntry
 	{
 		return {
@@ -303,7 +305,6 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		};
 	}
 
-	/** An option that cycles through a list of names. The saved value is the position in the list. */
 	function listEntry(label:String, names:Array<String>, getter:Void->Int, setter:Int->Void):MobileOptionEntry
 	{
 		return {
@@ -316,8 +317,6 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 			}
 		};
 	}
-
-	// ---- Text drawn with the HUD letters (letters and spaces only) ----
 
 	function getLetterPath(char:String):String
 	{
@@ -411,9 +410,7 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		}
 		sprites.resize(0);
 	}
-
-	// ---- Rows, scrolling and selection ----
-
+	
 	function rowY(index:Int):Float
 	{
 		return optionY + (index - firstRow) * optionSpacing;
@@ -449,7 +446,6 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 			sprite.visible = isRowVisible(index);
 	}
 
-	/** Places every row according to the scroll position and shows only the visible ones. */
 	function layoutRows():Void
 	{
 		for (i in 0...entries.length)
@@ -491,7 +487,6 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		}
 	}
 
-	/** Small arrows above and below the list, shown when there are more options out of view. */
 	function createMoreArrow(angle:Float):FlxSprite
 	{
 		var arrow:FlxSprite = new FlxSprite(0, 0);
@@ -512,7 +507,6 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 	{
 		selected = (selected + change + entries.length) % entries.length;
 
-		// Scroll the list so the selected row is always on screen.
 		if (selected < firstRow)
 			firstRow = selected;
 		else if (selected >= firstRow + VISIBLE_ROWS)
@@ -532,9 +526,16 @@ class SonicMobileOptionsSubstate extends MusicBeatSubstate
 		entry.change(direction);
 
 		ClientPrefs.saveSettings();
-		AndroidOptions.apply();
+		applyOptions();
 
-		refreshValue(selected);
+		if (refreshAllRows)
+		{
+			refreshAllRows = false;
+			for (i in 0...entries.length)
+				refreshValue(i);
+		}
+		else
+			refreshValue(selected);
 		updateSelectionAlpha();
 		FlxG.sound.play(Paths.sound('confirmMenu'));
 	}

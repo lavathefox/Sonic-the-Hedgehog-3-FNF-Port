@@ -12,7 +12,7 @@
     <!-- Features are opt-in by platform: browser builds avoid native dependencies. -->
     <define name="MODS_ALLOWED" if="desktop || android || switch" />
     <define name="HSCRIPT_ALLOWED" if="desktop || mobile || switch" />
-    <define name="LUA_ALLOWED" if="desktop || mobile || switch" />
+    <define name="LUA_ALLOWED" if="desktop || mobile || switch" unless="ios" />
     <define name="ACHIEVEMENTS_ALLOWED" />
     <define name="TRANSLATIONS_ALLOWED" />
     <define name="DISCORD_ALLOWED" if="desktop" unless="switch" />
@@ -44,6 +44,8 @@
 
         <config:switch libs="lua5.1" if="LUA_ALLOWED" />
     </section>
+
+    <ios deployment="12.0" binaries="arm64" devices="universal" if="ios" />
 
     <!-- HTML5: the source_html5 classpath overrides browser-incompatible classes. -->
     <classpath name="source" />

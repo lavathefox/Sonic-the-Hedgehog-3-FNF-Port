@@ -1,348 +1,643 @@
-local scrspd = 0.9
-local twnspd = 1
-local sprint = true
+local startLives = 3
+local maxLives = 99
+local livesFile = 'lives.dat'
+local practiceKeepsLives = true
+local livesInsteadOfHealth = true
+local gameOverState = 'states.DataSelectState'
 
-local timerfake = false
-local begin = true
-local forthelowends = false
-local nohud = false
-local badending = false
+local goSound = 'sonicGameOver'
+local goSoundLength = 0
+local effectsAt = 2
+local staticSound = 'exeStatic'
+local laughSound = 'exeLaugh'
+local pitchDropTime = 3
+local endDelay = 1.7
 
-local healthX = 140
-local healthY = 628
+local scoreCountUp = true
+local popups = true
+local holdScore = true
+local holdPerSecond = 250
+local holdGrace = 0.1
+local ratingScores = {sick = 350, good = 200, bad = 100, shit = 50}
 
-local deadStarted = false
+local blinkAt = 20
+local ringBonus = 10
+local maxRings = 999
+local debugMode = false
 
-local digitScale = 3
-local digitSpacing = 8 * digitScale
+local folders = {
+	['DEFAULT'] = 'hud/',
+	['SONIC 1/CD'] = 'hud/sonic1/',
+	['SONIC 2'] = 'hud/sonic2/'
+}
 
-local letterScale = 3
-local letterSpacing = 8 * letterScale
+local overrides = {
+	['DEFAULT'] = {},
+	['SONIC 1/CD'] = {},
+	['SONIC 2'] = {}
+}
 
-function clearDigits(tag)
+local pos = {
+	score = {51, 23}, time = {51, 74}, time2 = {60, 97},
+	rings = {51, 123}, misses2 = {60, 150}, life = {48, 600},
+	scoreNum = {220, 23}, timeNum = {172, 72},
+	ringNum = {220, 120}, lifeNum = {140, 628}
+}
 
-	for i = 1, 20 do
-		removeLuaSprite(tag .. i, true)
-	end
+local folder = 'hud/'
+local cdTime, showScore, showLives, ringBlink = false, true, true, true
 
-	removeLuaSprite(tag, true)
+local lives = startLives
+local rings = 0
+local ringsLabel = false
+local dead, goPending, goStarted, effects = false, false, false, false
+local goLength, goClock, tries = 0, 0, 0
+local frozenAt = nil
+local pitchOn, pitchTime = false, 0
+
+local shownScore, popupId = 0, 0
+local pending = {}
+local holdTimer, holdAccum, holdTotal, lastBase = 0, 0, 0, 0
+
+local blinking, blinkOn = false, true
+local drawn = {}
+local exists = {}
+
+local songStarted, preTime = false, 0
+
+local function log(text)
+	if debugMode then debugPrint(text) end
 end
 
-function setNumber(tag, value, x, y, align)
+local function pref(name, default)
+	local v = getPropertyFromClass('backend.ClientPrefs', 'data.' .. name)
+	if v == nil or v == '' then return default end
+	return v
+end
 
-	clearDigits(tag)
+local function loadPrefs()
+	local name = string.upper(tostring(pref('sonicHUDStyle', 'DEFAULT')))
+	if folders[name] == nil then name = 'DEFAULT' end
 
-	local str = tostring(value)
-	local len = string.len(str)
+	folder = folders[name]
+	for k, v in pairs(overrides[name]) do pos[k] = v end
 
-	local totalWidth = len * digitSpacing
-	local startX = x
+	cdTime = tostring(pref('sonicTimeFormat', 'MM:SS')) == 'MM:SS:MS'
+	showScore = pref('sonicShowScore', true) ~= false
+	showLives = pref('sonicShowLives', true) ~= false
+	ringBlink = pref('sonicRingBlink', true) ~= false
+end
 
-	if align == 'center' then
-	    startX = x - totalWidth / 2
-	elseif align == 'right' then
-	    startX = x - totalWidth + 5
+local function hasImage(path)
+	if exists[path] == nil then
+		exists[path] = checkFileExists('images/' .. path .. '.png') == true
+	end
+	return exists[path]
+end
+
+local function img(name)
+	if hasImage(folder .. name) then return folder .. name end
+	return 'hud/' .. name
+end
+
+local function numPath(c)
+	if c == ':' then return img('numbers/colon3') end
+	if c == "'" then return img('numbers/point') end
+	if c == '"' then
+		if hasImage(folder .. 'numbers/quote') then return folder .. 'numbers/quote' end
+		if hasImage('hud/numbers/quote') then return 'hud/numbers/quote' end
+		return img('numbers/point')
+	end
+	return img('numbers/' .. c)
+end
+
+local function lifePath(c)
+	return img('lifenumbers/' .. c)
+end
+
+local function letterPath(c)
+	if c == ' ' then return nil end
+	return img('letershud/' .. c)
+end
+
+local numFont = {scale = 3, gap = 24, path = numPath}
+local lifeFont = {scale = 3, gap = 24, path = lifePath}
+local letterFont = {scale = 3, gap = 24, path = letterPath, upper = true}
+local popupFont = {scale = 2, gap = 16, path = numPath}
+
+local function livesPath(write)
+	if write and currentModDirectory ~= nil and currentModDirectory ~= '' then
+		return currentModDirectory .. '/data/' .. livesFile
+	end
+	return 'data/' .. livesFile
+end
+
+local function saveLives(n)
+	local ok = saveFile(livesPath(true), tostring(n))
+	log('lives saved: ' .. n .. ' (' .. tostring(ok) .. ')')
+end
+
+local function loadLives()
+	local text = getTextFromFile(livesPath(false))
+	local n = nil
+
+	if type(text) == 'string' then
+		n = tonumber((string.gsub(text, '%s+', '')))
 	end
 
-	for i = 1, len do
+	if n == nil or n < 1 then
+		n = startLives
+		saveLives(n)
+	end
 
-		local char = string.sub(str, i, i)
-		local name = tag .. i
+	return math.min(math.floor(n), maxLives)
+end
 
-		local spritePath = ''
+local function hudSprite(tag, name, p, front, alpha)
+	makeLuaSprite(tag, img(name), p[1], p[2])
+	setScrollFactor(tag, 0, 0)
+	setObjectCamera(tag, 'hud')
+	setProperty(tag .. '.antialiasing', false)
+	scaleObject(tag, 3, 3)
+	addLuaSprite(tag, front)
+	if alpha then setProperty(tag .. '.alpha', alpha) end
+end
 
-		if char == ':' then
-			spritePath = 'hud/numbers/colon3'
+local function drawChars(tag, str, x, y, font)
+	local names = {}
+	if font.upper then str = string.upper(str) end
+
+	for i = 1, #str do
+		local path = font.path(str:sub(i, i))
+
+		if path then
+			local n = tag .. i
+			makeLuaSprite(n, path, x + (i - 1) * font.gap, y)
+			setScrollFactor(n, 0, 0)
+			setObjectCamera(n, 'hud')
+			setProperty(n .. '.antialiasing', false)
+			scaleObject(n, font.scale, font.scale)
+			addLuaSprite(n, true)
+			names[#names + 1] = n
+		end
+	end
+
+	return names
+end
+
+local function clearText(tag)
+	local d = drawn[tag]
+	if not d then return end
+	drawn[tag] = nil
+	for _, n in ipairs(d.names) do removeLuaSprite(n, true) end
+end
+
+local function setText(tag, value, p, font)
+	local d = drawn[tag]
+	if d and d.value == value then return end
+
+	clearText(tag)
+	drawn[tag] = {value = value, names = drawChars(tag, tostring(value), p[1], p[2], font)}
+end
+
+local function elapsedSeconds()
+	if songStarted then
+		return math.max(0, getSongPosition() or 0) / 1000
+	end
+	return preTime
+end
+
+local function timeString()
+	local t = elapsedSeconds()
+	local m = math.floor(t / 60)
+	local s = math.floor(t % 60)
+
+	if cdTime then
+		local cs = math.floor((t - math.floor(t)) * 100)
+		return string.format('%d\'%02d"%02d', math.min(m, 9), s, cs)
+	end
+
+	return string.format('%d:%02d', m, s)
+end
+
+local function popup(dir, value)
+	local sx = getPropertyFromGroup('playerStrums', dir, 'x')
+	local sy = getPropertyFromGroup('playerStrums', dir, 'y')
+	if sx == nil or sy == nil then return end
+
+	local sw = getPropertyFromGroup('playerStrums', dir, 'width') or 0
+	local sh = getPropertyFromGroup('playerStrums', dir, 'height') or 0
+
+	popupId = popupId + 1
+
+	local str = tostring(value)
+	local x = sx + (sw - #str * popupFont.gap) / 2
+	local y = sy + sh + 10
+	if downscroll then y = sy - popupFont.gap - 10 end
+
+	for _, n in ipairs(drawChars('scpop' .. popupId .. '_', str, x, y, popupFont)) do
+		setProperty(n .. '.velocity.y', -140)
+		setProperty(n .. '.acceleration.y', 220)
+		doTweenAlpha(n, n, 0, 0.6, 'quadIn')
+	end
+end
+
+local function soundLength(tag)
+	local len = runHaxeCode([[
+		try {
+			var s = game.modchartSounds.get(']] .. tag .. [[');
+			if (s != null && s.length > 0) return s.length / 1000;
+		} catch (e:Dynamic) {}
+
+		try {
+			var p = Type.resolveClass('backend.Paths');
+			var snd = Reflect.callMethod(p, Reflect.field(p, 'sound'), [']] .. tag .. [[']);
+			if (snd != null && snd.length > 0) return snd.length / 1000;
+		} catch (e:Dynamic) {}
+
+		return 0;
+	]])
+
+	if type(len) == 'number' then return len end
+	return 0
+end
+
+local function setPitch(tag, pitch)
+	if type(setSoundPitch) == 'function' then
+		setSoundPitch(tag, pitch)
+	else
+		runHaxeCode("var s = game.modchartSounds.get('" .. tag .. "'); if (s != null) s.pitch = " .. string.format('%.4f', pitch) .. ';')
+	end
+end
+
+local function freezeSong()
+	frozenAt = getSongPosition()
+
+	local r = runHaxeCode([[
+		try {
+			game.generatedMusic = false;
+			game.canPause = false;
+
+			if (FlxG.sound.music != null) FlxG.sound.music.pause();
+			if (game.vocals != null) game.vocals.pause();
+			if (game.opponentVocals != null) game.opponentVocals.pause();
+
+			game.notes.visible = false;
+			game.strumLineNotes.visible = false;
+			game.grpNoteSplashes.visible = false;
+			return true;
+		} catch (e:Dynamic) {
+			return Std.string(e);
+		}
+	]])
+
+	log('freeze: ' .. tostring(r))
+end
+
+local function keepFrozen()
+	if frozenAt == nil then return end
+
+	setPropertyFromClass('backend.Conductor', 'songPosition', frozenAt)
+
+	runHaxeCode([[
+		if (FlxG.sound.music != null && FlxG.sound.music.playing) FlxG.sound.music.pause();
+		if (game.vocals != null && game.vocals.playing) game.vocals.pause();
+		if (game.opponentVocals != null && game.opponentVocals.playing) game.opponentVocals.pause();
+	]])
+end
+
+local function openGameOverState()
+	local ok = runHaxeCode([[
+		var c = Type.resolveClass(']] .. gameOverState .. [[');
+		if (c == null) return false;
+
+		var b = Type.resolveClass('backend.MusicBeatState');
+		var s = Type.createInstance(c, []);
+
+		if (b != null) Reflect.callMethod(b, Reflect.field(b, 'switchState'), [s]);
+		else FlxG.switchState(s);
+
+		return true;
+	]])
+
+	if ok ~= true then
+		debugPrint('could not open ' .. gameOverState .. ', using exitSong')
+		exitSong()
+	end
+end
+
+local function goText(tag, image, fromX, toX)
+	makeLuaSprite(tag, image, fromX, 300)
+	setProperty(tag .. '.antialiasing', false)
+	scaleObject(tag, 3, 3)
+	setObjectCamera(tag, 'other')
+	addLuaSprite(tag, true)
+	doTweenX(tag, tag, toX, 0.3)
+end
+
+local function startGameOver()
+	if goStarted then return end
+	goStarted = true
+
+	goText('gamee', 'textgame', -280, 280)
+	goText('over', 'over', 840, 280)
+
+	playSound(goSound, 1, goSound)
+
+	goClock, tries = 0, 0
+	goLength = goSoundLength > 0 and goSoundLength or soundLength(goSound)
+	log('game over started, sound = ' .. goLength .. 's')
+end
+
+local function startEffects()
+	if effects then return end
+	effects = true
+
+	doTweenColor('gameeRed', 'gamee', 'FF0000', 1.2, 'linear')
+	doTweenColor('overRed', 'over', 'FF0000', 1.2, 'linear')
+
+	makeAnimatedLuaSprite('screenSTATIC', 'static', 0, 0)
+	addAnimationByPrefix('screenSTATIC', 'idle', 'static', 12, true)
+	objectPlayAnimation('screenSTATIC', 'idle', true)
+	setObjectCamera('screenSTATIC', 'other')
+	scaleObject('screenSTATIC', 7, 7)
+	setProperty('screenSTATIC.alpha', 0)
+	addLuaSprite('screenSTATIC', true)
+	doTweenAlpha('exeStaticFade', 'screenSTATIC', 0.6, 1.5, 'linear')
+
+	playSound(staticSound, 0, staticSound, true)
+	soundFadeIn(staticSound, 1.5, 0, 1)
+
+	pitchTime = 0
+	pitchOn = true
+end
+
+local function finishPitch()
+	pitchOn = false
+	stopSound(goSound)
+	playSound(laughSound, 1, laughSound)
+	runTimer('gameOverEnd', endDelay)
+	log('laugh played')
+end
+
+local function updateGameOver(elapsed)
+	if not goStarted then return end
+
+	goClock = goClock + elapsed
+
+	if not effects then
+		if goLength <= 0 and tries < 30 then
+			tries = tries + 1
+			goLength = soundLength(goSound)
+			if goLength <= 0 and tries == 30 then
+				debugPrint('could not read the length of "' .. goSound .. '", set goSoundLength')
+			end
+		end
+
+		if goLength > 0 then
+			local played = math.max(goClock, (getSoundTime(goSound) or 0) / 1000)
+			if goLength - played <= effectsAt then startEffects() end
+		end
+	end
+
+	if pitchOn then
+		pitchTime = pitchTime + elapsed
+		local pitch = math.max(0, 1 - pitchTime / pitchDropTime)
+
+		if pitch <= 0.03 then
+			finishPitch()
 		else
-			spritePath = 'hud/numbers/' .. char
+			setPitch(goSound, pitch)
 		end
-
-		makeLuaSprite(name, spritePath, startX + ((i - 1) * digitSpacing), y)
-
-		setScrollFactor(name, 0, 0)
-		setObjectCamera(name, 'hud')
-
-		setProperty(name .. '.antialiasing', false)
-
-		scaleObject(name, digitScale, digitScale)
-
-		addLuaSprite(name, true)
 	end
 end
 
-function setHealthNumber(tag, value, x, y)
+local function updateLife()
+	if not showLives then
+		clearText('soniclife')
+		clearText('sonichealth')
+		return
+	end
 
-	clearDigits(tag)
-
-	local str = tostring(value)
-	local len = string.len(str)
-
-	for i = 1, len do
-
-		local char = string.sub(str, i, i)
-		local name = tag .. i
-
-		makeLuaSprite(name, 'hud/lifenumbers/' .. char, x + ((i - 1) * digitSpacing), y)
-
-		setScrollFactor(name, 0, 0)
-		setObjectCamera(name, 'hud')
-
-		setProperty(name .. '.antialiasing', false)
-
-		scaleObject(name, digitScale, digitScale)
-
-		addLuaSprite(name, true)
+	if livesInsteadOfHealth then
+		setText('soniclife', lives, pos.lifeNum, lifeFont)
+	else
+		local hp = math.max(0, math.min(99, math.floor(getProperty('health') * 50)))
+		setText('sonichealth', hp, pos.lifeNum, lifeFont)
 	end
 end
 
-function setLetters(tag, text, x, y)
+local function updateScore(elapsed)
+	local score = getProperty('songScore')
 
-	clearDigits(tag)
+	if scoreCountUp and holdTimer > 0 then
+		shownScore = shownScore + (score - shownScore) * math.min(1, elapsed * 12)
+		if math.abs(score - shownScore) < 1 then shownScore = score end
+	else
+		shownScore = score
+	end
 
-	text = string.upper(text)
-
-	for i = 1, #text do
-
-		local char = text:sub(i, i)
-
-		if char ~= " " then
-
-			local spritePath = 'hud/letershud/' .. char
-
-			local name = tag .. i
-
-			makeLuaSprite(name, spritePath, x + ((i - 1) * letterSpacing), y)
-
-			setScrollFactor(name, 0, 0)
-			setObjectCamera(name, 'hud')
-
-			setProperty(name .. '.antialiasing', false)
-
-			scaleObject(name, letterScale, letterScale)
-
-			addLuaSprite(name, true)
-		end
+	if not showScore then
+		clearText('sonicscore')
+		clearText('sonicbotplay')
+	elseif botPlay then
+		clearText('sonicscore')
+		setText('sonicbotplay', 'BOTPLAY', pos.scoreNum, letterFont)
+	else
+		clearText('sonicbotplay')
+		setText('sonicscore', math.max(0, math.floor(shownScore + 0.5)), pos.scoreNum, numFont)
 	end
 end
 
 function onCreate()
+	lives = loadLives()
+	loadPrefs()
 
 	setProperty('scoreTxt.alpha', 0)
 	setProperty('botplayTxt.visible', false)
-
 	setProperty('healthBar.alpha', 0)
 	setProperty('healthBarBG.alpha', 0)
-
 	setProperty('showRating', false)
 	setProperty('showComboNum', false)
-
 	setProperty('iconP1.alpha', 0)
 	setProperty('iconP2.alpha', 0)
-
 	setProperty('timeBar.visible', false)
 	setProperty('timeTxt.visible', false)
 
-	makeLuaSprite('score', 'hud/score', 51, 23)
-	setScrollFactor('score', 0, 0)
-	setObjectCamera('score', 'hud')
-	setProperty('score.antialiasing', false)
-	scaleObject('score', 3, 3)
-	addLuaSprite('score', true)
-	setProperty('score.alpha', 1)
+	hudSprite('score', 'score', pos.score, true, 1)
+	hudSprite('time', 'time', pos.time, false, 1)
+	hudSprite('time2', 'time2', pos.time2, false, 0)
+	hudSprite('misses2', 'misses2', pos.misses2, true, 0)
+	hudSprite('hudlife', 'bf_hud-life', pos.life, true, 1)
 
-	makeLuaSprite('time', 'hud/time', 51, 74)
-	setObjectCamera('time', 'hud')
-	setProperty('time.antialiasing', false)
-	scaleObject('time', 3, 3)
-	addLuaSprite('time', false)
-	setProperty('time.alpha', 1)
+	ringsLabel = hasImage(folder .. 'rings') or hasImage('hud/rings')
+	if ringsLabel then hudSprite('ringshud', 'rings', pos.rings, true, 1) end
 
-	makeLuaSprite('time2', 'hud/time2', 60, 97)
-	setScrollFactor('time2', 0, 0)
-	setObjectCamera('time2', 'hud')
-	setProperty('time2.antialiasing', false)
-	scaleObject('time2', 3, 3)
-	addLuaSprite('time2', false)
-	setProperty('time2.alpha', 0)
 	setProperty('time2.visible', false)
+	setProperty('score.visible', showScore)
+	setProperty('hudlife.visible', showLives)
+end
 
-	makeLuaSprite('misses', 'hud/misses', 51, 123)
-	setObjectCamera('misses', 'hud')
-	setProperty('misses.antialiasing', false)
-	scaleObject('misses', 3, 3)
-	addLuaSprite('misses', true)
-	setProperty('misses.alpha', 0)
+function onSongStart()
+	songStarted = true
+	preTime = 0
+end
 
-	makeLuaSprite('misses2', 'hud/misses2', 60, 150)
-	setScrollFactor('misses2', 0, 0)
-	setObjectCamera('misses2', 'hud')
-	setProperty('misses2.antialiasing', false)
-	scaleObject('misses2', 3, 3)
-	addLuaSprite('misses2', true)
-	setProperty('misses2.alpha', 0)
+function goodNoteHit(id, dir, noteType, sustain)
+	if sustain then
+		holdTimer = holdGrace
+		return
+	end
 
-	makeLuaSprite('hudlife', 'hud/bf_hud-life', 48, 600)
-	setScrollFactor('hudlife', 0, 0)
-	setObjectCamera('hudlife', 'hud')
-	setProperty('hudlife.antialiasing', false)
-	scaleObject('hudlife', 3, 3)
-	addLuaSprite('hudlife', true)
+	if not popups or botPlay then return end
+
+	local rating = getPropertyFromGroup('notes', id, 'rating')
+	local value = type(rating) == 'string' and ratingScores[rating:lower()] or nil
+
+	if value then
+		popup(dir, value)
+	else
+		pending[#pending + 1] = dir
+	end
+end
+
+function onUpdatePost(elapsed)
+	if dead then
+		keepFrozen()
+		return
+	end
+
+	if holdScore and holdTimer > 0 and not botPlay then
+		holdAccum = holdAccum + holdPerSecond * elapsed
+		local add = math.floor(holdAccum)
+
+		if add > 0 then
+			holdAccum = holdAccum - add
+			holdTotal = holdTotal + add
+			addScore(add)
+		end
+	end
+
+	holdTimer = math.max(0, holdTimer - elapsed)
+	if holdTimer == 0 then holdAccum = 0 end
+
+	local base = getProperty('songScore') - holdTotal
+	local delta = base - lastBase
+	lastBase = base
+
+	if #pending > 0 then
+		if popups and delta > 0 then
+			local each = math.min(math.floor(delta / #pending), 350)
+
+			if each > 0 then
+				for _, dir in ipairs(pending) do popup(dir, each) end
+			end
+		end
+
+		pending = {}
+	end
 end
 
 function onUpdate(elapsed)
+	updateGameOver(elapsed)
 
 	setProperty('time2.alpha', getProperty('misses2.alpha'))
 
-	if curStep == 1 then
-
-		doTweenAlpha('scoreFade', 'score', 1, 0.7, 'linear')
-		doTweenAlpha('timeFade', 'time', 1, 0.7, 'linear')
-		doTweenAlpha('missFade', 'misses', 1, 0.7, 'linear')
-		doTweenAlpha('lifeFade', 'hudlife', 1, 0.7, 'linear')
+	if not songStarted and not dead then
+		preTime = preTime + elapsed
 	end
 
-	local hp = math.floor(getProperty('health') * 50)
+	local misses = math.min(getProperty('songMisses'), 99)
 
-	if hp < 0 then
-		hp = 0
-	end
+	updateLife()
+	setText('sonicrings', rings, pos.ringNum, numFont)
+	setText('sonictime', timeString(), pos.timeNum, numFont)
+	updateScore(elapsed)
 
-	if hp > 99 then
-		hp = 99
-	end
-
-	setHealthNumber('hudhealth', hp, healthX, healthY)
-
-	local m = getProperty('songMisses')
-
-	if m > 99 then
-		m = 99
-	end
-
-	setNumber('sonicmisses', m, 222, 120)
-
-	local timeStr = getTextString('timeTxt')
-
-	setNumber('sonictime', timeStr, 169+3, 61+11, 'left')
-
-	if not botPlay then
-
-		clearDigits('sonicbotplay')
-
-		local sc = getProperty('songScore')
-
-		setNumber('sonicscore', sc, 223, 23)
-
-	else
-
-		clearDigits('sonicscore')
-
-		setLetters('sonicbotplay', 'BOTPLAY', 223, 23)
-	end
-
-	if m >= 20 and badending == false then
-
-		runTimer('blink1', 0.2)
-
-		setProperty('misses.alpha', 0)
-
-		badending = true
-	end
-
-	if nohud == true and curStep >= 128 then
-
-		setProperty('misses.visible', false)
-		setProperty('misses2.visible', false)
-
-		setProperty('time.visible', false)
-		setProperty('time2.visible', false)
-
-		setProperty('score.visible', false)
-
-		setProperty('hudlife.visible', false)
-
-	else
-
-		setProperty('misses.visible', true)
-		setProperty('misses2.visible', true)
-
-		setProperty('time.visible', true)
-		setProperty('score.visible', true)
-
-		setProperty('hudlife.visible', true)
+	if ringBlink and ringsLabel and not blinking and misses >= blinkAt then
+		blinking, blinkOn = true, false
+		setProperty('ringshud.alpha', 0)
+		runTimer('blink1', 0.2, 0)
 	end
 
 	setTextString('botplayTxt', '')
 end
 
-function onGameOver()
+function onMonitorCollected(kind)
+	if dead then return end
 
-	if deadStarted then
-		return Function_Stop
+	if kind == 'ring' then
+		rings = math.min(rings + ringBonus, maxRings)
+	elseif kind == 'life' then
+		lives = math.min(lives + 1, maxLives)
+		saveLives(lives)
+	end
+end
+
+function onGameOver()
+	if dead then return Function_Stop end
+	dead = true
+
+	if not (practiceKeepsLives and practiceMode) then
+		lives = lives - 1
+
+		if lives <= 0 then
+			lives = 0
+			goPending = true
+			saveLives(startLives)
+		else
+			saveLives(lives)
+		end
 	end
 
-	deadStarted = true
+	cancelTimer('blink1')
 
-	local bfX = getProperty('boyfriend.x')
-	local bfY = getProperty('boyfriend.y')
-
-	makeLuaSprite('tailsdeath', 'tailsdeath', bfX, bfY)
+	makeLuaSprite('tailsdeath', 'dead', getProperty('boyfriend.x'), getProperty('boyfriend.y'))
 	setProperty('tailsdeath.antialiasing', false)
 	setObjectCamera('tailsdeath', 'game')
-	setObjectOrder(
-		'tailsdeath',
-		getObjectOrder('boyfriendGroup') + 1
-	)
-
+	setObjectOrder('tailsdeath', getObjectOrder('boyfriendGroup') + 1)
 	addLuaSprite('tailsdeath', true)
 
 	setProperty('boyfriend.visible', false)
 
-	setProperty('playbackRate', 0)
-
+	freezeSong()
 	playSound('death', 1)
-
 	setProperty('health', 0.001)
 
-	doTweenY(
-		'tailsdeathjump',
-		'tailsdeath',
-		getProperty('tailsdeath.y') - 110,
-		0.5,
-		'sineOut'
-	)
+	doTweenY('tailsdeathjump', 'tailsdeath', getProperty('tailsdeath.y') - 110, 0.5, 'sineOut')
 
 	return Function_Stop
 end
 
+function onSoundFinished(tag)
+	if tag == goSound and goStarted and not effects then
+		startEffects()
+	end
+end
+
+function onTimerCompleted(tag)
+	if tag == 'gameOverEnd' then
+		openGameOverState()
+	elseif tag == 'blink1' and not dead then
+		blinkOn = not blinkOn
+		setProperty('ringshud.alpha', blinkOn and 1 or 0)
+	end
+end
+
 function onTweenCompleted(tag)
-
-	if tag == 'tailsdeathjump' then
-
-		doTweenY(
-			'tailsdeathfall',
-			'tailsdeath',
-			getProperty('tailsdeath.y') + 1700,
-			2.75,
-			'sineIn'
-		)
+	if tag:sub(1, 5) == 'scpop' then
+		removeLuaSprite(tag, true)
+	elseif tag == 'tailsdeathjump' then
+		doTweenY('tailsdeathfall', 'tailsdeath', getProperty('tailsdeath.y') + 1700, 2.75, 'sineIn')
 
 		makeLuaSprite('blackdeath', '', 0, 0)
-		makeGraphic('blackdeath', 1280, 720, '000000')
+		makeGraphic('blackdeath', screenWidth or 1280, screenHeight or 720, '000000')
 		setObjectCamera('blackdeath', 'other')
 		addLuaSprite('blackdeath', true)
 		setProperty('blackdeath.alpha', 0)
 
-		doTweenAlpha(
-			'blackdeathFade',
-			'blackdeath',
-			1,
-			1,
-			'linear'
-		)
-	end
-
-	if tag == 'blackdeathFade' then
-		restartSong(false)
+		doTweenAlpha('blackdeathFade', 'blackdeath', 1, 1, 'linear')
+	elseif tag == 'blackdeathFade' then
+		if goPending then startGameOver() else restartSong(false) end
 	end
 end

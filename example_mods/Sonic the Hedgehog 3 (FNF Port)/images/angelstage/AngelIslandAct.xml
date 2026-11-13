@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="AngelIslandAct.png">
+	<!-- Created using the Spritesheet and XML generator -->
+	<!-- https://uncertainprod.github.io/FNF-Spritesheet-XML-generator-Web -->
+	<SubTexture name="aizIdle0000" x="0" y="516" width="3844" height="516" frameX="2" frameY="2" frameWidth="3840" frameHeight="512"/>
+	<SubTexture name="aizIdle0001" x="0" y="0" width="3844" height="516" frameX="2" frameY="2" frameWidth="3840" frameHeight="512"/>
+	<SubTexture name="aizIdle0002" x="0" y="1032" width="3844" height="516" frameX="2" frameY="2" frameWidth="3840" frameHeight="512"/>
+	<SubTexture name="aizIdle0003" x="0" y="1548" width="3844" height="516" frameX="2" frameY="2" frameWidth="3840" frameHeight="512"/>
+</TextureAtlas>

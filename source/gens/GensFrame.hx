@@ -3,6 +3,7 @@ package gens;
 import flixel.FlxG;
 import flixel.FlxSprite;
 import flixel.input.keyboard.FlxKey;
+import flixel.system.scaleModes.BaseScaleMode;
 import haxe.Timer;
 import haxe.io.Bytes;
 import haxe.io.Path;
@@ -278,6 +279,12 @@ class GensFrame extends Sprite
 		return t;
 	}
 
+	static function scaleFor(stretch:Bool):BaseScaleMode
+	{
+		if (stretch) return new GensFillScaleMode();
+		return new GensScaleMode();
+	}
+
 	static function plain(label:String):String
 		return StringTools.replace(label, "&", "").toUpperCase();
 
@@ -378,7 +385,7 @@ class GensFrame extends Sprite
 			flag("&VSync", "vsync", false),
 			flag("S&tretch", "stretch", false, function(v:Bool)
 			{
-				FlxG.scaleMode = v ? cast new GensFillScaleMode() : cast new GensScaleMode();
+				FlxG.scaleMode = scaleFor(v);
 			}),
 			MenuItem.sep(),
 			MenuItem.sub("&Render", renderItems),
@@ -1381,7 +1388,7 @@ class GensFrame extends Sprite
 		if (!configured && FlxG.state != null)
 		{
 			configured = true;
-			FlxG.scaleMode = cfg("stretch", false) == true ? cast new GensFillScaleMode() : cast new GensScaleMode();
+			FlxG.scaleMode = scaleFor(cfg("stretch", false) == true);
 			FlxG.mouse.visible = true;
 			FlxG.mouse.useSystemCursor = true;
 			applyAll();

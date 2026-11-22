@@ -4,6 +4,8 @@ import flixel.FlxG;
 import flixel.FlxSprite;
 import flixel.input.keyboard.FlxKey;
 import flixel.system.scaleModes.BaseScaleMode;
+import flixel.system.scaleModes.FillScaleMode;
+import flixel.system.scaleModes.RatioScaleMode;
 import haxe.Timer;
 import haxe.io.Bytes;
 import haxe.io.Path;
@@ -281,8 +283,8 @@ class GensFrame extends Sprite
 
 	static function scaleFor(stretch:Bool):BaseScaleMode
 	{
-		if (stretch) return new GensFillScaleMode();
-		return new GensScaleMode();
+		if (stretch) return new FrameFillMode();
+		return new FrameRatioMode();
 	}
 
 	static function plain(label:String):String
@@ -1997,5 +1999,27 @@ private class GDialog extends Sprite
 		if (stage != null) stage.removeEventListener(KeyboardEvent.KEY_DOWN, onKey);
 		if (parent != null) parent.removeChild(this);
 		if (onDone != null) onDone(ok);
+	}
+}
+
+private class FrameRatioMode extends RatioScaleMode
+{
+	override public function onMeasure(Width:Int, Height:Int):Void
+	{
+		var bar = GensFrame.barHeight;
+		super.onMeasure(Width, Std.int(Math.max(1, Height - bar)));
+		offset.y += bar;
+		if (FlxG.game != null) FlxG.game.y = offset.y;
+	}
+}
+
+private class FrameFillMode extends FillScaleMode
+{
+	override public function onMeasure(Width:Int, Height:Int):Void
+	{
+		var bar = GensFrame.barHeight;
+		super.onMeasure(Width, Std.int(Math.max(1, Height - bar)));
+		offset.y += bar;
+		if (FlxG.game != null) FlxG.game.y = offset.y;
 	}
 }

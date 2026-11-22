@@ -1,6 +1,8 @@
 package gens;
 
 import flixel.FlxG;
+import flixel.FlxSprite;
+import flixel.input.keyboard.FlxKey;
 import haxe.Timer;
 import haxe.io.Bytes;
 import haxe.io.Path;
@@ -8,11 +10,15 @@ import lime.app.Application;
 import lime.ui.FileDialog;
 import lime.ui.FileDialogType;
 import openfl.Lib;
+import openfl.display.BitmapData;
+import openfl.display.PNGEncoderOptions;
 import openfl.display.Sprite;
 import openfl.display.StageDisplayState;
 import openfl.events.Event;
 import openfl.events.KeyboardEvent;
 import openfl.events.MouseEvent;
+import openfl.filters.ColorMatrixFilter;
+import openfl.geom.Point;
 import openfl.geom.Rectangle;
 import openfl.text.TextField;
 import openfl.text.TextFieldAutoSize;
@@ -36,6 +42,19 @@ typedef Palette =
 	var dis:Int;
 }
 
+typedef DRow =
+{
+	var kind:Int;
+	var label:String;
+	@:optional var value:Dynamic;
+	@:optional var def:Dynamic;
+	@:optional var dir:Bool;
+	@:optional var min:Int;
+	@:optional var max:Int;
+	@:optional var step:Int;
+	@:optional var apply:Dynamic->Void;
+}
+
 class GensFrame extends Sprite
 {
 	public static inline var ROM_FILE:String = "Sonic The Hedgehog 3 (W) [!].md";
@@ -55,6 +74,17 @@ class GensFrame extends Sprite
 	static inline var KEY_GAP:Int = 30;
 	static inline var FONT:String = "_sans";
 	static inline var SIZE:Int = 12;
+
+	static final PAD_NAMES:Array<String> = ["Up", "Down", "Left", "Right", "Start", "B", "A", "C", "Mode", "X", "Y", "Z"];
+	static final PAD_BIND:Array<String> = ["ui_up", "ui_down", "ui_left", "ui_right", "accept", "back"];
+	static final PAD_DEF:Array<Int> = [38, 40, 37, 39, 13, 8, 65, 68, 16, 81, 87, 69];
+
+	static final DIR_NAMES:Array<String> = ["Savestates", "SRAM Backups", "BRAM Backups", "WAV Dumping", "GYM Dumping", "Screenshots"];
+	static final DIR_DEF:Array<String> = ["States", "saves", "saves", "Dumps", "Dumps", "Screenshots"];
+
+	static final BIOS_NAMES:Array<String> = [
+		"Genesis BIOS", "USA CD BIOS", "Europe CD BIOS", "Japan CD BIOS", "32X 68000 BIOS", "32X Master SH2 BIOS", "32X Slave SH2 BIOS"
+	];
 
 	static final WIN10:Palette = {
 		bar: 0xFFFFFF,
@@ -80,6 +110,8 @@ class GensFrame extends Sprite
 		dis: 0x808080
 	};
 
+	static var baseFps:Int = 0;
+
 	var pal:Palette = CLASSIC ? CLASSIC_PAL : WIN10;
 
 	var headers:Array<MenuItem> = [];
@@ -98,10 +130,13 @@ class GensFrame extends Sprite
 	var lastTime:Float = 0;
 
 	var soundEnable:MenuItem;
+	var fullItem:MenuItem;
 	var historyItem:MenuItem;
 	var slotItems:Array<MenuItem>;
 	var slot:Int = 0;
 
+	var dlg:GDialog;
+	var paused:Bool = false;
 	var busy:Bool = false;
 	var dialogClosed:Bool = false;
 	var pendingPath:String = null;
@@ -124,6 +159,71 @@ class GensFrame extends Sprite
 	public static function message(s:String):Void
 	{
 		if (instance != null) instance.showMsg(s);
+	}
+
+	static function cfg(key:String, def:Dynamic):Dynamic
+	{
+		var v:Dynamic = null;
+		try
+		{
+			v = Reflect.field(FlxG.save.data, "gens_" + key);
+		}
+		catch (e:Dynamic) {}
+		return v == null ? def : v;
+	}
+
+	static function setCfg(key:String, v:Dynamic):Void
+	{
+		try
+		{
+			Reflect.setField(FlxG.save.data, "gens_" + key, v);
+		}
+		catch (e:Dynamic) {}
+	}
+
+	static function flushCfg():Void
+	{
+		try
+		{
+			FlxG.save.flush();
+		}
+		catch (e:Dynamic) {}
+	}
+
+	static function dirOf(i:Int):String
+	{
+		var s:String = Std.string(cfg("dir_" + i, DIR_DEF[i]));
+		if (s == null || s == "" || s == "null") s = DIR_DEF[i];
+		var abs = s.charAt(0) == "/" || s.charAt(1) == ":";
+		return abs ? s : Path.join([Sys.getCwd(), s]);
+	}
+
+	static function bindIndex(a:Array<FlxKey>):Int
+		return a.length > 1 ? 1 : 0;
+
+	static function bindGet(id:String, def:Int):Int
+	{
+		try
+		{
+			var a = ClientPrefs.keyBinds.get(id);
+			if (a != null && a.length > 0)
+			{
+				var v:Int = a[bindIndex(a)];
+				if (v > 0) return v;
+			}
+		}
+		catch (e:Dynamic) {}
+		return def;
+	}
+
+	static function bindSet(id:String, code:Int):Void
+	{
+		try
+		{
+			var a = ClientPrefs.keyBinds.get(id);
+			if (a != null && a.length > 0) a[bindIndex(a)] = code;
+		}
+		catch (e:Dynamic) {}
 	}
 
 	function new()
@@ -178,6 +278,37 @@ class GensFrame extends Sprite
 		return t;
 	}
 
+	static function plain(label:String):String
+		return StringTools.replace(label, "&", "").toUpperCase();
+
+	static function keyed(m:MenuItem, k:String):MenuItem
+	{
+		m.key = k;
+		return m;
+	}
+
+		function flag(label:String, key:String, def:Bool, ?onChange:Bool->Void, ?enabled:Void->Bool):MenuItem
+	{
+		var name = plain(label);
+		return MenuItem.check(label, cfg(key, def) == true, function(v:Bool)
+		{
+			setCfg(key, v);
+			flushCfg();
+			if (onChange != null) onChange(v);
+			msg(name + (v ? " ON" : " OFF"));
+		}, enabled);
+	}
+
+		function choice(labels:Array<String>, key:String, def:Int, onSelect:Int->Void):Array<MenuItem>
+	{
+		return MenuItem.radios(labels, Std.int(cfg(key, def)), function(i:Int)
+		{
+			setCfg(key, i);
+			flushCfg();
+			onSelect(i);
+		});
+	}
+
 	function buildMenus():Void
 	{
 		var needRom:Void->Bool = function() return romLoaded;
@@ -189,7 +320,7 @@ class GensFrame extends Sprite
 			msg(v ? "SOUND ENABLED" : "SOUND DISABLED");
 		});
 
-		historyItem = MenuItem.sub("ROM &History", [], function() return loadHistory().length > 0);
+		historyItem = MenuItem.sub("ROM &History", [], null, function() return loadHistory().length > 0);
 		rebuildHistory();
 
 		slotItems = MenuItem.radios(["&0", "&1", "&2", "&3", "&4", "&5", "&6", "&7", "&8", "&9"], 0, function(i:Int)
@@ -198,44 +329,10 @@ class GensFrame extends Sprite
 			msg("STATE " + i + " SELECTED");
 		});
 
-		var rates = ["11025", "22050", "44100"];
-		var rateItems = MenuItem.radios(["11025 Hz", "22050 Hz", "44100 Hz"], 2, function(i:Int)
-		{
-			msg("SOUND RATE: " + rates[i] + " HZ");
-		});
-
-		var countries = ["AUTO DETECTION", "JAPAN (NTSC)", "USA (NTSC)", "EUROPE (PAL)", "JAPAN (PAL)"];
-		var countryItems = MenuItem.radios(["&Auto Detection", "&Japan (NTSC)", "&USA (NTSC)", "&Europe (PAL)", "Japan (&PAL)"], 0, function(i:Int)
-		{
-			msg("COUNTRY: " + countries[i]);
-		});
-
-		var sramSizes = ["NONE", "8 KB", "16 KB", "32 KB", "64 KB"];
-		var sramItems = MenuItem.radios(["&None", "&8 Kb", "&16 Kb", "&32 Kb", "&64 Kb"], 0, function(i:Int)
-		{
-			msg("SRAM SIZE: " + sramSizes[i]);
-		});
-
-		var chip = function(label:String):MenuItem
-		{
-			var name = StringTools.replace(label.split("&").join(""), " Enable", "").toUpperCase();
-			return MenuItem.check(label, true, function(v:Bool)
-			{
-				msg(name + (v ? " ENABLED" : " DISABLED"));
-			});
-		};
-
-		var info = function(label:String, title:String):MenuItem
-		{
-			return MenuItem.normal(label, null, function()
-			{
-				Application.current.window.alert("This option is not available in this build.", title);
-			});
-		};
-
 		var file:Array<MenuItem> = [
 			MenuItem.normal("&Open ROM...", "Ctrl+O", openRomDialog),
 			MenuItem.normal("&Boot CD", "Ctrl+B", null, never),
+			MenuItem.normal("&Netplay", null, null, never),
 			historyItem,
 			MenuItem.normal("&Close ROM", "Ctrl+C", closeRom, needRom),
 			MenuItem.sep(),
@@ -252,6 +349,84 @@ class GensFrame extends Sprite
 			MenuItem.sep(),
 			MenuItem.normal("E&xit", null, exitApp)
 		];
+
+		fullItem = keyed(MenuItem.check("&Full Screen", FlxG.fullscreen, function(v:Bool)
+		{
+			FlxG.fullscreen = v;
+		}), "Alt+Enter");
+
+		var renders = [
+			"&Normal", "&Double", "&Interpolated", "&Scanline", "50% Scanline", "25% Scanline", "Interpolated Scanline", "Interpolated 50% Scanline",
+			"Interpolated 25% Scanline", "2xSAI (Kreed)"
+		];
+		var renderItems = choice(renders, "render", 0, function(i:Int)
+		{
+			var smooth = (i == 2 || i == 6 || i == 7 || i == 8);
+			FlxSprite.defaultAntialiasing = smooth;
+			ClientPrefs.data.antialiasing = smooth;
+			msg("RENDER: " + plain(renders[i]));
+		});
+
+		var skipLabels = ["&Auto", "&0", "&1", "&2", "&3", "&4", "&5", "&6", "&7", "&8"];
+		var skipItems = choice(skipLabels, "frameskip", 0, function(i:Int)
+		{
+			msg("FRAME SKIP: " + (i == 0 ? "AUTO" : Std.string(i - 1)));
+		});
+
+		var graphics:Array<MenuItem> = [
+			fullItem,
+			flag("&VSync", "vsync", false),
+			flag("S&tretch", "stretch", false, function(v:Bool)
+			{
+				FlxG.scaleMode = v ? cast new GensFillScaleMode() : cast new GensScaleMode();
+			}),
+			MenuItem.sep(),
+			MenuItem.sub("&Render", renderItems),
+			MenuItem.sub("Frame S&kip", skipItems),
+			MenuItem.sep(),
+			MenuItem.normal("&Color Adjust...", null, openColorAdjust),
+			flag("Sprite &Limit", "spritelimit", true),
+			MenuItem.sep(),
+			keyed(MenuItem.normal("Screen S&hot", null, takeShot, needRom), "Shift+Backspace")
+		];
+
+		var debugItems:Array<MenuItem> = [
+			MenuItem.check("&68000", false, function(v:Bool)
+			{
+				msg("68000 DEBUG " + (v ? "ON" : "OFF"));
+			}),
+			MenuItem.check("&Z80", false, function(v:Bool)
+			{
+				msg("Z80 DEBUG " + (v ? "ON" : "OFF"));
+			}),
+			MenuItem.check("&VDP (FPS counter)", Main.fpsVar != null && Main.fpsVar.visible, function(v:Bool)
+			{
+				Main.setFPSVisible(v);
+				msg("VDP DEBUG " + (v ? "ON" : "OFF"));
+			})
+		];
+
+		var cpu:Array<MenuItem> = [
+			MenuItem.sub("&Debug", debugItems, null, needRom),
+			MenuItem.sep(),
+			keyed(MenuItem.normal("&Hard Reset", null, hardReset, needRom), "Tab"),
+			keyed(MenuItem.normal("&Pause", null, togglePause, needRom), "Pause")
+		];
+
+		var rates = ["11025", "22050", "44100"];
+		var rateItems = choice(["11025 Hz", "22050 Hz", "44100 Hz"], "rate", 2, function(i:Int)
+		{
+			msg("SOUND RATE: " + rates[i] + " HZ");
+		});
+
+		var chip = function(label:String):MenuItem
+		{
+			var name = StringTools.replace(plain(label), " ENABLE", "");
+			return MenuItem.check(label, true, function(v:Bool)
+			{
+				msg(name + (v ? " ENABLED" : " DISABLED"));
+			});
+		};
 
 		var sound:Array<MenuItem> = [
 			soundEnable,
@@ -271,21 +446,401 @@ class GensFrame extends Sprite
 			chip("CDD&A Enable")
 		];
 
+		var countries = ["AUTO DETECTION", "JAPAN (NTSC)", "USA (NTSC)", "EUROPE (PAL)", "JAPAN (PAL)"];
+		var countryItems = choice(["&Auto Detection", "&Japan (NTSC)", "&USA (NTSC)", "&Europe (PAL)", "Japan (&PAL)"], "country", 0, function(i:Int)
+		{
+			applyCountry(i);
+			msg("COUNTRY: " + countries[i] + (i >= 3 ? " - 50 FPS" : ""));
+		});
+
+		var sramSizes = ["NONE", "8 KB", "16 KB", "32 KB", "64 KB"];
+		var sramItems = choice(["&None", "&8 Kb", "&16 Kb", "&32 Kb", "&64 Kb"], "sram", 0, function(i:Int)
+		{
+			msg("SRAM SIZE: " + sramSizes[i]);
+		});
+
 		var options:Array<MenuItem> = [
-			info("&General Options...", "General Options"),
-			info("&Joypads...", "Joypads"),
-			info("&Directories...", "Directories"),
-			info("&Bios/Misc Files...", "Bios/Misc Files"),
+			MenuItem.normal("&General Options...", null, openGeneral),
+			MenuItem.normal("&Joypads...", null, openJoypads),
+			MenuItem.normal("&Directories...", null, openDirectories),
+			MenuItem.normal("&Bios/Misc Files...", null, openBios),
 			MenuItem.sep(),
 			MenuItem.sub("Current &Country", countryItems),
 			MenuItem.sub("Sega CD SRAM &Size", sramItems)
 		];
 
+		var help:Array<MenuItem> = [MenuItem.normal("&About...", null, openAbout)];
+
 		headers = [
 			MenuItem.sub("&File", file),
+			MenuItem.sub("&Graphics", graphics),
+			MenuItem.sub("&CPU", cpu),
 			MenuItem.sub("&Sound", sound),
-			MenuItem.sub("&Options", options)
+			MenuItem.sub("&Options", options),
+			MenuItem.sub("&Help", help)
 		];
+	}
+
+	function applyAll():Void
+	{
+		FlxG.autoPause = cfg("autopause", FlxG.autoPause) == true;
+		applyCountry(Std.int(cfg("country", 0)));
+		applyColor();
+	}
+
+		function applyCountry(i:Int):Void
+	{
+		var pal = (i == 3 || i == 4);
+		var f:Int;
+		if (pal)
+		{
+			if (baseFps == 0) baseFps = FlxG.updateFramerate;
+			f = 50;
+		}
+		else
+		{
+			if (baseFps == 0) return;
+			f = baseFps;
+			baseFps = 0;
+		}
+		if (f > FlxG.drawFramerate)
+		{
+			FlxG.drawFramerate = f;
+			FlxG.updateFramerate = f;
+		}
+		else
+		{
+			FlxG.updateFramerate = f;
+			FlxG.drawFramerate = f;
+		}
+	}
+
+		function applyColor():Void
+	{
+		if (FlxG.game == null) return;
+		var con:Int = Std.int(cfg("contrast", 100));
+		var bri:Int = Std.int(cfg("brightness", 0));
+		var gray:Bool = cfg("gray", false) == true;
+		var inv:Bool = cfg("inverse", false) == true;
+
+		if (con == 100 && bri == 0 && !gray && !inv)
+		{
+			FlxG.game.filters = [];
+			return;
+		}
+
+		var k:Float = con / 100.0;
+		var off:Float = 255.0 * (0.5 - 0.5 * k) + bri * 2.55;
+		var s:Float = inv ? -k : k;
+		var o:Float = inv ? 255.0 - off : off;
+
+		var m:Array<Float> = [];
+		for (i in 0...3)
+		{
+			var r:Array<Float> = gray ? [0.299, 0.587, 0.114] : [i == 0 ? 1.0 : 0.0, i == 1 ? 1.0 : 0.0, i == 2 ? 1.0 : 0.0];
+			m.push(r[0] * s);
+			m.push(r[1] * s);
+			m.push(r[2] * s);
+			m.push(0.0);
+			m.push(o);
+		}
+		m.push(0.0);
+		m.push(0.0);
+		m.push(0.0);
+		m.push(1.0);
+		m.push(0.0);
+		FlxG.game.filters = [new ColorMatrixFilter(m)];
+	}
+
+	function toggleFull():Void
+	{
+		FlxG.fullscreen = !FlxG.fullscreen;
+		fullItem.checked = FlxG.fullscreen;
+	}
+
+	function hardReset():Void
+	{
+		if (!romLoaded) return;
+		closeAll();
+		resumeGame();
+		if (FlxG.sound.music != null) FlxG.sound.music.stop();
+		msg("HARD RESET");
+		FlxG.switchState(new Sonic3TitleStateV2());
+	}
+
+	function togglePause():Void
+	{
+		if (!romLoaded) return;
+		closeAll();
+		paused = !paused;
+		if (FlxG.state != null) FlxG.state.active = !paused;
+		if (paused)
+			FlxG.sound.pause();
+		else
+			FlxG.sound.resume();
+		msg(paused ? "PAUSED" : "RESUMED");
+	}
+
+	function resumeGame():Void
+	{
+		if (!paused) return;
+		paused = false;
+		if (FlxG.state != null) FlxG.state.active = true;
+		FlxG.sound.resume();
+	}
+
+	function takeShot():Void
+	{
+		if (!romLoaded)
+		{
+			msg("NO ROM LOADED");
+			return;
+		}
+		closeAll();
+		try
+		{
+			var st = Lib.current.stage;
+			var bh = barHeight;
+
+			var vBar = barSprite.visible;
+			barSprite.visible = false;
+			panelLayer.visible = false;
+			osd.visible = false;
+			osdShadow.visible = false;
+			var full = new BitmapData(st.stageWidth, st.stageHeight, false, 0x000000);
+			full.draw(st);
+			barSprite.visible = vBar;
+			panelLayer.visible = true;
+			osd.visible = true;
+			osdShadow.visible = true;
+
+			var shot = new BitmapData(st.stageWidth, Std.int(Math.max(1, st.stageHeight - bh)), false, 0x000000);
+			shot.copyPixels(full, new Rectangle(0, bh, shot.width, shot.height), new Point(0, 0));
+			full.dispose();
+
+			var dir = dirOf(5);
+			if (!FileSystem.exists(dir)) FileSystem.createDirectory(dir);
+			var n = 0;
+			var path:String;
+			do
+			{
+				path = Path.join([dir, "Sonic3_" + StringTools.lpad(Std.string(n), "0", 4) + ".png"]);
+				n++;
+			}
+			while (FileSystem.exists(path));
+
+			File.saveBytes(path, shot.encode(shot.rect, new PNGEncoderOptions()));
+			shot.dispose();
+			msg("SCREENSHOT: " + Path.withoutDirectory(path).toUpperCase());
+		}
+		catch (e:Dynamic)
+		{
+			msg("SCREENSHOT FAILED");
+		}
+	}
+
+	static function rHead(s:String):DRow
+		return {kind: 0, label: s};
+
+	static function rInfo(s:String):DRow
+		return {kind: 7, label: s};
+
+	static function rCheck(s:String, v:Bool, d:Bool, a:Bool->Void):DRow
+		return {
+			kind: 1,
+			label: s,
+			value: v,
+			def: d,
+			apply: function(x:Dynamic)
+			{
+				a(x == true);
+			}
+		};
+
+	static function rKey(s:String, v:Int, d:Int, a:Int->Void):DRow
+		return {
+			kind: 2,
+			label: s,
+			value: v,
+			def: d,
+			apply: function(x:Dynamic)
+			{
+				a(Std.int(x));
+			}
+		};
+
+	static function rPath(s:String, v:String, d:String, isDir:Bool, a:String->Void):DRow
+		return {
+			kind: 3,
+			label: s,
+			value: v,
+			def: d,
+			dir: isDir,
+			apply: function(x:Dynamic)
+			{
+				a(Std.string(x));
+			}
+		};
+
+	static function rStep(s:String, v:Int, d:Int, mn:Int, mx:Int, st:Int, a:Int->Void):DRow
+		return {
+			kind: 4,
+			label: s,
+			value: v,
+			def: d,
+			min: mn,
+			max: mx,
+			step: st,
+			apply: function(x:Dynamic)
+			{
+				a(Std.int(x));
+			}
+		};
+
+	function openDialog(title:String, rows:Array<DRow>, w:Int, single:Bool = false, ?afterOk:Void->Void):Void
+	{
+		if (dlg != null) return;
+		closeAll();
+		if (!keysLocked)
+		{
+			keysLocked = true;
+			FlxG.keys.enabled = false;
+		}
+		restoreKeys = false;
+
+		dlg = new GDialog(title, rows, w, single);
+		dlg.onDone = function(ok:Bool)
+		{
+			dlg = null;
+			restoreKeys = true;
+			if (ok)
+			{
+				flushCfg();
+				if (afterOk != null) afterOk();
+			}
+		};
+		addChild(dlg);
+	}
+
+	function openGeneral():Void
+	{
+		openDialog("General Options", [
+			rHead("Display"),
+			rCheck("Show FPS counter", ClientPrefs.data.showFPS == true, false, function(v:Bool)
+			{
+				ClientPrefs.data.showFPS = v;
+				Main.refreshFPSVisibility();
+			}),
+			rCheck("Show OSD messages", cfg("osd", true) == true, true, function(v:Bool)
+			{
+				setCfg("osd", v);
+			}),
+			rCheck("Fast Blur", cfg("fastblur", false) == true, false, function(v:Bool)
+			{
+				setCfg("fastblur", v);
+			}),
+			rHead("Emulation"),
+			rCheck("Pause when the window loses focus", FlxG.autoPause, true, function(v:Bool)
+			{
+				FlxG.autoPause = v;
+				setCfg("autopause", v);
+			}),
+			rCheck("Auto Fix Checksum", cfg("fixsum", true) == true, true, function(v:Bool)
+			{
+				setCfg("fixsum", v);
+			}),
+			rCheck("Perfect Synchro", cfg("perfectsync", false) == true, false, function(v:Bool)
+			{
+				setCfg("perfectsync", v);
+			})
+		], 360);
+	}
+
+	function openJoypads():Void
+	{
+		var rows:Array<DRow> = [rHead("Player 1")];
+		for (i in 0...PAD_NAMES.length)
+		{
+			var idx = i;
+			var n = PAD_NAMES[i];
+			var linked = idx < PAD_BIND.length;
+			var cur = linked ? bindGet(PAD_BIND[idx], PAD_DEF[idx]) : Std.int(cfg("pad_" + n, PAD_DEF[idx]));
+			rows.push(rKey(linked ? n : n + "   (not used in game)", cur, PAD_DEF[idx], function(v:Int)
+			{
+				if (linked)
+					bindSet(PAD_BIND[idx], v);
+				else
+					setCfg("pad_" + n, v);
+			}));
+		}
+		openDialog("Joypads", rows, 360, false, function()
+		{
+			try
+			{
+				ClientPrefs.saveSettings();
+			}
+			catch (e:Dynamic) {}
+		});
+	}
+
+	function openDirectories():Void
+	{
+		var rows:Array<DRow> = [rHead("Directories")];
+		for (i in 0...DIR_NAMES.length)
+		{
+			var idx = i;
+			rows.push(rPath(DIR_NAMES[i], Std.string(cfg("dir_" + i, DIR_DEF[i])), DIR_DEF[i], true, function(v:String)
+			{
+				setCfg("dir_" + idx, v);
+			}));
+		}
+		openDialog("Directories", rows, 520);
+	}
+
+	function openBios():Void
+	{
+		var rows:Array<DRow> = [rHead("Bios Files")];
+		for (i in 0...BIOS_NAMES.length)
+		{
+			var idx = i;
+			rows.push(rPath(BIOS_NAMES[i], Std.string(cfg("bios_" + i, "")), "", false, function(v:String)
+			{
+				setCfg("bios_" + idx, v);
+			}));
+		}
+		openDialog("Bios/Misc Files", rows, 520);
+	}
+
+	function openColorAdjust():Void
+	{
+		openDialog("Color Adjust", [
+			rStep("Contrast", Std.int(cfg("contrast", 100)), 100, 0, 200, 5, function(v:Int)
+			{
+				setCfg("contrast", v);
+			}),
+			rStep("Brightness", Std.int(cfg("brightness", 0)), 0, -100, 100, 5, function(v:Int)
+			{
+				setCfg("brightness", v);
+			}),
+			rCheck("Grayscale", cfg("gray", false) == true, false, function(v:Bool)
+			{
+				setCfg("gray", v);
+			}),
+			rCheck("Inverse Colors", cfg("inverse", false) == true, false, function(v:Bool)
+			{
+				setCfg("inverse", v);
+			})
+		], 340, false, applyColor);
+	}
+
+	function openAbout():Void
+	{
+		openDialog("About", [
+			rHead("Gens - Sonic the Hedgehog 3 (FNF Port)"),
+			rInfo("Gens-style launcher for the FNF port."),
+			rInfo("Menu layout based on the Gens emulator."),
+			rInfo("Not affiliated with SEGA.")
+		], 340, true);
 	}
 
 	function buildBar():Void
@@ -562,6 +1117,7 @@ class GensFrame extends Sprite
 	function refreshChecks():Void
 	{
 		soundEnable.checked = !FlxG.sound.muted;
+		fullItem.checked = FlxG.fullscreen;
 	}
 
 	function nextSel(p:Panel, from:Int, dir:Int):Int
@@ -629,7 +1185,7 @@ class GensFrame extends Sprite
 
 	function onMouseMove(e:MouseEvent):Void
 	{
-		if (busy) return;
+		if (busy || dlg != null) return;
 		var mx = e.stageX;
 		var my = e.stageY;
 
@@ -663,7 +1219,7 @@ class GensFrame extends Sprite
 
 	function onMouseDown(e:MouseEvent):Void
 	{
-		if (busy) return;
+		if (busy || dlg != null) return;
 		var mx = e.stageX;
 		var my = e.stageY;
 
@@ -701,7 +1257,7 @@ class GensFrame extends Sprite
 
 	function onKeyDown(e:KeyboardEvent):Void
 	{
-		if (busy) return;
+		if (busy || dlg != null) return;
 
 		if (panels.length > 0)
 		{
@@ -710,6 +1266,12 @@ class GensFrame extends Sprite
 		}
 
 		var k = e.keyCode;
+
+		if (e.altKey && !e.ctrlKey && k == Keyboard.ENTER)
+		{
+			toggleFull();
+			return;
+		}
 
 		if (e.altKey && !e.ctrlKey && barVisible())
 		{
@@ -735,7 +1297,10 @@ class GensFrame extends Sprite
 		}
 		if (!romLoaded) return;
 
-		if (k == Keyboard.F5) saveState();
+		if (e.shiftKey && k == Keyboard.BACKSPACE) takeShot();
+		else if (k == Keyboard.TAB) hardReset();
+		else if (k == 19) togglePause();
+		else if (k == Keyboard.F5) saveState();
 		else if (k == Keyboard.F8) loadState();
 		else if (k == Keyboard.F6) changeSlot(-1);
 		else if (k == Keyboard.F7) changeSlot(1);
@@ -816,9 +1381,10 @@ class GensFrame extends Sprite
 		if (!configured && FlxG.state != null)
 		{
 			configured = true;
-			FlxG.scaleMode = new GensScaleMode();
+			FlxG.scaleMode = cfg("stretch", false) == true ? cast new GensFillScaleMode() : cast new GensScaleMode();
 			FlxG.mouse.visible = true;
 			FlxG.mouse.useSystemCursor = true;
+			applyAll();
 			setTitle(curTitle);
 		}
 
@@ -842,7 +1408,7 @@ class GensFrame extends Sprite
 			Lib.current.stage.dispatchEvent(new Event(Event.RESIZE));
 		}
 
-		if (restoreKeys && panels.length == 0)
+		if (restoreKeys && panels.length == 0 && dlg == null)
 		{
 			restoreKeys = false;
 			keysLocked = false;
@@ -871,6 +1437,7 @@ class GensFrame extends Sprite
 
 	function showMsg(s:String):Void
 	{
+		if (cfg("osd", true) == false) return;
 		osd.text = s;
 		osdShadow.text = s;
 		osd.alpha = 1;
@@ -892,7 +1459,9 @@ class GensFrame extends Sprite
 
 	function saveState():Void
 	{
-		if (romLoaded) msg("STATE " + slot + " SAVED");
+		if (!romLoaded) return;
+		Main.flushProgress();
+		msg("STATE " + slot + " SAVED");
 	}
 
 	function loadState():Void
@@ -939,6 +1508,7 @@ class GensFrame extends Sprite
 		}
 
 		closeAll();
+		resumeGame();
 		romLoaded = true;
 		addHistory(path);
 		setTitle("Gens - " + Path.withoutExtension(name));
@@ -950,6 +1520,7 @@ class GensFrame extends Sprite
 	{
 		if (!romLoaded) return;
 		closeAll();
+		resumeGame();
 		romLoaded = false;
 		if (FlxG.sound.music != null) FlxG.sound.music.stop();
 		setTitle("Gens - Idle");
@@ -971,11 +1542,7 @@ class GensFrame extends Sprite
 		h.unshift(path);
 		while (h.length > 9) h.pop();
 		FlxG.save.data.gensRomHistory = h;
-		try
-		{
-			FlxG.save.flush();
-		}
-		catch (e:Dynamic) {}
+		flushCfg();
 		rebuildHistory();
 	}
 
@@ -1056,4 +1623,372 @@ private class Panel
 	public var sel:Int = -1;
 
 	public function new() {}
+}
+
+private class GDialog extends Sprite
+{
+	static inline var TITLE:Int = 24;
+	static inline var BTN_W:Int = 80;
+	static inline var BTN_H:Int = 24;
+
+	public var onDone:Bool->Void;
+
+	var rows:Array<DRow>;
+	var single:Bool;
+	var w:Int;
+	var h:Int = 0;
+	var px:Int = 0;
+	var py:Int = 0;
+	var tops:Array<Int> = [];
+	var heights:Array<Int> = [];
+	var labels:Array<TextField> = [];
+	var vals:Array<TextField> = [];
+	var titleTf:TextField;
+	var btnTf:Array<TextField> = [];
+	var capture:Int = -1;
+	var hasDefaults:Bool = false;
+	var finished:Bool = false;
+
+	public function new(title:String, rows:Array<DRow>, w:Int, single:Bool)
+	{
+		super();
+		this.rows = rows;
+		this.w = w;
+		this.single = single;
+
+		var y = TITLE + 8;
+		for (r in rows)
+		{
+			var rh = r.kind == 0 ? 28 : 24;
+			tops.push(y);
+			heights.push(rh);
+			y += rh;
+			if (r.def != null) hasDefaults = true;
+		}
+		h = y + 12 + BTN_H + 12;
+
+		titleTf = mk(title, true, 0xFFFFFF);
+		addChild(titleTf);
+
+		for (r in rows)
+		{
+			var l = mk(r.label, r.kind == 0, 0x000000);
+			addChild(l);
+			labels.push(l);
+
+			var v = mk("", false, 0x000000);
+			if (r.kind == 3)
+			{
+				v.autoSize = TextFieldAutoSize.NONE;
+				v.wordWrap = false;
+				v.height = 18;
+			}
+			addChild(v);
+			vals.push(v);
+		}
+
+		for (s in ["OK", "Cancel", "Defaults"])
+		{
+			var t = mk(s, false, 0x000000);
+			addChild(t);
+			btnTf.push(t);
+		}
+
+		mouseEnabled = true;
+		addEventListener(MouseEvent.MOUSE_DOWN, onDown);
+		addEventListener(Event.ADDED_TO_STAGE, onAdded);
+	}
+
+	static function mk(s:String, bold:Bool, color:Int):TextField
+	{
+		var t = new TextField();
+		t.defaultTextFormat = new TextFormat("_sans", 12, color, bold);
+		t.selectable = false;
+		t.mouseEnabled = false;
+		t.autoSize = TextFieldAutoSize.LEFT;
+		t.text = s;
+		return t;
+	}
+
+	static function keyName(code:Int):String
+	{
+		var fk:FlxKey = code;
+		var s:String = null;
+		try
+		{
+			s = fk.toString();
+		}
+		catch (e:Dynamic) {}
+		return (s == null || s == "") ? "Key " + code : s;
+	}
+
+	function onAdded(_:Event):Void
+	{
+		removeEventListener(Event.ADDED_TO_STAGE, onAdded);
+		var st = stage;
+		px = Std.int((st.stageWidth - w) / 2);
+		py = Std.int(Math.max(24, (st.stageHeight - h) / 2));
+		st.addEventListener(KeyboardEvent.KEY_DOWN, onKey);
+		paint();
+	}
+
+	function btnX(i:Int):Int
+	{
+		if (single) return px + Std.int((w - BTN_W) / 2);
+		return switch (i)
+		{
+			case 0: px + w - 16 - BTN_W * 2 - 8;
+			case 1: px + w - 16 - BTN_W;
+			default: px + 16;
+		}
+	}
+
+	function btnY():Int
+		return py + h - 12 - BTN_H;
+
+	function btnShown(i:Int):Bool
+	{
+		if (single) return i == 0;
+		if (i == 2) return hasDefaults;
+		return true;
+	}
+
+	function paint():Void
+	{
+		var st = Lib.current.stage;
+		var g = graphics;
+		g.clear();
+
+		g.lineStyle();
+		g.beginFill(0x000000, 0.30);
+		g.drawRect(0, 0, st.stageWidth, st.stageHeight);
+		g.endFill();
+
+		g.lineStyle(1, 0x404040);
+		g.beginFill(0xF0F0F0);
+		g.drawRect(px + 0.5, py + 0.5, w - 1, h - 1);
+		g.endFill();
+
+		g.lineStyle();
+		g.beginFill(0x0A246A);
+		g.drawRect(px + 1, py + 1, w - 2, TITLE - 1);
+		g.endFill();
+		titleTf.x = px + 8;
+		titleTf.y = py + 3;
+
+		for (i in 0...rows.length)
+		{
+			var r = rows[i];
+			var top = py + tops[i];
+			var l = labels[i];
+			var v = vals[i];
+
+			switch (r.kind)
+			{
+				case 0:
+					l.x = px + 14;
+					l.y = top + 4;
+					g.lineStyle(1, 0xA0A0A0);
+					g.moveTo(px + 14, top + 23.5);
+					g.lineTo(px + w - 14, top + 23.5);
+
+				case 1:
+					g.lineStyle(1, 0x404040);
+					g.beginFill(0xFFFFFF);
+					g.drawRect(px + 16.5, top + 5.5, 12, 12);
+					g.endFill();
+					if (r.value == true)
+					{
+						g.lineStyle(2, 0x000000);
+						g.moveTo(px + 19, top + 11);
+						g.lineTo(px + 22, top + 14);
+						g.lineTo(px + 27, top + 8);
+					}
+					l.x = px + 38;
+					l.y = top + 3;
+
+				case 2:
+					var bx = px + w - 16 - 130;
+					g.lineStyle(1, 0x404040);
+					g.beginFill(capture == i ? 0x91C9F7 : 0xFFFFFF);
+					g.drawRect(bx + 0.5, top + 2.5, 130, 18);
+					g.endFill();
+					v.text = capture == i ? "Press a key..." : keyName(Std.int(r.value));
+					v.x = bx + 6;
+					v.y = top + 3;
+					l.x = px + 16;
+					l.y = top + 3;
+
+				case 3:
+					var bx = px + 160;
+					var bw = w - 160 - 16;
+					g.lineStyle(1, 0x404040);
+					g.beginFill(0xFFFFFF);
+					g.drawRect(bx + 0.5, top + 2.5, bw, 18);
+					g.endFill();
+					var s = Std.string(r.value);
+					v.text = (s == null || s == "" || s == "null") ? "(none)" : s;
+					v.x = bx + 4;
+					v.y = top + 3;
+					v.width = bw - 8;
+					v.height = 16;
+					l.x = px + 16;
+					l.y = top + 3;
+
+				case 4:
+					var mx0 = px + w - 110;
+					var px0 = px + w - 34;
+					g.lineStyle(1, 0x404040);
+					g.beginFill(0xE1E1E1);
+					g.drawRect(mx0 + 0.5, top + 2.5, 18, 18);
+					g.drawRect(px0 + 0.5, top + 2.5, 18, 18);
+					g.endFill();
+					g.lineStyle(1, 0x000000);
+					g.moveTo(mx0 + 5, top + 11.5);
+					g.lineTo(mx0 + 14, top + 11.5);
+					g.moveTo(px0 + 5, top + 11.5);
+					g.lineTo(px0 + 14, top + 11.5);
+					g.moveTo(px0 + 9.5, top + 7);
+					g.lineTo(px0 + 9.5, top + 16);
+					v.text = Std.string(r.value);
+					v.x = mx0 + 26 + Math.max(0, 28 - v.textWidth) / 2;
+					v.y = top + 3;
+					l.x = px + 16;
+					l.y = top + 3;
+
+				default:
+					l.x = px + 16;
+					l.y = top + 2;
+			}
+		}
+
+		for (i in 0...3)
+		{
+			var t = btnTf[i];
+			t.visible = btnShown(i);
+			if (!t.visible) continue;
+			var bx = btnX(i);
+			var by = btnY();
+			g.lineStyle(1, 0x404040);
+			g.beginFill(i == 0 ? 0xDCEBFA : 0xE1E1E1);
+			g.drawRect(bx + 0.5, by + 0.5, BTN_W - 1, BTN_H - 1);
+			g.endFill();
+			t.x = bx + (BTN_W - t.textWidth) / 2 - 2;
+			t.y = by + (BTN_H - t.textHeight) / 2 - 2;
+		}
+	}
+
+	function onDown(e:MouseEvent):Void
+	{
+		e.stopPropagation();
+		var mx = e.stageX;
+		var my = e.stageY;
+
+		for (i in 0...3)
+		{
+			if (!btnShown(i)) continue;
+			if (mx >= btnX(i) && mx < btnX(i) + BTN_W && my >= btnY() && my < btnY() + BTN_H)
+			{
+				if (i == 0) finish(true);
+				else if (i == 1) finish(false);
+				else resetDefaults();
+				return;
+			}
+		}
+
+		for (i in 0...rows.length)
+		{
+			var top = py + tops[i];
+			if (my < top || my >= top + heights[i] || mx < px || mx >= px + w) continue;
+			rowClick(i, mx);
+			return;
+		}
+	}
+
+	function rowClick(i:Int, mx:Float):Void
+	{
+		var r = rows[i];
+		switch (r.kind)
+		{
+			case 1:
+				r.value = !(r.value == true);
+			case 2:
+				capture = i;
+			case 3:
+				browse(i);
+			case 4:
+				var v:Int = Std.int(r.value);
+				var st:Int = r.step == null ? 1 : r.step;
+				if (mx >= px + w - 110 && mx < px + w - 92) v -= st;
+				else if (mx >= px + w - 34 && mx < px + w - 16) v += st;
+				var lo:Int = r.min == null ? 0 : r.min;
+				var hi:Int = r.max == null ? 100 : r.max;
+				if (v < lo) v = lo;
+				if (v > hi) v = hi;
+				r.value = v;
+			default:
+		}
+		paint();
+	}
+
+	function browse(i:Int):Void
+	{
+		var r = rows[i];
+		var fd = new FileDialog();
+		fd.onSelect.add(function(p:String)
+		{
+			r.value = p;
+			paint();
+		});
+		fd.browse(r.dir == true ? FileDialogType.OPEN_DIRECTORY : FileDialogType.OPEN, null, null, r.label);
+	}
+
+	function resetDefaults():Void
+	{
+		capture = -1;
+		for (r in rows)
+			if (r.def != null) r.value = r.def;
+		paint();
+	}
+
+	function onKey(e:KeyboardEvent):Void
+	{
+		e.stopImmediatePropagation();
+
+		if (capture >= 0)
+		{
+			if (e.keyCode != Keyboard.ESCAPE) rows[capture].value = e.keyCode;
+			capture = -1;
+			paint();
+			return;
+		}
+
+		if (e.keyCode == Keyboard.ESCAPE)
+			finish(false);
+		else if (e.keyCode == Keyboard.ENTER)
+			finish(true);
+	}
+
+	function finish(ok:Bool):Void
+	{
+		if (finished) return;
+		finished = true;
+
+		if (ok)
+		{
+			for (r in rows)
+			{
+				if (r.apply == null || r.value == null) continue;
+				try
+				{
+					r.apply(r.value);
+				}
+				catch (e:Dynamic) {}
+			}
+		}
+
+		if (stage != null) stage.removeEventListener(KeyboardEvent.KEY_DOWN, onKey);
+		if (parent != null) parent.removeChild(this);
+		if (onDone != null) onDone(ok);
+	}
 }

@@ -11,6 +11,10 @@
     <define name="PC_OPTIONS" if="desktop" unless="switch" />
     <define name="SWITCH_BUILD" if="switch" />
 
+    <section unless="NO_GENS">
+        <define name="GENS_FRONTEND" if="desktop" unless="switch" />
+    </section>
+
     <!-- Features are opt-in by platform: browser builds avoid native dependencies. -->
     <define name="MODS_ALLOWED" if="desktop || android || switch" />
     <define name="HSCRIPT_ALLOWED" if="desktop || mobile || switch" />
@@ -52,6 +56,7 @@
     <window width="959" height="670" fps="60" background="#000000" hardware="true" vsync="false" allow-high-dpi="true" />
     <window if="html5" resizable="true" fullscreen="false" />
     <window if="desktop" orientation="landscape" fullscreen="false" resizable="true" />
+    <window if="GENS_FRONTEND" height="690" />
     <window if="mobile" orientation="landscape" fullscreen="true" width="0" height="0" resizable="false" />
     <window if="switch" orientation="landscape" fullscreen="true" width="0" height="0" resizable="false" hardware="true" />
 

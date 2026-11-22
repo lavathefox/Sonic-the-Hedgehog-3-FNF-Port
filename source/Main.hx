@@ -134,7 +134,7 @@ class Main extends Sprite
         Achievements.load();
         #end
 
-        var startState:Class<FlxState> = needsPermission ? states.PermissionState : game.initialState;
+        var startState:Class<FlxState> = needsPermission ? states.PermissionState : getStartState();
         addChild(new FlxGame(game.width, game.height, startState, game.framerate, game.framerate, game.skipSplash, game.startFullscreen));
 
         #if PC_OPTIONS
@@ -150,6 +150,15 @@ class Main extends Sprite
         #end
         registerEvents();
         initialized = true;
+    }
+
+    static function getStartState():Class<FlxState>
+    {
+        #if (PC_OPTIONS && !NO_GENS)
+        return states.GensState;
+        #else
+        return game.initialState;
+        #end
     }
 
     static function setupProgress():Void
@@ -185,7 +194,11 @@ class Main extends Sprite
         catch (error:Dynamic) {}
         #end
         #if (windows && cpp)
+        #if (PC_OPTIONS && !NO_GENS)
+        WinAPI.setWindowTitle('Gens - Idle');
+        #else
         WinAPI.setWindowTitle(GAME_TITLE);
+        #end
         #end
     }
 

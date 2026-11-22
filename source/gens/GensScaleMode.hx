@@ -1,9 +1,9 @@
 package gens;
 
 import flixel.FlxG;
-import flixel.system.scaleModes.FillScaleMode;
+import flixel.system.scaleModes.RatioScaleMode;
 
-class GensFillScaleMode extends FillScaleMode
+class GensScaleMode extends RatioScaleMode
 {
 	override public function onMeasure(Width:Int, Height:Int):Void
 	{

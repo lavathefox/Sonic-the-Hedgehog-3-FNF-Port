@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TextureAtlas imagePath="rings.png">
+	<!-- Created using the Spritesheet and XML generator -->
+	<!-- https://uncertainprod.github.io/FNF-Spritesheet-XML-generator-Web -->
+	<SubTexture name="ringIdle0000" x="0" y="0" width="20" height="20" frameX="2" frameY="2" frameWidth="16" frameHeight="16"/>
+	<SubTexture name="ringIdle0001" x="40" y="18" width="16" height="20" frameX="0" frameY="2" frameWidth="16" frameHeight="16"/>
+	<SubTexture name="ringIdle0002" x="16" y="38" width="10" height="20" frameX="-3" frameY="2" frameWidth="16" frameHeight="16"/>
+	<SubTexture name="ringIdle0003" x="0" y="38" width="16" height="20" frameX="0" frameY="2" frameWidth="16" frameHeight="16"/>
+	<SubTexture name="ringEffect0000" x="0" y="20" width="20" height="18" frameX="2" frameY="2" frameWidth="16" frameHeight="16"/>
+	<SubTexture name="ringEffect0001" x="40" y="0" width="20" height="18" frameX="2" frameY="0" frameWidth="16" frameHeight="16"/>
+	<SubTexture name="ringEffect0002" x="20" y="20" width="20" height="18" frameX="2" frameY="0" frameWidth="16" frameHeight="16"/>
+	<SubTexture name="ringEffect0003" x="20" y="0" width="20" height="18" frameX="2" frameY="2" frameWidth="16" frameHeight="16"/>
+</TextureAtlas>

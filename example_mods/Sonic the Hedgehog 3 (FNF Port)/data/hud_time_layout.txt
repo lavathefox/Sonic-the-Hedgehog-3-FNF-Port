@@ -1,0 +1,7 @@
+digit,120,-3
+digit,160,-3
+digit,185,-3
+digit,230,-3
+digit,254,-3
+point,133,-4
+secondpoint,203,-4

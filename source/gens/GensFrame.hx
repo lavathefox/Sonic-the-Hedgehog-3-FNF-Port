@@ -417,6 +417,8 @@ class GensFrame extends Sprite
 			MenuItem.normal("&Close ROM", "Ctrl+C", closeRom, needRom),
 			MenuItem.sep(),
 			MenuItem.normal("&Game Genie...", null, openGenie, needRom),
+			MenuItem.normal("Game Genie: &Rules...", null, openGenieRules, needRom),
+			MenuItem.normal("Game Genie: HUD &Display...", null, openGenieHud, needRom),
 			MenuItem.sep(),
 			MenuItem.normal("&Load State...", "Ctrl+F8", loadStateAs, needRom),
 			MenuItem.normal("&Save State as...", "Ctrl+F5", saveStateAs, needRom),
@@ -904,6 +906,12 @@ class GensFrame extends Sprite
 	static function gStep(label:String, id:String, def:Int, mn:Int, mx:Int, st:Int):DRow
 		return rStep(label, Std.int(GensGenie.get(id, def)), def, mn, mx, st, function(v:Int) GensGenie.set(id, v));
 
+	function genieDone():Void
+	{
+		genieApply();
+		msg("GAME GENIE: " + GensGenie.activeCount() + " CODE(S) ACTIVE");
+	}
+
 	function openGenie():Void
 	{
 		openDialog("Game Genie", [
@@ -920,6 +928,10 @@ class GensFrame extends Sprite
 			{
 				geniePut("instakill", v);
 			}),
+			rStep("Song speed % (next song)", Std.int(Math.round(Std.parseFloat(Std.string(genieGet("songspeed", 1.0))) * 100)), 100, 50, 300, 10, function(v:Int)
+			{
+				geniePut("songspeed", v / 100.0);
+			}),
 			rHead("Health"),
 			rStep("Health gain %", Std.int(Math.round(Std.parseFloat(Std.string(genieGet("healthgain", 1.0))) * 100)), 100, 0, 300, 10, function(v:Int)
 			{
@@ -929,25 +941,49 @@ class GensFrame extends Sprite
 			{
 				geniePut("healthloss", v / 100.0);
 			}),
-			rHead("HUD / Sonic"),
+			rInfo("Defaults = deactivate all codes in this window.")
+		], 420, false, genieDone);
+	}
+
+	function openGenieRules():Void
+	{
+		openDialog("Game Genie - Rules", [
+			rHead("Lives"),
 			gCheck("SNC3-LIVE  Infinite lives", "inflives"),
+			gStep("SNC3-LIVX  Set lives (0 = default)", "setlives", 0, 0, 99, 1),
+			gCheck("SNC3-NO1U  No extra lives", "noextralife"),
+			rHead("Rings"),
 			gCheck("SNC3-RING  Max rings (999)", "infrings"),
+			gStep("SNC3-RNGS  Set rings (0 = default)", "setrings", 0, 0, 300, 25),
 			gStep("SNC3-RNGX  Ring bonus (0 = default)", "ringbonus", 0, 0, 100, 5),
+			gCheck("SNC3-KEEP  Keep rings when hit", "keeprings"),
+			gCheck("SNC3-NOSH  No ring shield", "noshield"),
+			gStep("SNC3-INVN  Invincibility seconds (0 = default)", "invtime", 0, 0, 10, 1),
+			rHead("Score"),
 			gStep("SNC3-SCRX  Score multiplier %", "scoremult", 100, 100, 500, 25),
+			gStep("SNC3-HOLD  Sustain score %", "holdmult", 100, 100, 500, 50),
+			rInfo("Defaults = deactivate all codes in this window.")
+		], 480, false, genieDone);
+	}
+
+	function openGenieHud():Void
+	{
+		openDialog("Game Genie - HUD Display", [
+			rHead("Timer"),
 			gCheck("SNC3-TIME  Freeze timer", "freezetime"),
 			gCheck("SNC3-CDTM  Timer format 0'00\"00", "cdtime"),
-			gCheck("SNC3-NOBK  No ring blink", "noblink"),
+			rHead("HUD"),
 			gCheck("SNC3-NOSC  Hide score", "hidescore"),
 			gCheck("SNC3-NOLV  Hide lives", "hidelives"),
 			gCheck("SNC3-NOHD  Hide whole HUD", "hidehud"),
+			gCheck("SNC3-NOBK  No ring blink", "noblink"),
+			gCheck("SNC3-POPS  No score popups", "nopopups"),
 			gStep("SNC3-STYL  HUD style 0/1/2 (next song)", "hudstyle", 0, 0, 2, 1),
+			rHead("Video / Debug"),
+			gCheck("SNC3-PALT  Disable Genesis palette", "nopalette"),
 			gCheck("SNC3-DBUG  HUD debug log", "hdebug"),
-			rInfo("Defaults = deactivate all codes. Codes apply live, except HUD style.")
-		], 460, false, function()
-		{
-			genieApply();
-			msg("GAME GENIE: " + GensGenie.activeCount() + " CODE(S) ACTIVE");
-		});
+			rInfo("Defaults = deactivate all codes in this window.")
+		], 460, false, genieDone);
 	}
 
 	function openFolder(path:String):Void

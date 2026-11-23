@@ -65,6 +65,12 @@ local exists = {}
 
 local songStarted, preTime = false, 0
 
+genieInfLives, genieInfRings, genieHideHud = false, false, false
+genieHideScore, genieHideLives, genieFreezeTime = false, false, false
+genieCDTime, genieNoBlink, genieDebug = false, false, false
+genieRingBonus, genieScoreMult = 0, 100
+local timeHold = nil
+
 local function log(text)
 	if debugMode then debugPrint(text) end
 end
@@ -201,10 +207,20 @@ local function setText(tag, value, p, font)
 end
 
 local function elapsedSeconds()
+	local t
 	if songStarted then
-		return math.max(0, getSongPosition() or 0) / 1000
+		t = math.max(0, getSongPosition() or 0) / 1000
+	else
+		t = preTime
 	end
-	return preTime
+
+	if genieFreezeTime then
+		if timeHold == nil then timeHold = t end
+		return timeHold
+	end
+
+	timeHold = nil
+	return t
 end
 
 local function timeString()
@@ -212,7 +228,7 @@ local function timeString()
 	local m = math.floor(t / 60)
 	local s = math.floor(t % 60)
 
-	if cdTime then
+	if cdTime or genieCDTime then
 		local cs = math.floor((t - math.floor(t)) * 100)
 		return string.format('%d\'%02d"%02d', math.min(m, 9), s, cs)
 	end
@@ -413,7 +429,7 @@ local function updateGameOver(elapsed)
 end
 
 local function updateLife()
-	if not showLives then
+	if not showLives or genieHideHud or genieHideLives then
 		clearText('soniclife')
 		clearText('sonichealth')
 		return
@@ -437,7 +453,7 @@ local function updateScore(elapsed)
 		shownScore = score
 	end
 
-	if not showScore then
+	if not showScore or genieHideHud or genieHideScore then
 		clearText('sonicscore')
 		clearText('sonicbotplay')
 	elseif botPlay then
@@ -525,6 +541,14 @@ function onUpdatePost(elapsed)
 	local delta = base - lastBase
 	lastBase = base
 
+	if genieScoreMult > 100 and delta > 0 then
+		local extra = math.floor(delta * (genieScoreMult - 100) / 100)
+		if extra > 0 then
+			addScore(extra)
+			holdTotal = holdTotal + extra
+		end
+	end
+
 	if #pending > 0 then
 		if popups and delta > 0 then
 			local each = math.min(math.floor(delta / #pending), 350)
@@ -549,12 +573,27 @@ function onUpdate(elapsed)
 
 	local misses = math.min(getProperty('songMisses'), 99)
 
+	debugMode = genieDebug
+	if genieInfRings then rings = maxRings end
+
+	local hide = genieHideHud
+	setProperty('score.visible', showScore and not hide and not genieHideScore)
+	setProperty('time.visible', not hide)
+	setProperty('hudlife.visible', showLives and not hide and not genieHideLives)
+	if ringsLabel then setProperty('ringshud.visible', not hide) end
+
 	updateLife()
-	setText('sonicrings', rings, pos.ringNum, numFont)
-	setText('sonictime', timeString(), pos.timeNum, numFont)
 	updateScore(elapsed)
 
-	if ringBlink and ringsLabel and not blinking and misses >= blinkAt then
+	if hide then
+		clearText('sonicrings')
+		clearText('sonictime')
+	else
+		setText('sonicrings', rings, pos.ringNum, numFont)
+		setText('sonictime', timeString(), pos.timeNum, numFont)
+	end
+
+	if ringBlink and not genieNoBlink and ringsLabel and not blinking and misses >= blinkAt then
 		blinking, blinkOn = true, false
 		setProperty('ringshud.alpha', 0)
 		runTimer('blink1', 0.2, 0)
@@ -567,7 +606,8 @@ function onMonitorCollected(kind)
 	if dead then return end
 
 	if kind == 'ring' then
-		rings = math.min(rings + ringBonus, maxRings)
+		local bonus = genieRingBonus > 0 and genieRingBonus or ringBonus
+		rings = math.min(rings + bonus, maxRings)
 	elseif kind == 'life' then
 		lives = math.min(lives + 1, maxLives)
 		saveLives(lives)
@@ -578,7 +618,7 @@ function onGameOver()
 	if dead then return Function_Stop end
 	dead = true
 
-	if not (practiceKeepsLives and practiceMode) then
+	if not (practiceKeepsLives and practiceMode) and not genieInfLives then
 		lives = lives - 1
 
 		if lives <= 0 then

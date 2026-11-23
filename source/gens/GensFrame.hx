@@ -893,14 +893,21 @@ class GensFrame extends Sprite
 			pi.healthGain = ClientPrefs.getGameplaySetting('healthgain');
 			pi.healthLoss = ClientPrefs.getGameplaySetting('healthloss');
 			if (pi.botplayTxt != null) pi.botplayTxt.visible = pi.cpuControlled;
+			GensGenie.apply();
 		}
 		catch (e:Dynamic) {}
 	}
 
+	static function gCheck(label:String, id:String, def:Bool = false):DRow
+		return rCheck(label, GensGenie.get(id, def) == true, def, function(v:Bool) GensGenie.set(id, v));
+
+	static function gStep(label:String, id:String, def:Int, mn:Int, mx:Int, st:Int):DRow
+		return rStep(label, Std.int(GensGenie.get(id, def)), def, mn, mx, st, function(v:Int) GensGenie.set(id, v));
+
 	function openGenie():Void
 	{
 		openDialog("Game Genie", [
-			rHead("Codes"),
+			rHead("Gameplay"),
 			rCheck("Infinite health (Practice Mode)", genieGet("practice", false) == true, false, function(v:Bool)
 			{
 				geniePut("practice", v);
@@ -922,8 +929,25 @@ class GensFrame extends Sprite
 			{
 				geniePut("healthloss", v / 100.0);
 			}),
-			rInfo("Codes apply to the song that is playing and to the next ones.")
-		], 400, false, genieApply);
+			rHead("HUD / Sonic"),
+			gCheck("SNC3-LIVE  Infinite lives", "inflives"),
+			gCheck("SNC3-RING  Max rings (999)", "infrings"),
+			gStep("SNC3-RNGX  Ring bonus (0 = default)", "ringbonus", 0, 0, 100, 5),
+			gStep("SNC3-SCRX  Score multiplier %", "scoremult", 100, 100, 500, 25),
+			gCheck("SNC3-TIME  Freeze timer", "freezetime"),
+			gCheck("SNC3-CDTM  Timer format 0'00\"00", "cdtime"),
+			gCheck("SNC3-NOBK  No ring blink", "noblink"),
+			gCheck("SNC3-NOSC  Hide score", "hidescore"),
+			gCheck("SNC3-NOLV  Hide lives", "hidelives"),
+			gCheck("SNC3-NOHD  Hide whole HUD", "hidehud"),
+			gStep("SNC3-STYL  HUD style 0/1/2 (next song)", "hudstyle", 0, 0, 2, 1),
+			gCheck("SNC3-DBUG  HUD debug log", "hdebug"),
+			rInfo("Defaults = deactivate all codes. Codes apply live, except HUD style.")
+		], 460, false, function()
+		{
+			genieApply();
+			msg("GAME GENIE: " + GensGenie.activeCount() + " CODE(S) ACTIVE");
+		});
 	}
 
 	function openFolder(path:String):Void
@@ -1912,6 +1936,7 @@ class GensFrame extends Sprite
 
 		if (configured)
 		{
+			GensGenie.update(dt);
 			if (spriteLimit && Std.isOfType(FlxG.state, PlayState)) capSplashes();
 			enforceAudio();
 			if (dbg68k || dbgZ80)

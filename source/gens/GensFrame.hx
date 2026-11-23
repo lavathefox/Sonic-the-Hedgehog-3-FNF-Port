@@ -2,11 +2,19 @@ package gens;
 
 import flixel.FlxG;
 import flixel.FlxSprite;
+import backend.Conductor;
+import backend.Difficulty;
+import backend.Mods;
+import backend.Song;
+import backend.WeekData;
+import flixel.FlxState;
 import flixel.input.keyboard.FlxKey;
 import flixel.system.scaleModes.BaseScaleMode;
 import flixel.system.scaleModes.FillScaleMode;
 import flixel.system.scaleModes.RatioScaleMode;
+import haxe.Json;
 import haxe.Timer;
+import haxe.crypto.Sha256;
 import haxe.io.Bytes;
 import haxe.io.Path;
 import lime.app.Application;
@@ -28,6 +36,9 @@ import openfl.text.TextFieldAutoSize;
 import openfl.text.TextFormat;
 import openfl.ui.Keyboard;
 import states.GensIdleState;
+import states.LoadingState;
+import states.PlayState;
+import save.Save;
 import states.Sonic3TitleStateV2;
 import sys.FileSystem;
 import sys.io.File;
@@ -143,6 +154,13 @@ class GensFrame extends Sprite
 	var busy:Bool = false;
 	var dialogClosed:Bool = false;
 	var pendingPath:String = null;
+	var pendingSaveAs:String = null;
+	var pendingLoadFrom:String = null;
+	var pendingMusic:Dynamic = null;
+	var pendingPlay:Dynamic = null;
+	var oldPlay:PlayState = null;
+	var playWait:Int = 0;
+	var musicWait:Int = 0;
 	var keysLocked:Bool = false;
 	var restoreKeys:Bool = false;
 	var configured:Bool = false;
@@ -350,8 +368,8 @@ class GensFrame extends Sprite
 				Application.current.window.alert("Game Genie is not available in this build.", "Game Genie");
 			}, needRom),
 			MenuItem.sep(),
-			MenuItem.normal("&Load State...", "Ctrl+F8", loadState, needRom),
-			MenuItem.normal("&Save State as...", "Ctrl+F5", saveState, needRom),
+			MenuItem.normal("&Load State...", "Ctrl+F8", loadStateAs, needRom),
+			MenuItem.normal("&Save State as...", "Ctrl+F5", saveStateAs, needRom),
 			MenuItem.normal("Quick Lo&ad", "F8", loadState, needRom),
 			MenuItem.normal("Quick Sa&ve", "F5", saveState, needRom),
 			MenuItem.sub("Change S&tate", slotItems, "F6/F7", needRom),
@@ -428,11 +446,12 @@ class GensFrame extends Sprite
 			msg("SOUND RATE: " + rates[i] + " HZ");
 		});
 
-		var chip = function(label:String):MenuItem
+		var chip = function(label:String, ?apply:Bool->Void):MenuItem
 		{
 			var name = StringTools.replace(plain(label), " ENABLE", "");
 			return MenuItem.check(label, true, function(v:Bool)
 			{
+				if (apply != null) apply(v);
 				msg(name + (v ? " ENABLED" : " DISABLED"));
 			});
 		};
@@ -447,8 +466,14 @@ class GensFrame extends Sprite
 			MenuItem.sep(),
 			chip("&Z80 Enable"),
 			MenuItem.sep(),
-			chip("&YM2612 Enable"),
-			chip("&PSG Enable"),
+			chip("&YM2612 Enable", function(v:Bool)
+			{
+				FlxG.sound.defaultMusicGroup.volume = v ? 1 : 0;
+			}),
+			chip("&PSG Enable", function(v:Bool)
+			{
+				FlxG.sound.defaultSoundGroup.volume = v ? 1 : 0;
+			}),
 			chip("&DAC Enable"),
 			chip("PC&M Enable"),
 			chip("P&WM Enable"),
@@ -1127,6 +1152,13 @@ class GensFrame extends Sprite
 	{
 		soundEnable.checked = !FlxG.sound.muted;
 		fullItem.checked = FlxG.fullscreen;
+		refreshSlotLabels();
+	}
+
+	function refreshSlotLabels():Void
+	{
+		for (i in 0...slotItems.length)
+			slotItems[i].text = i + (stateExists(i) ? "  (saved)" : "");
 	}
 
 	function nextSel(p:Panel, from:Int, dir:Int):Int
@@ -1306,7 +1338,9 @@ class GensFrame extends Sprite
 		}
 		if (!romLoaded) return;
 
-		if (e.shiftKey && k == Keyboard.BACKSPACE) takeShot();
+		if (e.ctrlKey && k == Keyboard.F5) saveStateAs();
+		else if (e.ctrlKey && k == Keyboard.F8) loadStateAs();
+		else if (e.shiftKey && k == Keyboard.BACKSPACE) takeShot();
 		else if (k == Keyboard.TAB) hardReset();
 		else if (k == 19) togglePause();
 		else if (k == Keyboard.F5) saveState();
@@ -1410,6 +1444,40 @@ class GensFrame extends Sprite
 			loadRom(p);
 		}
 
+		if (pendingSaveAs != null)
+		{
+			var p = pendingSaveAs;
+			pendingSaveAs = null;
+			if (Path.extension(p) == "") p += ".gs" + slot;
+			msg(writeState(p) ? "STATE SAVED: " + Path.withoutDirectory(p).toUpperCase() : "STATE SAVE FAILED");
+		}
+
+		if (pendingLoadFrom != null)
+		{
+			var p = pendingLoadFrom;
+			pendingLoadFrom = null;
+			loadStateFile(p, Path.withoutDirectory(p).toUpperCase());
+		}
+
+		if (pendingPlay != null)
+		{
+			var pi = PlayState.instance;
+			if (--playWait <= 0)
+				pendingPlay = null;
+			else if (pi != null && pi != oldPlay && Std.isOfType(FlxG.state, PlayState) && !pi.startingSong)
+			{
+				applyPlayStats(pi, pendingPlay);
+				pendingPlay = null;
+				oldPlay = null;
+			}
+		}
+
+		if (pendingMusic != null && --musicWait <= 0)
+		{
+			restoreMusic(pendingMusic);
+			pendingMusic = null;
+		}
+
 		var vis = barVisible();
 		if (vis != lastVis)
 		{
@@ -1466,16 +1534,308 @@ class GensFrame extends Sprite
 		Sys.exit(0);
 	}
 
+	static inline var STATE_VERSION:Int = 1;
+
+	static function stateName():String
+		return Path.withoutExtension(ROM_FILE);
+
+	static function stateFile(n:Int):String
+		return Path.join([dirOf(0), stateName() + ".gs" + n]);
+
+	static function stateExists(n:Int):Bool
+	{
+		try
+		{
+			return FileSystem.exists(stateFile(n));
+		}
+		catch (e:Dynamic) {}
+		return false;
+	}
+
+	function buildState():String
+	{
+		var cls:String = FlxG.state != null ? Type.getClassName(Type.getClass(FlxG.state)) : null;
+		var music:Dynamic = null;
+		if (FlxG.sound.music != null && FlxG.sound.music.playing)
+			music = {time: FlxG.sound.music.time, volume: FlxG.sound.music.volume};
+
+		var play:Dynamic = null;
+		var pi = PlayState.instance;
+		if (Std.isOfType(FlxG.state, PlayState) && pi != null && !pi.isDead && !pi.endingSong && PlayState.SONG != null)
+		{
+			var ratings:Array<Int> = [];
+			for (r in pi.ratingsData) ratings.push(r.hits);
+			var pos:Float = Conductor.songPosition;
+			if (pos < 0) pos = 0;
+			play = {
+				song: Song.loadedSongName,
+				diffPath: Difficulty.getFilePath(),
+				diffList: Difficulty.list.copy(),
+				mod: Mods.currentModDirectory,
+				story: PlayState.isStoryMode,
+				week: PlayState.storyWeek,
+				playlist: PlayState.storyPlaylist.copy(),
+				difficulty: PlayState.storyDifficulty,
+				campaignScore: PlayState.campaignScore,
+				campaignMisses: PlayState.campaignMisses,
+				deaths: PlayState.deathCounter,
+				position: pos,
+				score: pi.songScore,
+				hits: pi.songHits,
+				misses: pi.songMisses,
+				combo: pi.combo,
+				health: pi.health,
+				played: pi.totalPlayed,
+				notesHit: pi.totalNotesHit,
+				ratings: ratings
+			};
+		}
+
+		var body:Dynamic = {
+			version: STATE_VERSION,
+			play: play,
+			rom: ROM_FILE,
+			time: Date.now().toString(),
+			stateClass: cls,
+			slot: Save.currentSlot,
+			progress: Json.parse(Json.stringify(Save.data)),
+			music: music
+		};
+		var payload = Json.stringify(body);
+		return Json.stringify({checksum: Sha256.encode(payload), payload: payload});
+	}
+
+	function writeState(path:String):Bool
+	{
+		try
+		{
+			var dir = Path.directory(path);
+			if (dir != "" && !FileSystem.exists(dir)) FileSystem.createDirectory(dir);
+			var tmp = path + ".tmp";
+			File.saveContent(tmp, buildState());
+			if (readState(tmp) == null)
+			{
+				FileSystem.deleteFile(tmp);
+				return false;
+			}
+			if (FileSystem.exists(path)) FileSystem.deleteFile(path);
+			FileSystem.rename(tmp, path);
+			return true;
+		}
+		catch (e:Dynamic) {}
+		return false;
+	}
+
+	static function readState(path:String):Dynamic
+	{
+		try
+		{
+			if (!FileSystem.exists(path) || FileSystem.isDirectory(path)) return null;
+			var env:Dynamic = Json.parse(File.getContent(path));
+			if (env == null || !Std.isOfType(env.payload, String) || !Std.isOfType(env.checksum, String)) return null;
+			var payload:String = env.payload;
+			if (Sha256.encode(payload) != env.checksum) return null;
+			var body:Dynamic = Json.parse(payload);
+			if (body == null || body.version != STATE_VERSION) return null;
+			return body;
+		}
+		catch (e:Dynamic) {}
+		return null;
+	}
+
+	function applyState(body:Dynamic):Bool
+	{
+		try
+		{
+			var want:Int = body.slot == null ? -1 : Std.int(body.slot);
+			if (want >= 0 && want != Save.currentSlot) Save.changeSlot(want, true);
+			Save.clear();
+			var prog:Dynamic = body.progress;
+			if (prog != null)
+				for (k in Reflect.fields(prog))
+					Save.set(k, Reflect.field(prog, k));
+			Main.flushProgress();
+		}
+		catch (e:Dynamic)
+		{
+			return false;
+		}
+
+		if (body.play != null && restorePlay(body.play))
+		{
+			resumeGame();
+			pendingMusic = null;
+			return true;
+		}
+
+		var next:FlxState = null;
+		var name:String = body.stateClass == null ? "" : Std.string(body.stateClass);
+		var unsafe = name == "" || name.indexOf("PlayState") >= 0 || name.indexOf("Charting") >= 0 || name.indexOf("Loading") >= 0;
+		if (!unsafe)
+		{
+			var cls:Class<Dynamic> = Type.resolveClass(name);
+			if (cls != null)
+			{
+				try
+				{
+					next = cast Type.createInstance(cls, []);
+				}
+				catch (e:Dynamic)
+				{
+					next = null;
+				}
+			}
+		}
+		if (next == null) next = new Sonic3TitleStateV2();
+
+		resumeGame();
+		pendingMusic = body.music;
+		musicWait = 3;
+		FlxG.switchState(next);
+		return true;
+	}
+
+	function restorePlay(p:Dynamic):Bool
+	{
+		try
+		{
+			var song:String = Std.string(p.song);
+			Mods.currentModDirectory = Std.string(p.mod);
+			PlayState.isStoryMode = p.story == true;
+			PlayState.storyWeek = Std.int(p.week);
+			PlayState.storyPlaylist = p.playlist;
+			PlayState.storyDifficulty = Std.int(p.difficulty);
+			PlayState.campaignScore = Std.int(p.campaignScore);
+			PlayState.campaignMisses = Std.int(p.campaignMisses);
+			PlayState.deathCounter = Std.int(p.deaths);
+			PlayState.changedDifficulty = false;
+			PlayState.chartingMode = false;
+			PlayState.seenCutscene = true;
+			if (p.diffList != null) Difficulty.list = p.diffList;
+			if (PlayState.isStoryMode) WeekData.reloadWeekFiles(true);
+			Song.loadFromJson(song + Std.string(p.diffPath), song);
+			var pos:Float = p.position;
+			PlayState.startOnTime = pos > 0 ? pos : 0;
+			oldPlay = PlayState.instance;
+			pendingPlay = p;
+			playWait = 3600;
+			if (FlxG.sound.music != null) FlxG.sound.music.stop();
+			LoadingState.prepareToSong();
+			LoadingState.loadAndSwitchState(new PlayState(), false, false);
+			return true;
+		}
+		catch (e:Dynamic)
+		{
+			pendingPlay = null;
+		}
+		return false;
+	}
+
+	function applyPlayStats(pi:PlayState, p:Dynamic):Void
+	{
+		try
+		{
+			pi.songScore = Std.int(p.score);
+			pi.songHits = Std.int(p.hits);
+			pi.songMisses = Std.int(p.misses);
+			pi.combo = Std.int(p.combo);
+			pi.totalPlayed = Std.int(p.played);
+			pi.totalNotesHit = p.notesHit;
+			var rs:Array<Dynamic> = p.ratings;
+			if (rs != null)
+				for (i in 0...rs.length)
+					if (i < pi.ratingsData.length) pi.ratingsData[i].hits = Std.int(rs[i]);
+			pi.health = p.health;
+			pi.RecalculateRating(false, false);
+		}
+		catch (e:Dynamic) {}
+	}
+
+	function restoreMusic(m:Dynamic):Void
+	{
+		try
+		{
+			if (FlxG.sound.music == null) return;
+			if (m.time != null && m.time < FlxG.sound.music.length) FlxG.sound.music.time = m.time;
+		}
+		catch (e:Dynamic) {}
+	}
+
+	function loadStateFile(path:String, label:String):Void
+	{
+		if (!romLoaded) return;
+		if (!FileSystem.exists(path))
+		{
+			msg("STATE NOT FOUND");
+			return;
+		}
+		var body = readState(path);
+		if (body == null)
+		{
+			msg("STATE IS CORRUPT");
+			return;
+		}
+		msg(applyState(body) ? "STATE LOADED: " + label : "STATE LOAD FAILED");
+	}
+
 	function saveState():Void
 	{
 		if (!romLoaded) return;
-		Main.flushProgress();
-		msg("STATE " + slot + " SAVED");
+		msg(writeState(stateFile(slot)) ? "STATE " + slot + " SAVED" : "STATE " + slot + " SAVE FAILED");
+		refreshSlotLabels();
 	}
 
 	function loadState():Void
 	{
-		if (romLoaded) msg("STATE " + slot + " LOADED");
+		if (!romLoaded) return;
+		var f = stateFile(slot);
+		if (!FileSystem.exists(f))
+		{
+			msg("STATE " + slot + " NOT FOUND");
+			return;
+		}
+		loadStateFile(f, "STATE " + slot);
+	}
+
+	function saveStateAs():Void
+	{
+		if (!romLoaded || busy) return;
+		busy = true;
+		closeAll();
+		try
+		{
+			if (!FileSystem.exists(dirOf(0))) FileSystem.createDirectory(dirOf(0));
+		}
+		catch (e:Dynamic) {}
+		var fd = new FileDialog();
+		fd.onSelect.add(function(path:String)
+		{
+			pendingSaveAs = path;
+			dialogClosed = true;
+		});
+		fd.onCancel.add(function()
+		{
+			dialogClosed = true;
+		});
+		fd.browse(FileDialogType.SAVE, "gs0;gs1;gs2;gs3;gs4;gs5;gs6;gs7;gs8;gs9", stateFile(slot), "Save State as");
+	}
+
+	function loadStateAs():Void
+	{
+		if (!romLoaded || busy) return;
+		busy = true;
+		closeAll();
+		var fd = new FileDialog();
+		fd.onSelect.add(function(path:String)
+		{
+			pendingLoadFrom = path;
+			dialogClosed = true;
+		});
+		fd.onCancel.add(function()
+		{
+			dialogClosed = true;
+		});
+		fd.browse(FileDialogType.OPEN, "gs0;gs1;gs2;gs3;gs4;gs5;gs6;gs7;gs8;gs9", stateFile(slot), "Load State");
 	}
 
 	function changeSlot(d:Int):Void

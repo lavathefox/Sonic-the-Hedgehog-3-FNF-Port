@@ -2,6 +2,7 @@ package gens;
 
 import flixel.FlxG;
 import flixel.FlxSprite;
+import flixel.addons.display.FlxRuntimeShader;
 import backend.Conductor;
 import backend.Difficulty;
 import backend.Mods;
@@ -28,7 +29,9 @@ import openfl.display.StageDisplayState;
 import openfl.events.Event;
 import openfl.events.KeyboardEvent;
 import openfl.events.MouseEvent;
+import openfl.filters.BitmapFilter;
 import openfl.filters.ColorMatrixFilter;
+import openfl.filters.ShaderFilter;
 import openfl.geom.Point;
 import openfl.geom.Rectangle;
 import openfl.text.TextField;
@@ -93,8 +96,8 @@ class GensFrame extends Sprite
 	static final PAD_BIND:Array<String> = ["ui_up", "ui_down", "ui_left", "ui_right", "accept", "back"];
 	static final PAD_DEF:Array<Int> = [38, 40, 37, 39, 13, 8, 65, 68, 16, 81, 87, 69];
 
-	static final DIR_NAMES:Array<String> = ["Savestates", "SRAM Backups", "BRAM Backups", "WAV Dumping", "GYM Dumping", "Screenshots"];
-	static final DIR_DEF:Array<String> = ["States", "saves", "saves", "Dumps", "Dumps", "Screenshots"];
+	static final DIR_NAMES:Array<String> = ["Savestates", "SRAM Backups", "BRAM Backups", "WAV Dumping", "GYM Dumping", "Screenshots", "ROM Files"];
+	static final DIR_DEF:Array<String> = ["States", "saves", "saves", "Dumps", "Dumps", "Screenshots", ""];
 
 	static final BIOS_NAMES:Array<String> = [
 		"Genesis BIOS", "USA CD BIOS", "Europe CD BIOS", "Japan CD BIOS", "32X 68000 BIOS", "32X Master SH2 BIOS", "32X Slave SH2 BIOS"
@@ -124,7 +127,33 @@ class GensFrame extends Sprite
 		dis: 0x808080
 	};
 
-	static var baseFps:Int = 0;
+	static var baseFps0:Int = 0;
+	static var origAA:Null<Bool> = null;
+	static var fixSum:Bool = true;
+	static var hitBackup:Float = -1;
+
+	static final RENDER_FRAG:String = "#pragma header\n"
+		+ "uniform float uScan;\n"
+		+ "uniform float uBlur;\n"
+		+ "uniform float uSai;\n"
+		+ "uniform vec2 uRes;\n"
+		+ "void main()\n"
+		+ "{\n"
+		+ "\tvec2 uv = openfl_TextureCoordv;\n"
+		+ "\tvec2 px = vec2(1.0 / uRes.x, 1.0 / uRes.y);\n"
+		+ "\tvec4 c = flixel_texture2D(bitmap, uv);\n"
+		+ "\tif (uSai > 0.5)\n"
+		+ "\t{\n"
+		+ "\t\tvec4 s = flixel_texture2D(bitmap, uv + px * vec2(0.5, 0.5)) + flixel_texture2D(bitmap, uv + px * vec2(-0.5, 0.5))\n"
+		+ "\t\t\t+ flixel_texture2D(bitmap, uv + px * vec2(0.5, -0.5)) + flixel_texture2D(bitmap, uv + px * vec2(-0.5, -0.5));\n"
+		+ "\t\tc = mix(c, s * 0.25, 0.65);\n"
+		+ "\t}\n"
+		+ "\tif (uBlur > 0.5)\n"
+		+ "\t\tc = mix(c, flixel_texture2D(bitmap, uv - vec2(px.x, 0.0)), 0.5);\n"
+		+ "\tfloat line = mod(floor(uv.y * uRes.y), 2.0);\n"
+		+ "\tc.rgb *= 1.0 - uScan * line;\n"
+		+ "\tgl_FragColor = c;\n"
+		+ "}\n";
 
 	var pal:Palette = CLASSIC ? CLASSIC_PAL : WIN10;
 
@@ -151,6 +180,20 @@ class GensFrame extends Sprite
 
 	var dlg:GDialog;
 	var paused:Bool = false;
+	var renderShader:FlxRuntimeShader = null;
+	var dbgTf:TextField;
+	var blurItem:MenuItem;
+	var dbg68k:Bool = false;
+	var dbgZ80:Bool = false;
+	var spriteLimit:Bool = true;
+	var sndMono:Bool = false;
+	var sndZ80:Bool = true;
+	var sndYM:Bool = true;
+	var sndPSG:Bool = true;
+	var sndDAC:Bool = true;
+	var sndPCM:Bool = true;
+	var sndPWM:Bool = true;
+	var sndCDDA:Bool = true;
 	var busy:Bool = false;
 	var dialogClosed:Bool = false;
 	var pendingPath:String = null;
@@ -261,6 +304,14 @@ class GensFrame extends Sprite
 		osd.textColor = 0xFFFFFF;
 		addChild(osd);
 
+		dbgTf = mkTF("", false, 12);
+		dbgTf.textColor = 0x00FF66;
+		dbgTf.background = true;
+		dbgTf.backgroundColor = 0x101010;
+		dbgTf.x = 10;
+		dbgTf.visible = false;
+		addChild(dbgTf);
+
 		barSprite = new Sprite();
 		addChild(barSprite);
 		panelLayer = new Sprite();
@@ -341,9 +392,11 @@ class GensFrame extends Sprite
 		var needRom:Void->Bool = function() return romLoaded;
 		var never:Void->Bool = function() return false;
 
-		soundEnable = MenuItem.check("&Enable", !FlxG.sound.muted, function(v:Bool)
+		soundEnable = MenuItem.check("&Enable", cfg("snd_enable", true) == true, function(v:Bool)
 		{
 			FlxG.sound.muted = !v;
+			setCfg("snd_enable", v);
+			flushCfg();
 			msg(v ? "SOUND ENABLED" : "SOUND DISABLED");
 		});
 
@@ -363,10 +416,7 @@ class GensFrame extends Sprite
 			historyItem,
 			MenuItem.normal("&Close ROM", "Ctrl+C", closeRom, needRom),
 			MenuItem.sep(),
-			MenuItem.normal("&Game Genie", null, function()
-			{
-				Application.current.window.alert("Game Genie is not available in this build.", "Game Genie");
-			}, needRom),
+			MenuItem.normal("&Game Genie...", null, openGenie, needRom),
 			MenuItem.sep(),
 			MenuItem.normal("&Load State...", "Ctrl+F8", loadStateAs, needRom),
 			MenuItem.normal("&Save State as...", "Ctrl+F5", saveStateAs, needRom),
@@ -388,21 +438,28 @@ class GensFrame extends Sprite
 		];
 		var renderItems = choice(renders, "render", 0, function(i:Int)
 		{
-			var smooth = (i == 2 || i == 6 || i == 7 || i == 8);
-			FlxSprite.defaultAntialiasing = smooth;
-			ClientPrefs.data.antialiasing = smooth;
+			applyRender();
 			msg("RENDER: " + plain(renders[i]));
 		});
 
 		var skipLabels = ["&Auto", "&0", "&1", "&2", "&3", "&4", "&5", "&6", "&7", "&8"];
 		var skipItems = choice(skipLabels, "frameskip", 0, function(i:Int)
 		{
-			msg("FRAME SKIP: " + (i == 0 ? "AUTO" : Std.string(i - 1)));
+			applyFps();
+			msg("FRAME SKIP: " + (i == 0 ? "AUTO" : Std.string(i - 1)) + " - " + FlxG.drawFramerate + " FPS");
+		});
+
+		blurItem = flag("Fast &Blur", "fastblur", false, function(v:Bool)
+		{
+			applyFilters();
 		});
 
 		var graphics:Array<MenuItem> = [
 			fullItem,
-			flag("&VSync", "vsync", false),
+			flag("&VSync", "vsync", false, function(v:Bool)
+			{
+				applyFps();
+			}),
 			flag("S&tretch", "stretch", false, function(v:Bool)
 			{
 				FlxG.scaleMode = scaleFor(v);
@@ -410,20 +467,26 @@ class GensFrame extends Sprite
 			MenuItem.sep(),
 			MenuItem.sub("&Render", renderItems),
 			MenuItem.sub("Frame S&kip", skipItems),
+			blurItem,
 			MenuItem.sep(),
 			MenuItem.normal("&Color Adjust...", null, openColorAdjust),
-			flag("Sprite &Limit", "spritelimit", true),
+			flag("Sprite &Limit", "spritelimit", true, function(v:Bool)
+			{
+				spriteLimit = v;
+			}),
 			MenuItem.sep(),
 			keyed(MenuItem.normal("Screen S&hot", null, takeShot, needRom), "Shift+Backspace")
 		];
 
 		var debugItems:Array<MenuItem> = [
-			MenuItem.check("&68000", false, function(v:Bool)
+			MenuItem.check("&68000 (state info)", false, function(v:Bool)
 			{
+				dbg68k = v;
 				msg("68000 DEBUG " + (v ? "ON" : "OFF"));
 			}),
-			MenuItem.check("&Z80", false, function(v:Bool)
+			MenuItem.check("&Z80 (sound info)", false, function(v:Bool)
 			{
+				dbgZ80 = v;
 				msg("Z80 DEBUG " + (v ? "ON" : "OFF"));
 			}),
 			MenuItem.check("&VDP (FPS counter)", Main.fpsVar != null && Main.fpsVar.visible, function(v:Bool)
@@ -440,57 +503,92 @@ class GensFrame extends Sprite
 			keyed(MenuItem.normal("&Pause", null, togglePause, needRom), "Pause")
 		];
 
+		sndZ80 = cfg("snd_z80", true) == true;
+		sndYM = cfg("snd_ym", true) == true;
+		sndPSG = cfg("snd_psg", true) == true;
+		sndDAC = cfg("snd_dac", true) == true;
+		sndPCM = cfg("snd_pcm", true) == true;
+		sndPWM = cfg("snd_pwm", true) == true;
+		sndCDDA = cfg("snd_cdda", true) == true;
+		sndMono = cfg("stereo", true) == false;
+
 		var rates = ["11025", "22050", "44100"];
 		var rateItems = choice(["11025 Hz", "22050 Hz", "44100 Hz"], "rate", 2, function(i:Int)
 		{
 			msg("SOUND RATE: " + rates[i] + " HZ");
 		});
 
-		var chip = function(label:String, ?apply:Bool->Void):MenuItem
+		var chip = function(label:String, key:String, apply:Bool->Void, ?note:String):MenuItem
 		{
 			var name = StringTools.replace(plain(label), " ENABLE", "");
-			return MenuItem.check(label, true, function(v:Bool)
+			return MenuItem.check(label, cfg(key, true) == true, function(v:Bool)
 			{
-				if (apply != null) apply(v);
-				msg(name + (v ? " ENABLED" : " DISABLED"));
+				setCfg(key, v);
+				flushCfg();
+				apply(v);
+				msg(name + (v ? " ENABLED" : " DISABLED") + (note != null ? " " + note : ""));
 			});
 		};
 
 		var sound:Array<MenuItem> = [
 			soundEnable,
 			MenuItem.sub("&Rate", rateItems),
-			MenuItem.check("S&tereo", true, function(v:Bool)
+			MenuItem.check("S&tereo", !sndMono, function(v:Bool)
 			{
+				sndMono = !v;
+				setCfg("stereo", v);
+				flushCfg();
 				msg(v ? "STEREO ENABLED" : "MONO ENABLED");
 			}),
 			MenuItem.sep(),
-			chip("&Z80 Enable"),
+			chip("&Z80 Enable", "snd_z80", function(v:Bool)
+			{
+				sndZ80 = v;
+				applySoundMix();
+			}, "(MUSIC + SFX)"),
 			MenuItem.sep(),
-			chip("&YM2612 Enable", function(v:Bool)
+			chip("&YM2612 Enable", "snd_ym", function(v:Bool)
 			{
-				FlxG.sound.defaultMusicGroup.volume = v ? 1 : 0;
-			}),
-			chip("&PSG Enable", function(v:Bool)
+				sndYM = v;
+				applySoundMix();
+			}, "(MUSIC)"),
+			chip("&PSG Enable", "snd_psg", function(v:Bool)
 			{
-				FlxG.sound.defaultSoundGroup.volume = v ? 1 : 0;
-			}),
-			chip("&DAC Enable"),
-			chip("PC&M Enable"),
-			chip("P&WM Enable"),
-			chip("CDD&A Enable")
+				sndPSG = v;
+				applySoundMix();
+			}, "(SFX)"),
+			chip("&DAC Enable", "snd_dac", function(v:Bool)
+			{
+				sndDAC = v;
+			}, "(PLAYER VOCALS)"),
+			chip("PC&M Enable", "snd_pcm", function(v:Bool)
+			{
+				sndPCM = v;
+			}, "(OPPONENT VOCALS)"),
+			chip("P&WM Enable", "snd_pwm", function(v:Bool)
+			{
+				sndPWM = v;
+				applyPwm();
+			}, "(HITSOUNDS, NEXT SONG)"),
+			chip("CDD&A Enable", "snd_cdda", function(v:Bool)
+			{
+				sndCDDA = v;
+				applySoundMix();
+			}, "(MUSIC)")
 		];
 
 		var countries = ["AUTO DETECTION", "JAPAN (NTSC)", "USA (NTSC)", "EUROPE (PAL)", "JAPAN (PAL)"];
 		var countryItems = choice(["&Auto Detection", "&Japan (NTSC)", "&USA (NTSC)", "&Europe (PAL)", "Japan (&PAL)"], "country", 0, function(i:Int)
 		{
-			applyCountry(i);
-			msg("COUNTRY: " + countries[i] + (i >= 3 ? " - 50 FPS" : ""));
+			applyFps();
+			msg("COUNTRY: " + countries[i] + " - " + FlxG.updateFramerate + " FPS");
 		});
 
 		var sramSizes = ["NONE", "8 KB", "16 KB", "32 KB", "64 KB"];
-		var sramItems = choice(["&None", "&8 Kb", "&16 Kb", "&32 Kb", "&64 Kb"], "sram", 0, function(i:Int)
+		var sramItems = choice(["&None", "&8 Kb", "&16 Kb", "&32 Kb", "&64 Kb"], "sram", 2, function(i:Int)
 		{
-			msg("SRAM SIZE: " + sramSizes[i]);
+			applySram();
+			msg("SRAM SIZE: " + sramSizes[i] + (i == 0 ? " - AUTOSAVE OFF" : " - AUTOSAVE EVERY " + Std.int(Save.autoSaveInterval) + " S"));
 		});
 
 		var options:Array<MenuItem> = [
@@ -503,7 +601,35 @@ class GensFrame extends Sprite
 			MenuItem.sub("Sega CD SRAM &Size", sramItems)
 		];
 
-		var help:Array<MenuItem> = [MenuItem.normal("&About...", null, openAbout)];
+		var help:Array<MenuItem> = [
+			keyed(MenuItem.normal("&Keyboard Shortcuts...", null, openShortcuts), "F1"),
+			MenuItem.normal("S&ystem Info...", null, openSysInfo),
+			MenuItem.sep(),
+			MenuItem.normal("Open &Saves Folder", null, function()
+			{
+				openFolder(Path.join([Sys.getCwd(), "saves"]));
+			}),
+			MenuItem.normal("Open S&tates Folder", null, function()
+			{
+				openFolder(dirOf(0));
+			}),
+			MenuItem.normal("Open Scree&nshots Folder", null, function()
+			{
+				openFolder(dirOf(5));
+			}),
+			MenuItem.sep(),
+			MenuItem.normal("&Home Page", null, function()
+			{
+				openUrl("https://github.com/lavathefox/Sonic-the-Hedgehog-3-FNF-Port");
+			}),
+			MenuItem.normal("Report a &Bug", null, function()
+			{
+				openUrl("https://github.com/lavathefox/Sonic-the-Hedgehog-3-FNF-Port/issues");
+			}),
+			MenuItem.normal("&Reset Gens Settings", null, resetSettings),
+			MenuItem.sep(),
+			MenuItem.normal("&About...", null, openAbout)
+		];
 
 		headers = [
 			MenuItem.sub("&File", file),
@@ -518,50 +644,108 @@ class GensFrame extends Sprite
 	function applyAll():Void
 	{
 		FlxG.autoPause = cfg("autopause", FlxG.autoPause) == true;
-		applyCountry(Std.int(cfg("country", 0)));
-		applyColor();
-	}
+		fixSum = cfg("fixsum", true) == true;
+		spriteLimit = cfg("spritelimit", true) == true;
+		FlxG.fixedTimestep = cfg("perfectsync", false) == true;
+		FlxG.sound.muted = cfg("snd_enable", true) == false;
+		applyFps();
+		applySram();
+		applySoundMix();
+		applyPwm();
+		if (Reflect.hasField(FlxG.save.data, "gens_render"))
+			applyRender();
+		else
+			applyFilters();
 
-		function applyCountry(i:Int):Void
-	{
-		var pal = (i == 3 || i == 4);
-		var f:Int;
-		if (pal)
+		if (cfg("autorom", false) == true)
 		{
-			if (baseFps == 0) baseFps = FlxG.updateFramerate;
-			f = 50;
-		}
-		else
-		{
-			if (baseFps == 0) return;
-			f = baseFps;
-			baseFps = 0;
-		}
-		if (f > FlxG.drawFramerate)
-		{
-			FlxG.drawFramerate = f;
-			FlxG.updateFramerate = f;
-		}
-		else
-		{
-			FlxG.updateFramerate = f;
-			FlxG.drawFramerate = f;
+			var h = loadHistory();
+			if (h.length > 0 && FileSystem.exists(h[0])) pendingPath = h[0];
 		}
 	}
 
-		function applyColor():Void
+	function applyFps():Void
 	{
-		if (FlxG.game == null) return;
+		if (baseFps0 == 0) baseFps0 = FlxG.updateFramerate;
+		var c = Std.int(cfg("country", 0));
+		var upd = (c == 3 || c == 4) ? 50 : baseFps0;
+		var sk = Std.int(cfg("frameskip", 0));
+		var n = sk <= 1 ? 0 : sk - 1;
+		var draw = Std.int(upd / (n + 1));
+		if (cfg("vsync", false) == true)
+		{
+			var hz = 0;
+			try
+			{
+				hz = Application.current.window.displayMode.refreshRate;
+			}
+			catch (e:Dynamic) {}
+			if (hz > 0 && draw > hz) draw = hz;
+		}
+		if (draw < 10) draw = 10;
+		FlxG.drawFramerate = Std.int(Math.min(draw, FlxG.updateFramerate));
+		FlxG.updateFramerate = upd;
+		FlxG.drawFramerate = draw;
+	}
+
+	function applySram():Void
+	{
+		var iv:Array<Float> = [0.0, 60.0, 30.0, 15.0, 5.0];
+		var i = Std.int(cfg("sram", 2));
+		if (i < 0 || i >= iv.length) i = 2;
+		Save.autoSaveInterval = iv[i];
+	}
+
+	function applySoundMix():Void
+	{
+		FlxG.sound.defaultMusicGroup.volume = (sndZ80 && (sndYM || sndCDDA)) ? 1 : 0;
+		FlxG.sound.defaultSoundGroup.volume = (sndZ80 && sndPSG) ? 1 : 0;
+	}
+
+	function applyPwm():Void
+	{
+		try
+		{
+			if (!sndPWM)
+			{
+				if (hitBackup < 0) hitBackup = ClientPrefs.data.hitsoundVolume;
+				ClientPrefs.data.hitsoundVolume = 0;
+			}
+			else if (hitBackup >= 0)
+			{
+				ClientPrefs.data.hitsoundVolume = hitBackup;
+				hitBackup = -1;
+			}
+		}
+		catch (e:Dynamic) {}
+	}
+
+	function applyRender():Void
+	{
+		var r = Std.int(cfg("render", 0));
+		if (origAA == null) origAA = ClientPrefs.data.antialiasing;
+		var smooth:Bool;
+		if (r == 0)
+			smooth = origAA == true;
+		else
+			smooth = (r == 2 || r == 6 || r == 7 || r == 8 || r == 9);
+		FlxSprite.defaultAntialiasing = smooth;
+		ClientPrefs.data.antialiasing = smooth;
+		for (c in FlxG.cameras.list)
+			if (c != null) c.antialiasing = smooth;
+		applyFilters();
+	}
+
+	function applyColor():Void
+		applyFilters();
+
+	function colorFilter():BitmapFilter
+	{
 		var con:Int = Std.int(cfg("contrast", 100));
 		var bri:Int = Std.int(cfg("brightness", 0));
 		var gray:Bool = cfg("gray", false) == true;
 		var inv:Bool = cfg("inverse", false) == true;
-
-		if (con == 100 && bri == 0 && !gray && !inv)
-		{
-			FlxG.game.filters = [];
-			return;
-		}
+		if (con == 100 && bri == 0 && !gray && !inv) return null;
 
 		var k:Float = con / 100.0;
 		var off:Float = 255.0 * (0.5 - 0.5 * k) + bri * 2.55;
@@ -583,7 +767,259 @@ class GensFrame extends Sprite
 		m.push(0.0);
 		m.push(1.0);
 		m.push(0.0);
-		FlxG.game.filters = [new ColorMatrixFilter(m)];
+		return new ColorMatrixFilter(m);
+	}
+
+	function applyFilters():Void
+	{
+		if (FlxG.game == null) return;
+		var list:Array<BitmapFilter> = [];
+
+		var r = Std.int(cfg("render", 0));
+		var scan:Float = 0.0;
+		if (r == 3 || r == 6) scan = 1.0;
+		else if (r == 4 || r == 7) scan = 0.5;
+		else if (r == 5 || r == 8) scan = 0.25;
+		var sai = (r == 9);
+		var blur = cfg("fastblur", false) == true;
+
+		if (scan > 0 || sai || blur)
+		{
+			try
+			{
+				if (renderShader == null) renderShader = new FlxRuntimeShader(RENDER_FRAG);
+				renderShader.setFloat("uScan", scan);
+				renderShader.setFloat("uSai", sai ? 1.0 : 0.0);
+				renderShader.setFloat("uBlur", blur ? 1.0 : 0.0);
+				renderShader.setFloatArray("uRes", [FlxG.width * 1.0, FlxG.height * 1.0]);
+				list.push(new ShaderFilter(renderShader));
+			}
+			catch (e:Dynamic)
+			{
+				renderShader = null;
+			}
+		}
+
+		var cf = colorFilter();
+		if (cf != null) list.push(cf);
+		FlxG.game.filters = list;
+	}
+
+	function capSplashes():Void
+	{
+		var pi = PlayState.instance;
+		if (pi == null || pi.grpNoteSplashes == null) return;
+		var g = pi.grpNoteSplashes;
+		var alive = g.countLiving();
+		if (alive <= 16) return;
+		var extra = alive - 16;
+		for (m in g.members)
+		{
+			if (extra <= 0) break;
+			if (m != null && m.alive)
+			{
+				m.kill();
+				extra--;
+			}
+		}
+	}
+
+	function enforceAudio():Void
+	{
+		if (sndMono)
+		{
+			for (snd in FlxG.sound.list.members)
+				if (snd != null) snd.pan = 0;
+			if (FlxG.sound.music != null) FlxG.sound.music.pan = 0;
+		}
+		var pi = PlayState.instance;
+		if (pi != null)
+		{
+			if (!sndDAC && pi.vocals != null) pi.vocals.volume = 0;
+			if (!sndPCM && pi.opponentVocals != null) pi.opponentVocals.volume = 0;
+		}
+	}
+
+	function updateDebug():Void
+	{
+		var lines:Array<String> = [];
+		if (dbg68k)
+		{
+			lines.push("[68000] STATE: " + (FlxG.state != null ? Type.getClassName(Type.getClass(FlxG.state)) : "-"));
+			lines.push("[68000] UPTIME: " + Std.int(Main.getUptime()) + " S   SLOT: " + slot + "   PAUSED: " + paused);
+			var pi = PlayState.instance;
+			if (pi != null)
+				lines.push("[68000] SONG POS: " + Std.int(Conductor.songPosition) + " MS   HP: " + Math.round(pi.health * 50) + "%   COMBO: " + pi.combo);
+		}
+		if (dbgZ80)
+		{
+			var m = FlxG.sound.music;
+			lines.push("[Z80] MUSIC: " + (m != null ? Std.int(m.time) + "/" + Std.int(m.length) + " MS   VOL " + Math.round(m.volume * 100) + "%" : "NONE"));
+			lines.push("[Z80] MASTER VOL: " + Math.round(FlxG.sound.volume * 100) + "%   MUTED: " + FlxG.sound.muted);
+		}
+		dbgTf.visible = lines.length > 0 && barVisible();
+		if (dbgTf.visible) dbgTf.text = lines.join("\n");
+	}
+
+	function geniePut(key:String, v:Dynamic):Void
+	{
+		try
+		{
+			ClientPrefs.data.gameplaySettings.set(key, v);
+		}
+		catch (e:Dynamic) {}
+	}
+
+	function genieGet(key:String, def:Dynamic):Dynamic
+	{
+		try
+		{
+			var v:Dynamic = ClientPrefs.data.gameplaySettings.get(key);
+			if (v != null) return v;
+		}
+		catch (e:Dynamic) {}
+		return def;
+	}
+
+	function genieApply():Void
+	{
+		var pi = PlayState.instance;
+		if (pi == null) return;
+		try
+		{
+			pi.practiceMode = ClientPrefs.getGameplaySetting('practice') == true;
+			pi.cpuControlled = ClientPrefs.getGameplaySetting('botplay') == true;
+			pi.instakillOnMiss = ClientPrefs.getGameplaySetting('instakill') == true;
+			pi.healthGain = ClientPrefs.getGameplaySetting('healthgain');
+			pi.healthLoss = ClientPrefs.getGameplaySetting('healthloss');
+			if (pi.botplayTxt != null) pi.botplayTxt.visible = pi.cpuControlled;
+		}
+		catch (e:Dynamic) {}
+	}
+
+	function openGenie():Void
+	{
+		openDialog("Game Genie", [
+			rHead("Codes"),
+			rCheck("Infinite health (Practice Mode)", genieGet("practice", false) == true, false, function(v:Bool)
+			{
+				geniePut("practice", v);
+			}),
+			rCheck("Auto-play (Botplay)", genieGet("botplay", false) == true, false, function(v:Bool)
+			{
+				geniePut("botplay", v);
+			}),
+			rCheck("Instant death on miss", genieGet("instakill", false) == true, false, function(v:Bool)
+			{
+				geniePut("instakill", v);
+			}),
+			rHead("Health"),
+			rStep("Health gain %", Std.int(Math.round(Std.parseFloat(Std.string(genieGet("healthgain", 1.0))) * 100)), 100, 0, 300, 10, function(v:Int)
+			{
+				geniePut("healthgain", v / 100.0);
+			}),
+			rStep("Health loss %", Std.int(Math.round(Std.parseFloat(Std.string(genieGet("healthloss", 1.0))) * 100)), 100, 0, 300, 10, function(v:Int)
+			{
+				geniePut("healthloss", v / 100.0);
+			}),
+			rInfo("Codes apply to the song that is playing and to the next ones.")
+		], 400, false, genieApply);
+	}
+
+	function openFolder(path:String):Void
+	{
+		try
+		{
+			if (!FileSystem.exists(path)) FileSystem.createDirectory(path);
+			#if windows
+			Sys.command("explorer", [StringTools.replace(path, "/", "\\")]);
+			#elseif mac
+			Sys.command("open", [path]);
+			#else
+			Sys.command("xdg-open", [path]);
+			#end
+		}
+		catch (e:Dynamic)
+		{
+			msg("COULD NOT OPEN FOLDER");
+		}
+	}
+
+	function openUrl(url:String):Void
+	{
+		try
+		{
+			lime.system.System.openURL(url);
+		}
+		catch (e:Dynamic)
+		{
+			msg("COULD NOT OPEN LINK");
+		}
+	}
+
+	function resetSettings():Void
+	{
+		try
+		{
+			for (f in Reflect.fields(FlxG.save.data))
+				if (f.indexOf("gens_") == 0) Reflect.deleteField(FlxG.save.data, f);
+			flushCfg();
+			sndZ80 = sndYM = sndPSG = sndDAC = sndPCM = sndPWM = sndCDDA = true;
+			sndMono = false;
+			dbg68k = dbgZ80 = false;
+			FlxG.sound.muted = false;
+			FlxG.scaleMode = scaleFor(false);
+			applyAll();
+			msg("GENS SETTINGS RESET - RESTART TO REFRESH MENUS");
+		}
+		catch (e:Dynamic)
+		{
+			msg("RESET FAILED");
+		}
+	}
+
+	function openShortcuts():Void
+	{
+		openDialog("Keyboard Shortcuts", [
+			rHead("File"),
+			rInfo("Ctrl+O   Open ROM        Ctrl+C   Close ROM"),
+			rInfo("F5 / F8   Quick Save / Quick Load"),
+			rInfo("Ctrl+F5 / Ctrl+F8   Save State as / Load State"),
+			rInfo("F6 / F7   Previous / next state slot"),
+			rHead("Graphics and CPU"),
+			rInfo("Alt+Enter   Full Screen"),
+			rInfo("Shift+Backspace   Screen Shot"),
+			rInfo("Tab   Hard Reset        Pause   Pause / Resume"),
+			rHead("Menus"),
+			rInfo("Alt+letter   Open a menu (F, G, C, S, O, H)"),
+			rInfo("Arrows   Move        Enter   Select        Esc   Close"),
+			rInfo("F1   Show this window")
+		], 440, true);
+	}
+
+	function openSysInfo():Void
+	{
+		var countries = ["Auto Detection", "Japan (NTSC)", "USA (NTSC)", "Europe (PAL)", "Japan (PAL)"];
+		var renders = ["Normal", "Double", "Interpolated", "Scanline", "50% Scanline", "25% Scanline", "Interpolated Scanline", "Interpolated 50% Scanline", "Interpolated 25% Scanline", "2xSAI"];
+		var ci = Std.int(cfg("country", 0));
+		var ri = Std.int(cfg("render", 0));
+		var win = Application.current.window;
+		var secs = Std.int(Main.getUptime());
+		openDialog("System Info", [
+			rHead("Game"),
+			rInfo("ROM: " + (romLoaded ? ROM_FILE : "(none)")),
+			rInfo("State slot: " + slot + (stateExists(slot) ? " (saved)" : " (empty)")),
+			rInfo("Game save slot: " + Save.currentSlot),
+			rInfo("Uptime: " + Std.int(secs / 60) + " min " + (secs % 60) + " s"),
+			rHead("Video"),
+			rInfo("Window: " + win.width + " x " + win.height + "   Game: " + FlxG.width + " x " + FlxG.height),
+			rInfo("Update: " + FlxG.updateFramerate + " FPS   Draw: " + FlxG.drawFramerate + " FPS"),
+			rInfo("Country: " + countries[ci < 0 || ci >= countries.length ? 0 : ci]),
+			rInfo("Render: " + renders[ri < 0 || ri >= renders.length ? 0 : ri]),
+			rHead("Sound"),
+			rInfo("Volume: " + Math.round(FlxG.sound.volume * 100) + "%   Muted: " + FlxG.sound.muted + "   Mono: " + sndMono),
+			rInfo("Autosave: " + (Save.autoSaveInterval > 0 ? "every " + Std.int(Save.autoSaveInterval) + " s" : "off"))
+		], 480, true);
 	}
 
 	function toggleFull():Void
@@ -772,6 +1208,7 @@ class GensFrame extends Sprite
 			rCheck("Fast Blur", cfg("fastblur", false) == true, false, function(v:Bool)
 			{
 				setCfg("fastblur", v);
+				applyFilters();
 			}),
 			rHead("Emulation"),
 			rCheck("Pause when the window loses focus", FlxG.autoPause, true, function(v:Bool)
@@ -779,15 +1216,21 @@ class GensFrame extends Sprite
 				FlxG.autoPause = v;
 				setCfg("autopause", v);
 			}),
-			rCheck("Auto Fix Checksum", cfg("fixsum", true) == true, true, function(v:Bool)
+			rCheck("Auto Fix Checksum (tolerant state loading)", cfg("fixsum", true) == true, true, function(v:Bool)
 			{
 				setCfg("fixsum", v);
+				fixSum = v;
 			}),
-			rCheck("Perfect Synchro", cfg("perfectsync", false) == true, false, function(v:Bool)
+			rCheck("Perfect Synchro (fixed timestep)", cfg("perfectsync", false) == true, false, function(v:Bool)
 			{
 				setCfg("perfectsync", v);
+				FlxG.fixedTimestep = v;
+			}),
+			rCheck("Open the last ROM at startup", cfg("autorom", false) == true, false, function(v:Bool)
+			{
+				setCfg("autorom", v);
 			})
-		], 360);
+		], 420);
 	}
 
 	function openJoypads():Void
@@ -952,6 +1395,7 @@ class GensFrame extends Sprite
 		osdShadow.x = osd.x + 1;
 		osdShadow.y = osd.y + 1;
 		if (Main.fpsVar != null) Main.fpsVar.y = (vis ? BAR_H : 0) + 3;
+		dbgTf.y = (vis ? BAR_H : 0) + 28;
 	}
 
 	function onResize(_:Event):Void
@@ -1152,6 +1596,7 @@ class GensFrame extends Sprite
 	{
 		soundEnable.checked = !FlxG.sound.muted;
 		fullItem.checked = FlxG.fullscreen;
+		blurItem.checked = cfg("fastblur", false) == true;
 		refreshSlotLabels();
 	}
 
@@ -1308,6 +1753,12 @@ class GensFrame extends Sprite
 
 		var k = e.keyCode;
 
+		if (k == Keyboard.F1)
+		{
+			openShortcuts();
+			return;
+		}
+
 		if (e.altKey && !e.ctrlKey && k == Keyboard.ENTER)
 		{
 			toggleFull();
@@ -1457,6 +1908,16 @@ class GensFrame extends Sprite
 			var p = pendingLoadFrom;
 			pendingLoadFrom = null;
 			loadStateFile(p, Path.withoutDirectory(p).toUpperCase());
+		}
+
+		if (configured)
+		{
+			if (spriteLimit && Std.isOfType(FlxG.state, PlayState)) capSplashes();
+			enforceAudio();
+			if (dbg68k || dbgZ80)
+				updateDebug();
+			else if (dbgTf.visible)
+				dbgTf.visible = false;
 		}
 
 		if (pendingPlay != null)
@@ -1634,7 +2095,7 @@ class GensFrame extends Sprite
 			var env:Dynamic = Json.parse(File.getContent(path));
 			if (env == null || !Std.isOfType(env.payload, String) || !Std.isOfType(env.checksum, String)) return null;
 			var payload:String = env.payload;
-			if (Sha256.encode(payload) != env.checksum) return null;
+			if (!fixSum && Sha256.encode(payload) != env.checksum) return null;
 			var body:Dynamic = Json.parse(payload);
 			if (body == null || body.version != STATE_VERSION) return null;
 			return body;
@@ -1861,7 +2322,9 @@ class GensFrame extends Sprite
 		{
 			dialogClosed = true;
 		});
-		fd.browse(FileDialogType.OPEN, ROM_EXTS.join(";"), startDir(), "Open ROM");
+		var romDir:String = Std.string(cfg("dir_6", ""));
+		if (romDir == "" || romDir == "null" || !FileSystem.exists(romDir)) romDir = startDir();
+		fd.browse(FileDialogType.OPEN, ROM_EXTS.join(";"), romDir, "Open ROM");
 	}
 
 	function loadRom(path:String):Void

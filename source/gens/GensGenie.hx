@@ -20,7 +20,16 @@ class GensGenie
 		"hidelives" => false,
 		"hidehud" => false,
 		"hudstyle" => 0,
-		"hdebug" => false
+		"hdebug" => false,
+		"setlives" => 0,
+		"noextralife" => false,
+		"setrings" => 0,
+		"keeprings" => false,
+		"noshield" => false,
+		"invtime" => 0,
+		"holdmult" => 100,
+		"nopopups" => false,
+		"nopalette" => false
 	];
 
 	static final STYLES:Array<String> = ["DEFAULT", "SONIC 1/CD", "SONIC 2"];
@@ -70,6 +79,7 @@ class GensGenie
 			if (gs.get("instakill") == true) n++;
 			if (gs.get("healthgain") != null && gs.get("healthgain") != 1.0) n++;
 			if (gs.get("healthloss") != null && gs.get("healthloss") != 1.0) n++;
+			if (gs.get("songspeed") != null && gs.get("songspeed") != 1.0) n++;
 		}
 		catch (e:Dynamic) {}
 		return n;
@@ -117,6 +127,15 @@ class GensGenie
 			pi.setOnScripts("genieHideLives", on("hidelives"));
 			pi.setOnScripts("genieHideHud", on("hidehud"));
 			pi.setOnScripts("genieDebug", on("hdebug"));
+			pi.setOnScripts("genieSetLives", num("setlives", 0));
+			pi.setOnScripts("genieNoExtraLife", on("noextralife"));
+			pi.setOnScripts("genieSetRings", num("setrings", 0));
+			pi.setOnScripts("genieKeepRings", on("keeprings"));
+			pi.setOnScripts("genieNoShield", on("noshield"));
+			pi.setOnScripts("genieInvTime", num("invtime", 0));
+			pi.setOnScripts("genieHoldMult", num("holdmult", 100));
+			pi.setOnScripts("genieNoPopups", on("nopopups"));
+			pi.setOnScripts("genieNoPalette", on("nopalette"));
 		}
 		catch (e:Dynamic) {}
 	}
